@@ -15,7 +15,8 @@ import { ConsolePanel, type ConsoleLog } from "./console-panel";
 import { CodeAssistant } from "./code-assistant";
 import { FeedbackPanel } from "./feedback-panel";
 import { TestPreview } from "./test-preview";
-import { apiRequest } from "@/lib/queryClient";
+import { FileExplorer } from "./file-explorer";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@shared/schema";
 import type { editor } from "monaco-editor";
 
@@ -32,6 +33,7 @@ interface PreviewPanelProps {
   projectId?: string;
   settings?: LLMSettings;
   onCodeUpdate?: (code: string) => void;
+  onFilesUpdate?: () => void;
 }
 
 export function PreviewPanel({ 
@@ -47,6 +49,7 @@ export function PreviewPanel({
   projectId,
   settings,
   onCodeUpdate,
+  onFilesUpdate,
 }: PreviewPanelProps) {
   const [activeTab, setActiveTab] = useState<"preview" | "code" | "files" | "launch">("preview");
   const [copied, setCopied] = useState(false);
@@ -69,10 +72,88 @@ export function PreviewPanel({
   const [showAssistant, setShowAssistant] = useState(false);
   const [showFeedback, setShowFeedback] = useState(true);
   const [showTestPreview, setShowTestPreview] = useState(false);
+  const [editingFileContent, setEditingFileContent] = useState<string | null>(null);
+  const [isFileSaving, setIsFileSaving] = useState(false);
+  const [hasFileChanges, setHasFileChanges] = useState(false);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const fileEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const nonceRef = useRef<string>(crypto.randomUUID());
   const { toast } = useToast();
+
+  // File operation handlers
+  const handleCreateFile = useCallback(async (path: string, content: string) => {
+    if (!projectId) return;
+    try {
+      await apiRequest("POST", `/api/projects/${projectId}/files`, { path, content });
+      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      onFilesUpdate?.();
+      toast({ title: "File Created", description: `Created ${path}` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to create file", variant: "destructive" });
+    }
+  }, [projectId, onFilesUpdate, toast]);
+
+  const handleDeleteFile = useCallback(async (path: string) => {
+    if (!projectId) return;
+    try {
+      await apiRequest("DELETE", `/api/projects/${projectId}/files`, { path });
+      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      onFilesUpdate?.();
+      if (selectedFile?.path === path) {
+        setSelectedFile(null);
+        setEditingFileContent(null);
+      }
+      toast({ title: "File Deleted", description: `Deleted ${path}` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to delete file", variant: "destructive" });
+    }
+  }, [projectId, selectedFile, onFilesUpdate, toast]);
+
+  const handleSaveFile = useCallback(async () => {
+    if (!projectId || !selectedFile || editingFileContent === null) return;
+    setIsFileSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/projects/${projectId}/files`, { 
+        path: selectedFile.path, 
+        content: editingFileContent 
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      onFilesUpdate?.();
+      // Update selectedFile with saved content to keep state in sync
+      setSelectedFile({ ...selectedFile, content: editingFileContent });
+      setHasFileChanges(false);
+      toast({ title: "File Saved", description: `Saved ${selectedFile.path}` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to save file", variant: "destructive" });
+    } finally {
+      setIsFileSaving(false);
+    }
+  }, [projectId, selectedFile, editingFileContent, onFilesUpdate, toast]);
+
+  const handleSelectFile = useCallback((file: GeneratedFile) => {
+    setSelectedFile(file);
+    setEditingFileContent(file.content);
+    setHasFileChanges(false);
+  }, []);
+
+  const handleFileContentChange = useCallback((value: string | undefined) => {
+    if (value !== undefined) {
+      setEditingFileContent(value);
+      setHasFileChanges(value !== selectedFile?.content);
+    }
+  }, [selectedFile]);
+
+  // Sync selectedFile with generatedFiles when they change externally
+  useEffect(() => {
+    if (selectedFile && generatedFiles.length > 0) {
+      const updatedFile = generatedFiles.find(f => f.path === selectedFile.path);
+      if (updatedFile && updatedFile.content !== selectedFile.content && !hasFileChanges) {
+        setSelectedFile(updatedFile);
+        setEditingFileContent(updatedFile.content);
+      }
+    }
+  }, [generatedFiles, selectedFile, hasFileChanges]);
 
   // Handle editor mount and selection changes
   const handleEditorMount = useCallback((editorInstance: editor.IStandaloneCodeEditor) => {
@@ -597,43 +678,62 @@ export function PreviewPanel({
               </div>
             ) : activeTab === "files" ? (
               <div className="flex h-full">
-                <ScrollArea className="w-64 border-r">
-                  <div className="p-2 space-y-1">
-                    {generatedFiles.map((file) => (
-                      <button
-                        key={file.path}
-                        onClick={() => setSelectedFile(file)}
-                        className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 hover-elevate ${
-                          selectedFile?.path === file.path ? "bg-accent" : ""
-                        }`}
-                        data-testid={`file-item-${file.path.replace(/\//g, '-')}`}
-                      >
-                        <FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <span className="truncate">{file.path}</span>
-                      </button>
-                    ))}
-                  </div>
-                </ScrollArea>
-                <div className="flex-1">
+                <FileExplorer
+                  files={generatedFiles}
+                  selectedFile={selectedFile}
+                  onSelectFile={handleSelectFile}
+                  onCreateFile={projectId ? handleCreateFile : undefined}
+                  onDeleteFile={projectId ? handleDeleteFile : undefined}
+                  isGenerating={isGenerating}
+                  className="w-64 border-r"
+                />
+                <div className="flex-1 flex flex-col">
                   {selectedFile ? (
-                    <Editor
-                      height="100%"
-                      defaultLanguage={getFileLanguage(selectedFile.path)}
-                      value={selectedFile.content}
-                      theme="vs-dark"
-                      options={{
-                        readOnly: true,
-                        minimap: { enabled: false },
-                        fontSize: 13,
-                        lineNumbers: "on",
-                        scrollBeyondLastLine: false,
-                        wordWrap: "on",
-                        padding: { top: 16 },
-                      }}
-                    />
+                    <>
+                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/30">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span className="text-sm truncate">{selectedFile.path}</span>
+                          {hasFileChanges && (
+                            <Badge variant="secondary" className="text-[10px] h-5">Modified</Badge>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleSaveFile}
+                          disabled={!hasFileChanges || isFileSaving}
+                          className="gap-1"
+                          data-testid="button-save-file"
+                        >
+                          <Save className="h-3.5 w-3.5" />
+                          {isFileSaving ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                      <div className="flex-1">
+                        <Editor
+                          height="100%"
+                          defaultLanguage={getFileLanguage(selectedFile.path)}
+                          value={editingFileContent ?? selectedFile.content}
+                          onChange={handleFileContentChange}
+                          onMount={(editor) => { fileEditorRef.current = editor; }}
+                          theme="vs-dark"
+                          options={{
+                            readOnly: isGenerating,
+                            minimap: { enabled: false },
+                            fontSize: 13,
+                            lineNumbers: "on",
+                            scrollBeyondLastLine: false,
+                            wordWrap: "on",
+                            padding: { top: 16 },
+                          }}
+                        />
+                      </div>
+                    </>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                      Select a file to view its contents
+                    <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                      <FileCode className="h-8 w-8 text-muted-foreground mb-3" />
+                      <p className="text-sm text-muted-foreground">Select a file to view and edit</p>
                     </div>
                   )}
                 </div>

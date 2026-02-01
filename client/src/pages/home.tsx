@@ -791,7 +791,7 @@ export default function Home() {
           <main className="flex-1 overflow-hidden">
             {projects.length === 0 && !activeProject ? (
               <EmptyState onCreateProject={() => createProjectMutation.mutate()} />
-            ) : !displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan ? (
+            ) : !displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
               <GenerationWizard
                 onGenerate={planBuildMode ? handleIntelligentGenerate : handleSendMessage}
                 isGenerating={isGenerating || isPlanning}
@@ -842,6 +842,9 @@ export default function Home() {
                     }}
                     onCodeUpdate={(newCode) => {
                       setStreamingCode(newCode);
+                      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                    }}
+                    onFilesUpdate={() => {
                       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                     }}
                   />
