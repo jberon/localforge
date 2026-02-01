@@ -133,6 +133,33 @@ export async function registerRoutes(
     }
   });
 
+  // Update project name
+  const updateNameSchema = z.object({
+    name: z.string().min(1).max(100),
+  });
+
+  app.patch("/api/projects/:id/name", async (req, res) => {
+    try {
+      const parsed = updateNameSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const project = await storage.updateProject(req.params.id, {
+        name: parsed.data.name,
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json(project);
+    } catch (error) {
+      console.error("Error updating project name:", error);
+      res.status(500).json({ error: "Failed to update project name" });
+    }
+  });
+
   // Update project code
   const updateCodeSchema = z.object({
     generatedCode: z.string(),

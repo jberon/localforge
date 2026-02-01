@@ -44,10 +44,13 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - `GET /api/projects` - List all projects
 - `POST /api/projects` - Create a new project
 - `DELETE /api/projects/:id` - Delete a project
+- `PATCH /api/projects/:id/name` - Rename a project
+- `PATCH /api/projects/:id/code` - Update project code
 - `POST /api/projects/:id/chat` - Chat with LLM (streaming SSE response)
 - `POST /api/projects/:id/refine` - Iterative refinement (streaming SSE response)
 - `POST /api/llm/status` - Check LM Studio connection status
 - `POST /api/llm/enhance-prompt` - AI-powered prompt enhancement
+- `POST /api/llm/assist` - AI code assistance (explain/fix/improve)
 - `POST /api/llm/fix-code` - Smart error recovery for broken code
 
 ### Data Models (shared/schema.ts)
@@ -63,6 +66,22 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Temperature slider for LLM creativity control
 
 ## Recent Changes
+
+### Feb 2026 - Project Management & UX Improvements
+- **Smart Project Names** - Auto-generated project names from prompts
+  - Pattern matching extracts meaningful names (e.g., "Build a task manager" → "Task Manager")
+  - Updates "New Project" names when first prompt is sent
+  - Falls back to truncated prompt for non-standard inputs
+- **Editable Project Names** - Inline rename in sidebar
+  - Click pencil icon to edit
+  - Keyboard support (Enter to save, Escape to cancel)
+  - PATCH /api/projects/:id/name endpoint
+- **Improved Sidebar Design** - Better formatting and visual hierarchy
+  - Gradient logo with improved branding
+  - Folder icons with active state indicators
+  - Message count and code presence indicators
+  - Enhanced empty state design
+  - Better spacing and typography
 
 ### Feb 2026 - Major UX & LLM Features Update
 - **Modular Wizard Refactor** - Split 891-line generation-wizard.tsx into 8 focused components:

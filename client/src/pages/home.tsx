@@ -99,6 +99,23 @@ export default function Home() {
     },
   });
 
+  const renameProjectMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const response = await apiRequest("PATCH", `/api/projects/${id}/name`, { name });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to rename project",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Keyboard shortcuts (Cmd+N on Mac, Ctrl+N on Windows/Linux)
   const shortcuts = useMemo(() => [
     {
@@ -111,10 +128,36 @@ export default function Home() {
 
   useKeyboardShortcuts(shortcuts);
 
+  // Generate a smart project name from prompt
+  const generateProjectName = (prompt: string): string => {
+    // Common app type patterns
+    const patterns = [
+      { regex: /(?:build|create|make)\s+(?:a\s+)?(.+?)(?:\s+app|\s+application|\s+website|\s+tool)?$/i, group: 1 },
+      { regex: /^(.+?)(?:\s+app|\s+application|\s+website|\s+tool)$/i, group: 1 },
+    ];
+
+    for (const { regex, group } of patterns) {
+      const match = prompt.match(regex);
+      if (match && match[group]) {
+        const name = match[group].trim();
+        // Capitalize first letter of each word
+        return name
+          .split(/\s+/)
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(" ")
+          .slice(0, 40);
+      }
+    }
+
+    // Fallback: use first 40 chars of prompt
+    const truncated = prompt.slice(0, 40);
+    return truncated.charAt(0).toUpperCase() + truncated.slice(1) + (prompt.length > 40 ? "..." : "");
+  };
+
   const handleSendMessage = useCallback(
     async (content: string, dataModel?: DataModel) => {
       let projectId = activeProjectId;
-      const projectName = content.slice(0, 50) + (content.length > 50 ? "..." : "");
+      const projectName = generateProjectName(content);
       
       if (!projectId) {
         const response = await apiRequest("POST", "/api/projects", {
@@ -125,6 +168,13 @@ export default function Home() {
         await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
         projectId = newProject.id;
         setActiveProjectId(projectId);
+      } else {
+        // Update project name if it's still the default "New Project"
+        const currentProject = projects.find(p => p.id === projectId);
+        if (currentProject?.name === "New Project") {
+          await apiRequest("PATCH", `/api/projects/${projectId}/name`, { name: projectName });
+          await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+        }
       }
 
       setIsGenerating(true);
@@ -229,7 +279,7 @@ export default function Home() {
         setStreamingCode("");
       }
     },
-    [activeProjectId, settings, toast]
+    [activeProjectId, settings, toast, projects]
   );
 
   const handleDownload = useCallback(async () => {
@@ -321,6 +371,7 @@ export default function Home() {
           onSelectProject={setActiveProjectId}
           onNewProject={() => createProjectMutation.mutate()}
           onDeleteProject={(id) => deleteProjectMutation.mutate(id)}
+          onRenameProject={(id, name) => renameProjectMutation.mutate({ id, name })}
           onUpdateSettings={(newSettings) => {
             setSettings(newSettings);
             checkConnection();
