@@ -68,9 +68,14 @@ LocalForge includes built-in version control for projects:
 - **Auto-save support**: Automatic checkpoints during key operations
 
 ### Visual Testing
-- **Test Preview**: Visual test runner with cursor tracking
-- **Test Steps**: Auto-generated test scenarios based on code analysis
-- **Visual Feedback**: See test progress with animated cursor overlay
+- **Replit-Style Test Runner**: Full-featured visual test preview with animated progress
+- **Animated Checkboxes**: Test steps show green checkmarks/red X marks with smooth animations
+- **Real-time Thinking**: "Thinking" status bubbles show what the test is currently analyzing
+- **Browser-Like Preview**: Traffic light window controls and address bar for familiar UX
+- **Smart Code Analysis**: Detects buttons, inputs, forms, lists, cards, tables, charts
+- **Cursor Tracking**: Animated cursor moves to test targets with ping effect
+- **Progress Bar**: Visual completion percentage at top of test runner
+- **Collapsible Steps**: Expand/collapse test step list for cleaner view
 
 ### UX Design (Steve Jobs-Inspired)
 - **Quick Start Mode**: Click a template → describe your app → generate immediately (2 steps instead of 4)

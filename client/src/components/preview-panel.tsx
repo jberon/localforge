@@ -461,7 +461,7 @@ export function PreviewPanel({
         </div>
 
         <div className="flex items-center gap-1">
-          {activeTab === "preview" && code && (
+          {activeTab === "preview" && (code || hasFullStackProject) && (
             <>
               <Button
                 size="icon"
@@ -953,9 +953,10 @@ export function PreviewPanel({
       </Dialog>
 
       <TestPreview
-        code={code}
+        code={code || generatedFiles.map(f => f.content).join('\n')}
         isVisible={showTestPreview}
         onClose={() => setShowTestPreview(false)}
+        projectName={projectName}
       />
     </div>
   );
