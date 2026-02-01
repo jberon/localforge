@@ -1,17 +1,21 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle } from "lucide-react";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { LaunchGuide } from "./launch-guide";
 import { PreviewErrorBoundary } from "./error-boundary";
 import { RefinementPanel } from "./refinement-panel";
+import { ConsolePanel, type ConsoleLog } from "./console-panel";
+import { CodeAssistant } from "./code-assistant";
+import { apiRequest } from "@/lib/queryClient";
 import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@shared/schema";
+import type { editor } from "monaco-editor";
 
 interface PreviewPanelProps {
   code: string;
@@ -49,10 +53,145 @@ export function PreviewPanel({
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(generatedFiles[0] || null);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState("");
+  const [localCode, setLocalCode] = useState(code);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
+  const [selectedCode, setSelectedCode] = useState("");
+  const [selectionRange, setSelectionRange] = useState<{
+    startLineNumber: number;
+    startColumn: number;
+    endLineNumber: number;
+    endColumn: number;
+  } | null>(null);
+  const [showAssistant, setShowAssistant] = useState(false);
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const nonceRef = useRef<string>(crypto.randomUUID());
   const { toast } = useToast();
+
+  // Handle editor mount and selection changes
+  const handleEditorMount = useCallback((editorInstance: editor.IStandaloneCodeEditor) => {
+    editorRef.current = editorInstance;
+    
+    editorInstance.onDidChangeCursorSelection((e) => {
+      const selection = editorInstance.getSelection();
+      if (selection && !selection.isEmpty()) {
+        const selected = editorInstance.getModel()?.getValueInRange(selection) || "";
+        if (selected.trim().length > 10) {
+          setSelectedCode(selected);
+          setSelectionRange({
+            startLineNumber: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLineNumber: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          });
+          setShowAssistant(true);
+        }
+      }
+    });
+  }, []);
+
+  // Listen for console messages from iframe
+  useEffect(() => {
+    const currentNonce = nonceRef.current;
+    const handleMessage = (event: MessageEvent) => {
+      // Validate origin - only accept messages from same origin or data URLs
+      const validOrigin = event.origin === window.location.origin || 
+                          event.origin === "null" || 
+                          event.origin === "";
+      
+      if (!validOrigin) return;
+      
+      // Validate nonce to ensure message is from our iframe
+      if (event.data?.nonce !== currentNonce) return;
+      
+      if (event.data && event.data.type === "console" && typeof event.data.message === "string") {
+        const log: ConsoleLog = {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          type: event.data.level || "log",
+          message: event.data.message,
+          timestamp: Date.now(),
+        };
+        setConsoleLogs((prev) => [...prev.slice(-99), log]);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  // Clear console on code change or refresh
+  const clearConsole = useCallback(() => {
+    setConsoleLogs([]);
+  }, []);
+
+  // Cleanup debounced save on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
   
   const hasFullStackProject = generatedFiles.length > 0;
   const canRegenerate = hasFullStackProject && onRegenerate && !isGenerating;
+  
+  // Sync local code with props when new code comes in (from generation)
+  useEffect(() => {
+    // Only sync when code prop changes and there are no local edits
+    if (!hasUnsavedChanges) {
+      setLocalCode(code);
+    }
+  }, [code, hasUnsavedChanges]);
+
+  // Save code to server with debounce
+  const saveCode = useCallback(async (newCode: string) => {
+    if (!projectId || isGenerating) return;
+    
+    setIsSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/projects/${projectId}/code`, {
+        generatedCode: newCode,
+      });
+      setHasUnsavedChanges(false);
+      if (onCodeUpdate) onCodeUpdate(newCode);
+    } catch (error) {
+      toast({
+        title: "Save Failed",
+        description: "Could not save your changes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [projectId, isGenerating, onCodeUpdate, toast]);
+
+  // Debounced auto-save on code change
+  const handleCodeChange = useCallback((value: string | undefined) => {
+    const newCode = value || "";
+    setLocalCode(newCode);
+    setHasUnsavedChanges(true);
+    
+    // Update preview immediately
+    setIframeKey((k) => k + 1);
+    
+    // Debounce save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      saveCode(newCode);
+    }, 1500); // Auto-save after 1.5s of no typing
+  }, [saveCode]);
+
+  // Manual save
+  const handleManualSave = () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveCode(localCode);
+  };
   
   // Auto-select first file when generatedFiles change
   if (hasFullStackProject && !selectedFile && generatedFiles.length > 0) {
@@ -87,7 +226,43 @@ export function PreviewPanel({
   };
 
   const createPreviewHTML = () => {
-    if (!code) return "";
+    if (!localCode) return "";
+    
+    const nonce = nonceRef.current;
+    const consoleInterceptor = `
+    (function() {
+      const NONCE = '${nonce}';
+      const originalConsole = {
+        log: console.log,
+        warn: console.warn,
+        error: console.error,
+        info: console.info
+      };
+      
+      function sendToParent(level, args) {
+        try {
+          const message = args.map(arg => {
+            if (typeof arg === 'object') {
+              try { return JSON.stringify(arg, null, 2); }
+              catch { return String(arg); }
+            }
+            return String(arg);
+          }).join(' ');
+          window.parent.postMessage({ type: 'console', level, message, nonce: NONCE }, '*');
+        } catch(e) {}
+      }
+      
+      console.log = function(...args) { sendToParent('log', args); originalConsole.log.apply(console, args); };
+      console.warn = function(...args) { sendToParent('warn', args); originalConsole.warn.apply(console, args); };
+      console.error = function(...args) { sendToParent('error', args); originalConsole.error.apply(console, args); };
+      console.info = function(...args) { sendToParent('info', args); originalConsole.info.apply(console, args); };
+      
+      window.onerror = function(message, source, lineno, colno, error) {
+        sendToParent('error', [message + ' at line ' + lineno]);
+        return false;
+      };
+    })();
+    `;
     
     const htmlDoc = `
 <!DOCTYPE html>
@@ -95,6 +270,7 @@ export function PreviewPanel({
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>${consoleInterceptor}</script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -109,14 +285,14 @@ export function PreviewPanel({
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    ${code}
+    ${localCode}
   </script>
 </body>
 </html>`;
     return `data:text/html;charset=utf-8,${encodeURIComponent(htmlDoc)}`;
   };
 
-  const isEmpty = !code && !isGenerating && !hasFullStackProject;
+  const isEmpty = !localCode && !isGenerating && !hasFullStackProject;
 
   return (
     <div className={`flex flex-col h-full bg-card border-l ${isFullscreen ? "fixed inset-0 z-50" : ""}`}>
@@ -243,6 +419,7 @@ export function PreviewPanel({
                         data-testid="iframe-preview"
                       />
                     </div>
+                    <ConsolePanel logs={consoleLogs} onClear={clearConsole} />
                     {projectId && settings && !hasFullStackProject && (
                       <div className="p-3 border-t bg-background">
                         <RefinementPanel
@@ -320,21 +497,73 @@ export function PreviewPanel({
                 ) : null}
               </div>
             ) : activeTab === "code" ? (
-              <Editor
-                height="100%"
-                defaultLanguage="javascript"
-                value={code || "// Your generated code will appear here"}
-                theme="vs-dark"
-                options={{
-                  readOnly: true,
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
-                  wordWrap: "on",
-                  padding: { top: 16 },
-                }}
-              />
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Code className="h-4 w-4" />
+                    <span>Edit code directly - changes update preview instantly</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasUnsavedChanges && (
+                      <Badge variant="secondary" className="text-xs">
+                        Unsaved
+                      </Badge>
+                    )}
+                    {isSaving && (
+                      <Badge variant="secondary" className="text-xs gap-1">
+                        <Save className="h-3 w-3 animate-pulse" />
+                        Saving...
+                      </Badge>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleManualSave}
+                      disabled={!hasUnsavedChanges || isSaving || isGenerating}
+                      className="gap-1"
+                      data-testid="button-save-code"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      Save
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex-1 relative">
+                  <Editor
+                    height="100%"
+                    defaultLanguage="javascript"
+                    value={localCode || "// Your generated code will appear here"}
+                    onChange={handleCodeChange}
+                    onMount={handleEditorMount}
+                    theme="vs-dark"
+                    options={{
+                      readOnly: isGenerating,
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbers: "on",
+                      scrollBeyondLastLine: false,
+                      wordWrap: "on",
+                      padding: { top: 16 },
+                    }}
+                  />
+                  {showAssistant && selectedCode && settings && (
+                    <div className="absolute bottom-4 right-4 w-80 z-10">
+                      <CodeAssistant
+                        selectedCode={selectedCode}
+                        fullCode={localCode}
+                        settings={settings}
+                        selectionRange={selectionRange || undefined}
+                        onApplyFix={(newCode) => {
+                          setLocalCode(newCode);
+                          setHasUnsavedChanges(true);
+                          setIframeKey((k) => k + 1);
+                        }}
+                        onClose={() => setShowAssistant(false)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : activeTab === "files" ? (
               <div className="flex h-full">
                 <ScrollArea className="w-64 border-r">

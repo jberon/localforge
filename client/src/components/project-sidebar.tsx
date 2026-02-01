@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -114,9 +115,17 @@ export function ProjectSidebar({
                       >
                         <Folder className="h-4 w-4" />
                         <div className="flex-1 min-w-0">
-                          <span className="truncate block text-sm">{project.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm">{project.name}</span>
+                            {project.messages.length > 0 && (
+                              <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                {project.messages.length}
+                              </Badge>
+                            )}
+                          </div>
                           <span className="text-xs text-muted-foreground">
                             {formatDate(project.updatedAt)}
+                            {project.generatedCode && " • Has code"}
                           </span>
                         </div>
                         <span

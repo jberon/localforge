@@ -70,6 +70,11 @@ export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, on
                   }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p className={`text-xs mt-1 ${
+                    message.role === "user" ? "text-primary-foreground/60" : "text-muted-foreground"
+                  }`}>
+                    {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
                 {message.role === "user" && (
                   <div className="flex-shrink-0 w-8 h-8 rounded-md bg-secondary flex items-center justify-center">

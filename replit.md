@@ -84,6 +84,24 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
   - Streams updated code like initial generation
 - **Smart Error Recovery** - API endpoint to fix broken generated code using LLM
 - **Generation Metrics** - Track duration, success/failure, prompt length in database
+- **Real-Time Code Editing** - Edit generated code directly in Monaco editor
+  - Changes sync to preview instantly
+  - Auto-save with debouncing (1.5s)
+  - Manual save button with unsaved indicator
+- **Chat History Persistence** - Messages persisted per project
+  - Timestamps on all messages
+  - Message count badges in sidebar
+  - Project activity indicators
+- **Run Console/Terminal** - Capture and display console output from preview
+  - Intercepts console.log, warn, error, info
+  - Collapsible panel with filtering
+  - Clear console button
+  - Error/warning count badges
+- **AI Code Assistance** - Select code in editor for AI help
+  - Explain: Get plain English explanation
+  - Fix: Identify and fix bugs
+  - Improve: Get code quality suggestions
+  - Apply suggestions directly to code
 - **Code Validation** - Generated code is validated for syntax errors before showing "Ready" state
   - Checks for mismatched braces, parentheses, brackets
   - Validates JSON files

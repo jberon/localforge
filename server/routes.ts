@@ -133,6 +133,33 @@ export async function registerRoutes(
     }
   });
 
+  // Update project code
+  const updateCodeSchema = z.object({
+    generatedCode: z.string(),
+  });
+
+  app.patch("/api/projects/:id/code", async (req, res) => {
+    try {
+      const parsed = updateCodeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const project = await storage.updateProject(req.params.id, {
+        generatedCode: parsed.data.generatedCode,
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json(project);
+    } catch (error) {
+      console.error("Error updating project code:", error);
+      res.status(500).json({ error: "Failed to update project code" });
+    }
+  });
+
   const chatRequestSchema = z.object({
     content: z.string().min(1, "Message content is required"),
     settings: llmSettingsSchema,
@@ -482,6 +509,66 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Code fix error:", error);
       res.status(500).json({ error: "Failed to fix code", details: error.message });
+    }
+  });
+
+  // AI Code Assistance - Explain, Fix, Improve code
+  const assistCodeSchema = z.object({
+    prompt: z.string().min(1),
+    action: z.enum(["explain", "fix", "improve"]),
+    code: z.string().min(1),
+    fullCode: z.string(),
+    settings: llmSettingsSchema,
+  });
+
+  app.post("/api/llm/assist", async (req, res) => {
+    try {
+      const parsed = assistCodeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { prompt, action, code, settings } = parsed.data;
+
+      const openai = new OpenAI({
+        baseURL: settings.endpoint || "http://localhost:1234/v1",
+        apiKey: "lm-studio",
+      });
+
+      const systemPrompts: Record<string, string> = {
+        explain: "You are a helpful coding assistant. Explain code clearly and concisely for developers of all skill levels.",
+        fix: "You are an expert code debugger. Identify bugs and issues, then provide the corrected code. Return the fixed code in a code block.",
+        improve: "You are a code quality expert. Suggest improvements for readability, performance, and best practices. Return the improved code in a code block.",
+      };
+
+      const response = await openai.chat.completions.create({
+        model: settings.model || "local-model",
+        messages: [
+          { role: "system", content: systemPrompts[action] },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.4,
+        max_tokens: 2048,
+      });
+
+      const content = response.choices[0]?.message?.content?.trim() || "";
+
+      // Extract code block if present
+      const codeMatch = content.match(/```(?:jsx?|javascript|typescript|tsx)?\n?([\s\S]*?)```/);
+      const suggestedCode = codeMatch ? codeMatch[1].trim() : null;
+
+      // Remove code block from explanation
+      const explanation = content.replace(/```(?:jsx?|javascript|typescript|tsx)?\n?[\s\S]*?```/g, "").trim();
+
+      res.json({
+        action,
+        result: content,
+        explanation: explanation || content,
+        suggestedCode: action !== "explain" ? suggestedCode : null,
+      });
+    } catch (error: any) {
+      console.error("AI assist error:", error);
+      res.status(500).json({ error: "Failed to get AI assistance", details: error.message });
     }
   });
 
