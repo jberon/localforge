@@ -182,6 +182,15 @@ LocalForge includes a smart analytics system that learns from usage patterns:
 - `GET /api/analytics/insights` - Get active AI insights
 - `POST /api/analytics/generate-insights` - Trigger AI analysis
 - `GET /api/analytics/successful-prompts` - Get successful prompts for learning loop
+- `GET /api/analytics/code-inventory` - Get code inventory with language breakdown
+- `GET /api/analytics/export-manifest` - Export portfolio manifest JSON
+
+### Portfolio Tab (Code Inventory)
+- **Project Portfolio View** - See all generated projects with file counts and line counts
+- **Language Breakdown** - Visual bar charts showing usage by language (React, TypeScript, HTML, etc.)
+- **Local Packaging** - Export portfolio manifest JSON for local development workflows
+- **Project Details** - Expandable project cards showing individual files and per-language metrics
+- **Click to navigate** - Open any project directly from the portfolio view
 
 ### Analytics Data Models
 - **AnalyticsEvent**: type, projectId, data (jsonb), timestamp
