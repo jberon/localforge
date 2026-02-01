@@ -2,22 +2,33 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
+import type { GeneratedFile } from "@shared/schema";
 
 interface PreviewPanelProps {
   code: string;
   isGenerating: boolean;
   onDownload: () => void;
+  generatedFiles?: GeneratedFile[];
 }
 
-export function PreviewPanel({ code, isGenerating, onDownload }: PreviewPanelProps) {
-  const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
+export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = [] }: PreviewPanelProps) {
+  const [activeTab, setActiveTab] = useState<"preview" | "code" | "files">("preview");
   const [copied, setCopied] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(generatedFiles[0] || null);
   const { toast } = useToast();
+  
+  const hasFullStackProject = generatedFiles.length > 0;
+  
+  // Auto-select first file when generatedFiles change
+  if (hasFullStackProject && !selectedFile && generatedFiles.length > 0) {
+    setSelectedFile(generatedFiles[0]);
+  }
 
   const handleCopy = async () => {
     if (!code) return;
@@ -70,7 +81,7 @@ export function PreviewPanel({ code, isGenerating, onDownload }: PreviewPanelPro
     <div className={`flex flex-col h-full bg-card border-l ${isFullscreen ? "fixed inset-0 z-50" : ""}`}>
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
         <div className="flex items-center gap-3">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code")}>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code" | "files")}>
             <TabsList className="h-8">
               <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
                 <Eye className="h-3.5 w-3.5" />
@@ -80,6 +91,13 @@ export function PreviewPanel({ code, isGenerating, onDownload }: PreviewPanelPro
                 <Code className="h-3.5 w-3.5" />
                 Code
               </TabsTrigger>
+              {hasFullStackProject && (
+                <TabsTrigger value="files" className="text-xs gap-1.5" data-testid="tab-files">
+                  <FolderTree className="h-3.5 w-3.5" />
+                  Files
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{generatedFiles.length}</Badge>
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
           {isGenerating && code && (
@@ -173,7 +191,7 @@ export function PreviewPanel({ code, isGenerating, onDownload }: PreviewPanelPro
                   </div>
                 ) : null}
               </div>
-            ) : (
+            ) : activeTab === "code" ? (
               <Editor
                 height="100%"
                 defaultLanguage="javascript"
@@ -189,10 +207,75 @@ export function PreviewPanel({ code, isGenerating, onDownload }: PreviewPanelPro
                   padding: { top: 16 },
                 }}
               />
-            )}
+            ) : activeTab === "files" ? (
+              <div className="flex h-full">
+                <ScrollArea className="w-64 border-r">
+                  <div className="p-2 space-y-1">
+                    {generatedFiles.map((file) => (
+                      <button
+                        key={file.path}
+                        onClick={() => setSelectedFile(file)}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 hover-elevate ${
+                          selectedFile?.path === file.path ? "bg-accent" : ""
+                        }`}
+                        data-testid={`file-item-${file.path.replace(/\//g, '-')}`}
+                      >
+                        <FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="truncate">{file.path}</span>
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+                <div className="flex-1">
+                  {selectedFile ? (
+                    <Editor
+                      height="100%"
+                      defaultLanguage={getFileLanguage(selectedFile.path)}
+                      value={selectedFile.content}
+                      theme="vs-dark"
+                      options={{
+                        readOnly: true,
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: "on",
+                        scrollBeyondLastLine: false,
+                        wordWrap: "on",
+                        padding: { top: 16 },
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                      Select a file to view its contents
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </>
         )}
       </div>
     </div>
   );
+}
+
+function getFileLanguage(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+      return 'typescript';
+    case 'js':
+    case 'jsx':
+      return 'javascript';
+    case 'json':
+      return 'json';
+    case 'md':
+      return 'markdown';
+    case 'css':
+      return 'css';
+    case 'html':
+      return 'html';
+    default:
+      return 'plaintext';
+  }
 }

@@ -50,14 +50,27 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Temperature slider for LLM creativity control
 
 ## Recent Changes
+- **Full-Stack Generation** - Can now generate complete backend + database + frontend projects
+- **Data Model Builder** - Visual entity/field editor to define data structures without coding
+- **Default Data Models** - Templates like Task Manager come with pre-configured data models
+- **ZIP Download** - Full-stack projects download as ZIP with all files + README
+- **Files Tab** - Browse all generated files with syntax-highlighted code viewer
 - Added Generation Wizard with template selection and structured inputs
 - Templates: Dashboard, Task Manager, Data Analyzer, Landing Page, Calculator, Creative Apps
 - Smart prompt generation from wizard selections
 - Preflight LLM connection check before generation
 - Added streaming responses with real-time code preview
 - Added LLM connection status indicator
-- Improved SSE parsing with proper buffering
-- Preview panel now waits for generation to complete before rendering
+
+## Full-Stack Generation
+When you enable "Full-Stack with Database" in the Data Model step:
+- **Database Schema** - Generates Drizzle ORM schema for PostgreSQL
+- **API Routes** - Creates CRUD endpoints for each entity
+- **React Components** - Generates pages with forms and data display
+- **Package.json** - Includes all dependencies and scripts
+- **README** - Setup instructions and API documentation
+
+The generated project can be downloaded as a ZIP and run locally with `npm install && npm run dev`.
 
 ## Running Locally
 To run this app on your MacBook:

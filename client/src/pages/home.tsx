@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Wifi, WifiOff } from "lucide-react";
-import type { Project, LLMSettings } from "@shared/schema";
+import JSZip from "jszip";
+import type { Project, LLMSettings, DataModel } from "@shared/schema";
 
 export default function Home() {
   const { toast } = useToast();
@@ -93,12 +94,13 @@ export default function Home() {
   });
 
   const handleSendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, dataModel?: DataModel) => {
       let projectId = activeProjectId;
+      const projectName = content.slice(0, 50) + (content.length > 50 ? "..." : "");
       
       if (!projectId) {
         const response = await apiRequest("POST", "/api/projects", {
-          name: content.slice(0, 50) + (content.length > 50 ? "..." : ""),
+          name: projectName,
           messages: [],
         });
         const newProject = await response.json();
@@ -111,58 +113,86 @@ export default function Home() {
       setStreamingCode("");
 
       try {
-        const response = await fetch(`/api/projects/${projectId}/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content, settings }),
-        });
+        // If dataModel has entities and database is enabled, use full-stack generation
+        if (dataModel && dataModel.enableDatabase && dataModel.entities.length > 0) {
+          // Add user message first
+          await apiRequest("POST", `/api/projects/${projectId}/chat`, {
+            content,
+            settings,
+          }).catch(() => {});
 
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-
-        if (!reader) {
-          throw new Error("No response body");
-        }
-
-        let accumulatedCode = "";
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
+          // Then generate full-stack project
+          const response = await apiRequest("POST", `/api/projects/${projectId}/generate-fullstack`, {
+            projectName,
+            dataModel,
+          });
           
-          // Process complete SSE events (separated by \n\n)
-          const events = buffer.split("\n\n");
-          buffer = events.pop() || ""; // Keep incomplete event in buffer
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || "Failed to generate project");
+          }
+          
+          await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+          
+          toast({
+            title: "Full-Stack Project Generated!",
+            description: "Check the Files tab to view and download your project.",
+          });
+        } else {
+          // Use regular LLM streaming for frontend-only apps
+          const response = await fetch(`/api/projects/${projectId}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content, settings }),
+          });
 
-          for (const event of events) {
-            const lines = event.split("\n");
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  
-                  if (data.type === "chunk") {
-                    accumulatedCode += data.content;
-                    // Clean markdown as we go for preview
-                    const cleaned = accumulatedCode
-                      .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
-                      .replace(/```$/gm, "");
-                    setStreamingCode(cleaned);
-                  } else if (data.type === "done") {
-                    await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-                  } else if (data.type === "error") {
-                    toast({
-                      title: "Generation Failed",
-                      description: data.error || "Could not connect to LM Studio",
-                      variant: "destructive",
-                    });
-                    await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+          const reader = response.body?.getReader();
+          const decoder = new TextDecoder();
+
+          if (!reader) {
+            throw new Error("No response body");
+          }
+
+          let accumulatedCode = "";
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Process complete SSE events (separated by \n\n)
+            const events = buffer.split("\n\n");
+            buffer = events.pop() || ""; // Keep incomplete event in buffer
+
+            for (const event of events) {
+              const lines = event.split("\n");
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  try {
+                    const data = JSON.parse(line.slice(6));
+                    
+                    if (data.type === "chunk") {
+                      accumulatedCode += data.content;
+                      // Clean markdown as we go for preview
+                      const cleaned = accumulatedCode
+                        .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+                        .replace(/```$/gm, "");
+                      setStreamingCode(cleaned);
+                    } else if (data.type === "done") {
+                      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                    } else if (data.type === "error") {
+                      toast({
+                        title: "Generation Failed",
+                        description: data.error || "Could not connect to LM Studio",
+                        variant: "destructive",
+                      });
+                      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                    }
+                  } catch {
+                    // Ignore parse errors for incomplete JSON
                   }
-                } catch {
-                  // Ignore parse errors for incomplete JSON
                 }
               }
             }
@@ -183,6 +213,34 @@ export default function Home() {
   );
 
   const handleDownload = useCallback(async () => {
+    const projectName = (activeProject?.name || "my-app").replace(/[^a-z0-9]/gi, "-").toLowerCase();
+
+    // If we have generated files, download as ZIP
+    if (activeProject?.generatedFiles && activeProject.generatedFiles.length > 0) {
+      const zip = new JSZip();
+      
+      for (const file of activeProject.generatedFiles) {
+        zip.file(file.path, file.content);
+      }
+      
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projectName}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Project Downloaded!",
+        description: "Extract the ZIP and follow the README to run your app.",
+      });
+      return;
+    }
+
+    // Otherwise, download as single HTML file
     const codeToDownload = activeProject?.generatedCode || streamingCode;
     if (!codeToDownload) return;
 
@@ -214,7 +272,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(activeProject?.name || "my-app").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.html`;
+    a.download = `${projectName}.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -303,6 +361,7 @@ export default function Home() {
                   code={displayCode}
                   isGenerating={isGenerating}
                   onDownload={handleDownload}
+                  generatedFiles={activeProject?.generatedFiles}
                 />
               </ResizablePanel>
             </ResizablePanelGroup>

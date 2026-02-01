@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -26,10 +27,59 @@ import {
   CheckCircle2,
   XCircle,
   Wand2,
+  Plus,
+  Trash2,
+  Database,
+  GripVertical,
+  Link2,
 } from "lucide-react";
+import type { DataField, DataEntity, DataModel } from "@shared/schema";
+
+const FIELD_TYPES = [
+  { value: "text", label: "Text", icon: "Aa" },
+  { value: "number", label: "Number", icon: "#" },
+  { value: "boolean", label: "Yes/No", icon: "✓" },
+  { value: "date", label: "Date", icon: "📅" },
+  { value: "email", label: "Email", icon: "@" },
+  { value: "url", label: "URL", icon: "🔗" },
+  { value: "textarea", label: "Long Text", icon: "¶" },
+];
+
+// Default data models for templates
+const DEFAULT_DATA_MODELS: Record<TemplateType, DataEntity[]> = {
+  dashboard: [],
+  todo: [
+    {
+      id: "task",
+      name: "Task",
+      fields: [
+        { id: "title", name: "Title", type: "text", required: true },
+        { id: "description", name: "Description", type: "textarea", required: false },
+        { id: "completed", name: "Completed", type: "boolean", required: false },
+        { id: "priority", name: "Priority", type: "text", required: false },
+        { id: "dueDate", name: "Due Date", type: "date", required: false },
+      ],
+    },
+  ],
+  "data-tool": [
+    {
+      id: "record",
+      name: "Record",
+      fields: [
+        { id: "name", name: "Name", type: "text", required: true },
+        { id: "value", name: "Value", type: "number", required: true },
+        { id: "category", name: "Category", type: "text", required: false },
+        { id: "date", name: "Date", type: "date", required: false },
+      ],
+    },
+  ],
+  landing: [],
+  calculator: [],
+  creative: [],
+};
 
 interface GenerationWizardProps {
-  onGenerate: (prompt: string) => void;
+  onGenerate: (prompt: string, dataModel?: DataModel) => void;
   isGenerating: boolean;
   llmConnected: boolean | null;
   onCheckConnection: () => void;
@@ -208,13 +258,17 @@ const TEMPLATES: TemplateConfig[] = [
 ];
 
 export function GenerationWizard({ onGenerate, isGenerating, llmConnected, onCheckConnection }: GenerationWizardProps) {
-  const [step, setStep] = useState<"template" | "configure" | "review">("template");
+  const [step, setStep] = useState<"template" | "configure" | "data-model" | "review">("template");
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateConfig | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [dataModel, setDataModel] = useState<DataModel>({ entities: [], enableDatabase: false });
 
   const handleTemplateSelect = (template: TemplateConfig) => {
     setSelectedTemplate(template);
     setFieldValues({});
+    // Load default data model for the template
+    const defaultEntities = DEFAULT_DATA_MODELS[template.id] || [];
+    setDataModel({ entities: defaultEntities, enableDatabase: defaultEntities.length > 0 });
     setStep("configure");
   };
 
@@ -226,18 +280,61 @@ export function GenerationWizard({ onGenerate, isGenerating, llmConnected, onChe
     if (step === "configure") {
       setStep("template");
       setSelectedTemplate(null);
-    } else if (step === "review") {
+    } else if (step === "data-model") {
       setStep("configure");
+    } else if (step === "review") {
+      setStep("data-model");
     }
   };
 
   const handleNext = () => {
     if (step === "configure") {
+      setStep("data-model");
+    } else if (step === "data-model") {
       setStep("review");
     }
   };
 
-  const generatedPrompt = selectedTemplate ? selectedTemplate.promptBuilder(fieldValues) : "";
+  const needsDataModel = selectedTemplate && ["todo", "data-tool"].includes(selectedTemplate.id);
+
+  const buildFullPrompt = () => {
+    if (!selectedTemplate) return "";
+    let prompt = selectedTemplate.promptBuilder(fieldValues);
+    
+    if (dataModel.enableDatabase && dataModel.entities.length > 0) {
+      prompt += "\n\n## Full-Stack Requirements:\n";
+      prompt += "Generate a COMPLETE full-stack application with:\n";
+      prompt += "1. Frontend (React + TypeScript + Tailwind CSS)\n";
+      prompt += "2. Backend (Express.js API)\n";
+      prompt += "3. Database schema (PostgreSQL with Drizzle ORM)\n\n";
+      prompt += "## Data Model:\n";
+      
+      dataModel.entities.forEach((entity) => {
+        prompt += `\n### ${entity.name} Entity\n`;
+        prompt += "Fields:\n";
+        entity.fields.forEach((field) => {
+          const reqText = field.required ? " (required)" : "";
+          prompt += `- ${field.name}: ${field.type}${reqText}\n`;
+        });
+      });
+      
+      prompt += "\n## API Endpoints:\n";
+      dataModel.entities.forEach((entity) => {
+        const plural = entity.name.toLowerCase() + "s";
+        prompt += `- GET /api/${plural} - List all ${plural}\n`;
+        prompt += `- POST /api/${plural} - Create ${entity.name.toLowerCase()}\n`;
+        prompt += `- GET /api/${plural}/:id - Get single ${entity.name.toLowerCase()}\n`;
+        prompt += `- PUT /api/${plural}/:id - Update ${entity.name.toLowerCase()}\n`;
+        prompt += `- DELETE /api/${plural}/:id - Delete ${entity.name.toLowerCase()}\n`;
+      });
+      
+      prompt += "\nGenerate all files needed for a complete, working full-stack application.";
+    }
+    
+    return prompt;
+  };
+
+  const generatedPrompt = buildFullPrompt();
 
   const canProceed = () => {
     if (!selectedTemplate) return false;
@@ -247,7 +344,7 @@ export function GenerationWizard({ onGenerate, isGenerating, llmConnected, onChe
 
   const handleGenerate = () => {
     if (generatedPrompt && llmConnected) {
-      onGenerate(generatedPrompt);
+      onGenerate(generatedPrompt, dataModel);
     }
   };
 
@@ -363,6 +460,37 @@ export function GenerationWizard({ onGenerate, isGenerating, llmConnected, onChe
 
             <div className="flex justify-end">
               <Button onClick={handleNext} disabled={!canProceed()} className="gap-2" data-testid="button-wizard-next">
+                Next: Data Model
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
+
+        {step === "data-model" && selectedTemplate && (
+          <>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={handleBack} data-testid="button-wizard-back-data">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h2 className="text-xl font-semibold">Data Model</h2>
+                <p className="text-sm text-muted-foreground">Define the data structure for your app</p>
+              </div>
+            </div>
+
+            <DataModelBuilder
+              dataModel={dataModel}
+              onChange={setDataModel}
+            />
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => {
+                setDataModel({ entities: [], enableDatabase: false });
+              }} data-testid="button-skip-data-model">
+                Skip (Frontend Only)
+              </Button>
+              <Button onClick={handleNext} className="gap-2" data-testid="button-wizard-next-review">
                 Review & Generate
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -383,16 +511,40 @@ export function GenerationWizard({ onGenerate, isGenerating, llmConnected, onChe
             </div>
 
             <Card className="p-4 space-y-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="secondary" className="gap-1">
                   <selectedTemplate.icon className="h-3 w-3" />
                   {selectedTemplate.name}
                 </Badge>
+                {dataModel.enableDatabase && dataModel.entities.length > 0 && (
+                  <Badge variant="default" className="gap-1">
+                    <Database className="h-3 w-3" />
+                    Full-Stack
+                  </Badge>
+                )}
+                {(!dataModel.enableDatabase || dataModel.entities.length === 0) && (
+                  <Badge variant="outline" className="gap-1">
+                    Frontend Only
+                  </Badge>
+                )}
               </div>
+
+              {dataModel.enableDatabase && dataModel.entities.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Data Entities</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {dataModel.entities.map((entity) => (
+                      <Badge key={entity.id} variant="outline" className="gap-1">
+                        {entity.name} ({entity.fields.length} fields)
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Generated Prompt</Label>
-                <div className="p-3 bg-muted rounded-md text-sm">
+                <div className="p-3 bg-muted rounded-md text-sm max-h-48 overflow-y-auto whitespace-pre-wrap">
                   {generatedPrompt}
                 </div>
               </div>
@@ -528,5 +680,223 @@ function FreeformPrompt({
         </Button>
       </div>
     </form>
+  );
+}
+
+function DataModelBuilder({
+  dataModel,
+  onChange,
+}: {
+  dataModel: DataModel;
+  onChange: (model: DataModel) => void;
+}) {
+  const generateId = () => Math.random().toString(36).substring(2, 9);
+
+  const addEntity = () => {
+    const newEntity: DataEntity = {
+      id: generateId(),
+      name: "NewEntity",
+      fields: [
+        { id: generateId(), name: "id", type: "text", required: true },
+      ],
+    };
+    onChange({
+      ...dataModel,
+      entities: [...dataModel.entities, newEntity],
+      enableDatabase: true,
+    });
+  };
+
+  const updateEntity = (entityId: string, updates: Partial<DataEntity>) => {
+    onChange({
+      ...dataModel,
+      entities: dataModel.entities.map((e) =>
+        e.id === entityId ? { ...e, ...updates } : e
+      ),
+    });
+  };
+
+  const removeEntity = (entityId: string) => {
+    const newEntities = dataModel.entities.filter((e) => e.id !== entityId);
+    onChange({
+      ...dataModel,
+      entities: newEntities,
+      enableDatabase: newEntities.length > 0,
+    });
+  };
+
+  const addField = (entityId: string) => {
+    const entity = dataModel.entities.find((e) => e.id === entityId);
+    if (!entity) return;
+    
+    const newField: DataField = {
+      id: generateId(),
+      name: "newField",
+      type: "text",
+      required: false,
+    };
+    
+    updateEntity(entityId, {
+      fields: [...entity.fields, newField],
+    });
+  };
+
+  const updateField = (entityId: string, fieldId: string, updates: Partial<DataField>) => {
+    const entity = dataModel.entities.find((e) => e.id === entityId);
+    if (!entity) return;
+    
+    updateEntity(entityId, {
+      fields: entity.fields.map((f) =>
+        f.id === fieldId ? { ...f, ...updates } : f
+      ),
+    });
+  };
+
+  const removeField = (entityId: string, fieldId: string) => {
+    const entity = dataModel.entities.find((e) => e.id === entityId);
+    if (!entity) return;
+    
+    updateEntity(entityId, {
+      fields: entity.fields.filter((f) => f.id !== fieldId),
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="enable-database"
+            checked={dataModel.enableDatabase}
+            onCheckedChange={(checked) => onChange({ ...dataModel, enableDatabase: checked })}
+            data-testid="switch-enable-database"
+          />
+          <Label htmlFor="enable-database" className="text-sm">
+            Enable Full-Stack with Database
+          </Label>
+        </div>
+      </div>
+
+      {dataModel.enableDatabase && (
+        <div className="space-y-4">
+          {dataModel.entities.length === 0 ? (
+            <Card className="p-6 text-center space-y-3">
+              <Database className="h-10 w-10 mx-auto text-muted-foreground" />
+              <div>
+                <p className="font-medium">No data entities defined</p>
+                <p className="text-sm text-muted-foreground">
+                  Add an entity to define your app's data structure
+                </p>
+              </div>
+              <Button onClick={addEntity} className="gap-2" data-testid="button-add-first-entity">
+                <Plus className="h-4 w-4" />
+                Add Entity
+              </Button>
+            </Card>
+          ) : (
+            <>
+              {dataModel.entities.map((entity) => (
+                <Card key={entity.id} className="p-4 space-y-3" data-testid={`card-entity-${entity.id}`}>
+                  <div className="flex items-center gap-2">
+                    <GripVertical className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={entity.name}
+                      onChange={(e) => updateEntity(entity.id, { name: e.target.value })}
+                      className="font-medium text-base"
+                      placeholder="Entity name (e.g., Task, User, Product)"
+                      data-testid={`input-entity-name-${entity.id}`}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeEntity(entity.id)}
+                      className="text-destructive"
+                      data-testid={`button-remove-entity-${entity.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="pl-6 space-y-2">
+                    {entity.fields.map((field) => (
+                      <div key={field.id} className="flex items-center gap-2" data-testid={`field-row-${field.id}`}>
+                        <Input
+                          value={field.name}
+                          onChange={(e) => updateField(entity.id, field.id, { name: e.target.value })}
+                          placeholder="Field name"
+                          className="flex-1 text-sm"
+                          data-testid={`input-field-name-${field.id}`}
+                        />
+                        <Select
+                          value={field.type}
+                          onValueChange={(value) => updateField(entity.id, field.id, { type: value as DataField["type"] })}
+                        >
+                          <SelectTrigger className="w-32" data-testid={`select-field-type-${field.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {FIELD_TYPES.map((ft) => (
+                              <SelectItem key={ft.value} value={ft.value}>
+                                {ft.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex items-center gap-1">
+                          <Switch
+                            id={`required-${field.id}`}
+                            checked={field.required}
+                            onCheckedChange={(checked) => updateField(entity.id, field.id, { required: checked })}
+                            data-testid={`switch-field-required-${field.id}`}
+                          />
+                          <Label htmlFor={`required-${field.id}`} className="text-xs">Req</Label>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeField(entity.id, field.id)}
+                          className="text-muted-foreground"
+                          data-testid={`button-remove-field-${field.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => addField(entity.id)}
+                      className="gap-1 text-muted-foreground"
+                      data-testid={`button-add-field-${entity.id}`}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add Field
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+
+              <Button
+                variant="outline"
+                onClick={addEntity}
+                className="w-full gap-2"
+                data-testid="button-add-entity"
+              >
+                <Plus className="h-4 w-4" />
+                Add Another Entity
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {!dataModel.enableDatabase && (
+        <Card className="p-4 bg-muted/50">
+          <p className="text-sm text-muted-foreground text-center">
+            Your app will be frontend-only. Enable the database toggle above to create a full-stack app with data persistence.
+          </p>
+        </Card>
+      )}
+    </div>
   );
 }

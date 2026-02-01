@@ -2,13 +2,13 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Loader2, User, Bot } from "lucide-react";
-import type { Message } from "@shared/schema";
+import type { Message, DataModel } from "@shared/schema";
 import { GenerationWizard } from "./generation-wizard";
 
 interface ChatPanelProps {
   messages: Message[];
   isLoading: boolean;
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, dataModel?: DataModel) => void;
   llmConnected: boolean | null;
   onCheckConnection: () => void;
 }

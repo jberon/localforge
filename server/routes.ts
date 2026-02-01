@@ -2,8 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import OpenAI from "openai";
-import { insertProjectSchema, llmSettingsSchema } from "@shared/schema";
+import { insertProjectSchema, llmSettingsSchema, dataModelSchema } from "@shared/schema";
 import { z } from "zod";
+import { generateFullStackProject } from "./code-generator";
 
 const SYSTEM_PROMPT = `You are an expert React developer. When the user describes an app they want, you generate a complete, working React component that renders the app.
 
@@ -216,6 +217,50 @@ export async function registerRoutes(
         connected: false, 
         error: error.message 
       });
+    }
+  });
+
+  // Generate full-stack project from data model
+  const generateRequestSchema = z.object({
+    projectName: z.string().min(1),
+    dataModel: dataModelSchema,
+  });
+
+  app.post("/api/projects/:id/generate-fullstack", async (req, res) => {
+    try {
+      const parsed = generateRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { projectName, dataModel } = parsed.data;
+      const projectId = req.params.id;
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Generate the full-stack project files
+      const generatedFiles = generateFullStackProject(projectName, dataModel);
+
+      // Update project with generated files and data model
+      await storage.updateProject(projectId, {
+        generatedFiles,
+        dataModel,
+      });
+
+      // Add assistant message
+      await storage.addMessage(projectId, {
+        role: "assistant",
+        content: `I've generated a complete full-stack project with ${dataModel.entities.length} data entities. You can download the project files and preview the generated code.`,
+      });
+
+      const finalProject = await storage.getProject(projectId);
+      res.json(finalProject);
+    } catch (error: any) {
+      console.error("Generate fullstack error:", error);
+      res.status(500).json({ error: "Failed to generate project", details: error.message });
     }
   });
 
