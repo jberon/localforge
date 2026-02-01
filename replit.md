@@ -88,6 +88,24 @@ LocalForge includes built-in version control for projects:
   - `PATCH /api/projects/:id/files` - Update file content
   - `DELETE /api/projects/:id/files` - Delete a file
 
+### Publishing & Packaging
+- **Package Download**: Download complete project as ZIP file with all generated files
+- **Build Configuration Options**:
+  - Include Docker: Adds Dockerfile and docker-compose.yml
+  - Include Env Template: Adds .env.example with placeholder variables
+  - Include CI/CD: Adds GitHub Actions workflow for automated testing and deployment
+- **Docker Support**: Production-ready multi-stage Dockerfile with Node.js 18 Alpine
+- **Deployment Options**:
+  - Self-hosted: VPS, bare metal, home server
+  - Cloud Platforms: Fly.io, Railway, Render
+  - Static Hosting: Vercel, Netlify, GitHub Pages
+- **Security**: Path sanitization prevents Zip Slip vulnerabilities
+- **API Endpoint**: `POST /api/projects/:id/package` - Generate downloadable ZIP
+
+### Code Search & Console
+- **Code Search**: Search across all generated files with file path, line number, and matching content
+- **Console Tab**: Color-coded terminal output viewer (error, warn, info) with clear functionality
+
 ## Local LLM Optimization (Mac M4 Pro)
 
 ### LM Studio Integration
