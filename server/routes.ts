@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { analyticsStorage } from "./analytics-storage";
-import OpenAI from "openai";
+import { createLLMClient, checkConnection, LLM_DEFAULTS } from "./llm-client";
 import { insertProjectSchema, llmSettingsSchema, dataModelSchema, analyticsEventTypes } from "@shared/schema";
 import type { AnalyticsEventType } from "@shared/schema";
 import { z } from "zod";
@@ -319,10 +319,11 @@ export async function registerRoutes(
         content: m.content,
       })) || [];
 
-      // Create OpenAI client pointing to LM Studio
-      const openai = new OpenAI({
-        baseURL: settings.endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio",
+      // Create optimized OpenAI client pointing to LM Studio (with caching, extended timeout, retries)
+      const openai = createLLMClient({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        model: settings.model,
+        temperature: settings.temperature,
       });
 
       // Set up SSE headers
@@ -330,6 +331,12 @@ export async function registerRoutes(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders();
+
+      // Handle client disconnect for memory efficiency
+      let isClientConnected = true;
+      req.on("close", () => {
+        isClientConnected = false;
+      });
 
       try {
         const stream = await openai.chat.completions.create({
@@ -339,19 +346,24 @@ export async function registerRoutes(
             ...conversationHistory,
           ],
           temperature: settings.temperature || 0.7,
-          max_tokens: 4096,
+          max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
           stream: true,
         });
 
-        let fullContent = "";
+        // Use array for efficient string building (better memory on Mac M4 Pro)
+        const chunks: string[] = [];
 
         for await (const chunk of stream) {
+          if (!isClientConnected) break; // Stop processing if client disconnected
+          
           const delta = chunk.choices[0]?.delta?.content || "";
           if (delta) {
-            fullContent += delta;
+            chunks.push(delta);
             res.write(`data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`);
           }
         }
+        
+        const fullContent = chunks.join("");
 
         // Clean up the response
         let cleanedCode = fullContent
@@ -418,23 +430,42 @@ export async function registerRoutes(
     }
   });
 
-  // Check LLM connection status
+  // Check LLM connection status (using optimized connection checker)
   app.post("/api/llm/status", async (req, res) => {
     try {
       const { endpoint } = req.body;
-      const openai = new OpenAI({
-        baseURL: endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio",
-      });
-      
-      const models = await openai.models.list();
-      res.json({ 
-        connected: true, 
-        models: models.data.map(m => m.id) 
-      });
+      const result = await checkConnection(endpoint || "http://localhost:1234/v1");
+      res.json(result);
     } catch (error: any) {
       res.json({ 
         connected: false, 
+        error: error.message 
+      });
+    }
+  });
+
+  // Get available LM Studio models
+  app.get("/api/llm/models", async (req, res) => {
+    try {
+      const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
+      const result = await checkConnection(endpoint);
+      
+      if (result.connected && result.models) {
+        res.json({ 
+          success: true,
+          models: result.models,
+          endpoint,
+        });
+      } else {
+        res.json({ 
+          success: false,
+          error: result.error || "No models available",
+          endpoint,
+        });
+      }
+    } catch (error: any) {
+      res.status(500).json({ 
+        success: false,
         error: error.message 
       });
     }
@@ -455,9 +486,10 @@ export async function registerRoutes(
 
       const { prompt, settings } = parsed.data;
 
-      const openai = new OpenAI({
-        baseURL: settings.endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio",
+      const openai = createLLMClient({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        model: settings.model,
+        temperature: LLM_DEFAULTS.temperature.creative,
       });
 
       const response = await openai.chat.completions.create({
@@ -466,7 +498,7 @@ export async function registerRoutes(
           { role: "system", content: PROMPT_ENHANCEMENT_SYSTEM },
           { role: "user", content: prompt },
         ],
-        temperature: 0.7,
+        temperature: LLM_DEFAULTS.temperature.creative,
         max_tokens: 500,
       });
 
@@ -513,9 +545,16 @@ export async function registerRoutes(
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders();
 
-      const openai = new OpenAI({
-        baseURL: settings.endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio",
+      const openai = createLLMClient({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        model: settings.model,
+        temperature: settings.temperature || LLM_DEFAULTS.temperature.builder,
+      });
+
+      // Handle client disconnect for memory efficiency
+      let isClientConnected = true;
+      req.on("close", () => {
+        isClientConnected = false;
       });
 
       try {
@@ -525,20 +564,25 @@ export async function registerRoutes(
             { role: "system", content: REFINEMENT_SYSTEM },
             { role: "user", content: `EXISTING CODE:\n\`\`\`jsx\n${project.generatedCode}\n\`\`\`\n\nMODIFICATION REQUEST: ${refinement}` },
           ],
-          temperature: settings.temperature || 0.7,
-          max_tokens: 4096,
+          temperature: settings.temperature || LLM_DEFAULTS.temperature.builder,
+          max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
           stream: true,
         });
 
-        let fullContent = "";
+        // Use array for efficient string building
+        const chunks: string[] = [];
 
         for await (const chunk of stream) {
+          if (!isClientConnected) break;
+          
           const delta = chunk.choices[0]?.delta?.content || "";
           if (delta) {
-            fullContent += delta;
+            chunks.push(delta);
             res.write(`data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`);
           }
         }
+        
+        const fullContent = chunks.join("");
 
         // Clean up the response
         let cleanedCode = fullContent
@@ -592,9 +636,10 @@ export async function registerRoutes(
 
       const { code, errors, settings } = parsed.data;
 
-      const openai = new OpenAI({
-        baseURL: settings.endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio",
+      const openai = createLLMClient({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        model: settings.model,
+        temperature: LLM_DEFAULTS.temperature.deterministic,
       });
 
       const response = await openai.chat.completions.create({
@@ -603,8 +648,8 @@ export async function registerRoutes(
           { role: "system", content: ERROR_FIX_SYSTEM },
           { role: "user", content: `BROKEN CODE:\n\`\`\`jsx\n${code}\n\`\`\`\n\nERRORS:\n${errors.join("\n")}` },
         ],
-        temperature: 0.3,
-        max_tokens: 4096,
+        temperature: LLM_DEFAULTS.temperature.deterministic,
+        max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
       });
 
       let fixedCode = response.choices[0]?.message?.content?.trim() || code;
@@ -644,9 +689,10 @@ export async function registerRoutes(
 
       const { prompt, action, code, settings } = parsed.data;
 
-      const openai = new OpenAI({
-        baseURL: settings.endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio",
+      const openai = createLLMClient({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        model: settings.model,
+        temperature: LLM_DEFAULTS.temperature.planner,
       });
 
       const systemPrompts: Record<string, string> = {
@@ -661,8 +707,8 @@ export async function registerRoutes(
           { role: "system", content: systemPrompts[action] },
           { role: "user", content: prompt },
         ],
-        temperature: 0.4,
-        max_tokens: 2048,
+        temperature: LLM_DEFAULTS.temperature.planner,
+        max_tokens: LLM_DEFAULTS.maxTokens.plan,
       });
 
       const content = response.choices[0]?.message?.content?.trim() || "";
@@ -868,9 +914,10 @@ export async function registerRoutes(
       const recentFeedbacks = await analyticsStorage.getFeedbacks(50);
       const positivePrompts = await analyticsStorage.getPositiveFeedbacks();
       
-      const openai = new OpenAI({
-        baseURL: settings.endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio",
+      const openai = createLLMClient({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        model: settings.model,
+        temperature: LLM_DEFAULTS.temperature.builder,
       });
 
       const analysisPrompt = `You are an analytics expert. Analyze this app usage data and provide actionable insights.
@@ -973,9 +1020,10 @@ Output as JSON array:
       const overview = await analyticsStorage.getOverview();
       const recentEvents = await analyticsStorage.getEvents(50);
       
-      const openai = new OpenAI({
-        baseURL: settings.endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio",
+      const openai = createLLMClient({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        model: settings.model,
+        temperature: LLM_DEFAULTS.temperature.planner,
       });
 
       const queryPrompt = `You are an analytics assistant. Answer the user's question about their app generation data.
@@ -1227,12 +1275,13 @@ Be thorough but concise. Focus on practical implementation details.`;
       const settings = plannerSettings || {
         endpoint: "http://localhost:1234/v1",
         model: "",
-        temperature: 0.3,
+        temperature: LLM_DEFAULTS.temperature.planner,
       };
 
-      const openai = new OpenAI({
-        baseURL: settings.endpoint,
-        apiKey: "not-needed-for-local",
+      const openai = createLLMClient({
+        endpoint: settings.endpoint,
+        model: settings.model,
+        temperature: settings.temperature,
       });
 
       // Set up SSE
@@ -1240,7 +1289,11 @@ Be thorough but concise. Focus on practical implementation details.`;
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      let planContent = "";
+      // Handle client disconnect for memory efficiency
+      let isClientConnected = true;
+      req.on("close", () => {
+        isClientConnected = false;
+      });
 
       try {
         const stream = await openai.chat.completions.create({
@@ -1249,17 +1302,25 @@ Be thorough but concise. Focus on practical implementation details.`;
             { role: "system", content: PLANNING_SYSTEM_PROMPT },
             { role: "user", content: `Create an implementation plan for: ${prompt}` },
           ],
-          temperature: settings.temperature || 0.3,
+          temperature: settings.temperature || LLM_DEFAULTS.temperature.planner,
+          max_tokens: LLM_DEFAULTS.maxTokens.plan,
           stream: true,
         });
 
+        // Use array for efficient string building
+        const planChunks: string[] = [];
+
         for await (const chunk of stream) {
+          if (!isClientConnected) break;
+          
           const content = chunk.choices[0]?.delta?.content || "";
           if (content) {
-            planContent += content;
+            planChunks.push(content);
             res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
           }
         }
+        
+        const planContent = planChunks.join("");
 
         // Try to parse the plan
         let plan;
@@ -1367,12 +1428,13 @@ Be thorough but concise. Focus on practical implementation details.`;
       const settings = builderSettings || {
         endpoint: "http://localhost:1234/v1",
         model: "",
-        temperature: 0.5,
+        temperature: LLM_DEFAULTS.temperature.builder,
       };
 
-      const openai = new OpenAI({
-        baseURL: settings.endpoint,
-        apiKey: "not-needed-for-local",
+      const openai = createLLMClient({
+        endpoint: settings.endpoint,
+        model: settings.model,
+        temperature: settings.temperature,
       });
 
       // Update plan status
@@ -1384,6 +1446,12 @@ Be thorough but concise. Focus on practical implementation details.`;
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
+
+      // Handle client disconnect for memory efficiency
+      let isClientConnected = true;
+      req.on("close", () => {
+        isClientConnected = false;
+      });
 
       const buildPrompt = `Based on this implementation plan, generate a complete, working React application:
 
@@ -1401,19 +1469,25 @@ Generate complete, working code that implements this plan. Follow the file struc
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: buildPrompt },
           ],
-          temperature: settings.temperature || 0.5,
+          temperature: settings.temperature || LLM_DEFAULTS.temperature.builder,
+          max_tokens: LLM_DEFAULTS.maxTokens.fullStack,
           stream: true,
         });
 
-        let generatedCode = "";
+        // Use array for efficient string building
+        const codeChunks: string[] = [];
 
         for await (const chunk of stream) {
+          if (!isClientConnected) break;
+          
           const content = chunk.choices[0]?.delta?.content || "";
           if (content) {
-            generatedCode += content;
+            codeChunks.push(content);
             res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
           }
         }
+        
+        const generatedCode = codeChunks.join("");
 
         // Clean and validate the code
         const cleanedCode = generatedCode
