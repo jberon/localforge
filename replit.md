@@ -50,10 +50,16 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Temperature slider for LLM creativity control
 
 ## Recent Changes
+- **Launch Guide** - Post-generation "Run & Deploy" experience with:
+  - Prerequisites checklist (Node.js, PostgreSQL, etc.)
+  - Step-by-step copyable terminal commands
+  - Auto-generated .env content with sensible defaults
+  - Docker deployment templates (Dockerfile, docker-compose.yml)
+  - Cloud platform deployment guides (Railway, Render, Fly.io, Vercel)
 - **Full-Stack Generation** - Can now generate complete backend + database + frontend projects
 - **Data Model Builder** - Visual entity/field editor to define data structures without coding
 - **Default Data Models** - Templates like Task Manager come with pre-configured data models
-- **ZIP Download** - Full-stack projects download as ZIP with all files + README
+- **ZIP Download** - Full-stack projects download as ZIP with all files + README + Docker files
 - **Files Tab** - Browse all generated files with syntax-highlighted code viewer
 - Added Generation Wizard with template selection and structured inputs
 - Templates: Dashboard, Task Manager, Data Analyzer, Landing Page, Calculator, Creative Apps

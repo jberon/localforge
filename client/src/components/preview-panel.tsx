@@ -3,9 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight } from "lucide-react";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
+import { LaunchGuide } from "./launch-guide";
 import type { GeneratedFile } from "@shared/schema";
 
 interface PreviewPanelProps {
@@ -13,10 +14,11 @@ interface PreviewPanelProps {
   isGenerating: boolean;
   onDownload: () => void;
   generatedFiles?: GeneratedFile[];
+  projectName?: string;
 }
 
-export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = [] }: PreviewPanelProps) {
-  const [activeTab, setActiveTab] = useState<"preview" | "code" | "files">("preview");
+export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = [], projectName = "My Project" }: PreviewPanelProps) {
+  const [activeTab, setActiveTab] = useState<"preview" | "code" | "files" | "launch">("preview");
   const [copied, setCopied] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -75,13 +77,13 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
     return `data:text/html;charset=utf-8,${encodeURIComponent(htmlDoc)}`;
   };
 
-  const isEmpty = !code && !isGenerating;
+  const isEmpty = !code && !isGenerating && !hasFullStackProject;
 
   return (
     <div className={`flex flex-col h-full bg-card border-l ${isFullscreen ? "fixed inset-0 z-50" : ""}`}>
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
         <div className="flex items-center gap-3">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code" | "files")}>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code" | "files" | "launch")}>
             <TabsList className="h-8">
               <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
                 <Eye className="h-3.5 w-3.5" />
@@ -92,11 +94,17 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
                 Code
               </TabsTrigger>
               {hasFullStackProject && (
-                <TabsTrigger value="files" className="text-xs gap-1.5" data-testid="tab-files">
-                  <FolderTree className="h-3.5 w-3.5" />
-                  Files
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{generatedFiles.length}</Badge>
-                </TabsTrigger>
+                <>
+                  <TabsTrigger value="files" className="text-xs gap-1.5" data-testid="tab-files">
+                    <FolderTree className="h-3.5 w-3.5" />
+                    Files
+                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{generatedFiles.length}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="launch" className="text-xs gap-1.5" data-testid="tab-launch">
+                    <Rocket className="h-3.5 w-3.5" />
+                    Launch
+                  </TabsTrigger>
+                </>
               )}
             </TabsList>
           </Tabs>
@@ -169,7 +177,7 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
         ) : (
           <>
             {activeTab === "preview" ? (
-              <div className="h-full bg-white">
+              <div className="h-full bg-white dark:bg-background">
                 {code && !isGenerating ? (
                   <iframe
                     key={iframeKey}
@@ -186,6 +194,19 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
                       <p className="font-medium">Building your app...</p>
                       <p className="text-sm text-muted-foreground mt-1">
                         {code ? "Code is being generated. Switch to Code tab to see progress." : "Waiting for response from LLM..."}
+                      </p>
+                    </div>
+                  </div>
+                ) : hasFullStackProject ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+                    <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center">
+                      <Rocket className="h-8 w-8 text-green-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg mb-2">Full-Stack Project Ready!</h3>
+                      <p className="text-sm text-muted-foreground max-w-md">
+                        Your complete project has been generated. Use the <strong>Files</strong> tab to browse all generated code,
+                        or the <strong>Launch</strong> tab for step-by-step instructions to run your app.
                       </p>
                     </div>
                   </div>
@@ -250,6 +271,16 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
                   )}
                 </div>
               </div>
+            ) : activeTab === "launch" ? (
+              <ScrollArea className="h-full">
+                <div className="p-4">
+                  <LaunchGuide
+                    projectName={projectName}
+                    isFullStack={hasFullStackProject}
+                    entityCount={generatedFiles.filter(f => f.path.includes('/routes/')).length}
+                  />
+                </div>
+              </ScrollArea>
             ) : null}
           </>
         )}

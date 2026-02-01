@@ -508,7 +508,60 @@ export function generateFullStackProject(projectName: string, dataModel: DataMod
 
   files.push({
     path: '.env.example',
-    content: 'DATABASE_URL=postgresql://user:password@localhost:5432/mydb\n',
+    content: `DATABASE_URL=postgresql://user:password@localhost:5432/${toKebabCase(projectName)}
+PORT=3000
+NODE_ENV=development
+`,
+  });
+
+  // Add Docker files for deployment
+  files.push({
+    path: 'Dockerfile',
+    content: `FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+RUN npm run build
+
+EXPOSE 3000
+CMD ["npm", "start"]
+`,
+  });
+
+  files.push({
+    path: 'docker-compose.yml',
+    content: `version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/${toKebabCase(projectName)}
+      - NODE_ENV=production
+    depends_on:
+      - db
+
+  db:
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=${toKebabCase(projectName)}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
+`,
   });
 
   return files;

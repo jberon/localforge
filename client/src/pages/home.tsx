@@ -362,6 +362,7 @@ export default function Home() {
                   isGenerating={isGenerating}
                   onDownload={handleDownload}
                   generatedFiles={activeProject?.generatedFiles}
+                  projectName={activeProject?.name || "My Project"}
                 />
               </ResizablePanel>
             </ResizablePanelGroup>
