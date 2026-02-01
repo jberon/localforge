@@ -217,6 +217,9 @@ export function ProjectSidebar({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <p className="text-xs text-muted-foreground text-center mt-3">
+          made by Josh Beron
+        </p>
       </SidebarFooter>
     </Sidebar>
   );
