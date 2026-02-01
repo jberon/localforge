@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save } from "lucide-react";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { LaunchGuide } from "./launch-guide";
@@ -14,6 +14,7 @@ import { RefinementPanel } from "./refinement-panel";
 import { ConsolePanel, type ConsoleLog } from "./console-panel";
 import { CodeAssistant } from "./code-assistant";
 import { FeedbackPanel } from "./feedback-panel";
+import { TestPreview } from "./test-preview";
 import { apiRequest } from "@/lib/queryClient";
 import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@shared/schema";
 import type { editor } from "monaco-editor";
@@ -67,6 +68,7 @@ export function PreviewPanel({
   } | null>(null);
   const [showAssistant, setShowAssistant] = useState(false);
   const [showFeedback, setShowFeedback] = useState(true);
+  const [showTestPreview, setShowTestPreview] = useState(false);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const nonceRef = useRef<string>(crypto.randomUUID());
@@ -340,15 +342,27 @@ export function PreviewPanel({
 
         <div className="flex items-center gap-1">
           {activeTab === "preview" && code && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={handleRefresh}
-              className="h-8 w-8"
-              data-testid="button-refresh-preview"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleRefresh}
+                className="h-8 w-8"
+                data-testid="button-refresh-preview"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setShowTestPreview(true)}
+                className="h-8 w-8"
+                title="Visual Test Runner"
+                data-testid="button-test-preview"
+              >
+                <Play className="h-4 w-4" />
+              </Button>
+            </>
           )}
           {(code || hasFullStackProject) && (
             <>
@@ -672,6 +686,12 @@ export function PreviewPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TestPreview
+        code={code}
+        isVisible={showTestPreview}
+        onClose={() => setShowTestPreview(false)}
+      />
     </div>
   );
 }

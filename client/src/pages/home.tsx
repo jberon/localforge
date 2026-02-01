@@ -12,6 +12,7 @@ import { SuccessCelebration } from "@/components/success-celebration";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { PlanReviewPanel } from "@/components/plan-review-panel";
 import { DualModelSettings } from "@/components/dual-model-settings";
+import { VersionHistory } from "@/components/version-history";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -745,6 +746,15 @@ export default function Home() {
                     onSettingsChange={setDualModelSettings}
                   />
                 </>
+              )}
+              {activeProject && (
+                <VersionHistory 
+                  projectId={activeProject.id} 
+                  onRestore={() => {
+                    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject.id] });
+                  }}
+                />
               )}
               <Button variant="ghost" size="sm" asChild data-testid="button-analytics">
                 <Link href="/analytics">

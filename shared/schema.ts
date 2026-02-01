@@ -314,6 +314,40 @@ export type AnalyticsEventDb = typeof analyticsEvents.$inferSelect;
 export type FeedbackDb = typeof feedbacks.$inferSelect;
 export type InsightDb = typeof insights.$inferSelect;
 
+// Project Version Control - Snapshots/Checkpoints for rollback
+export const projectVersionSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  version: z.number(),
+  name: z.string(),
+  description: z.string().optional(),
+  snapshot: z.object({
+    messages: z.array(messageSchema),
+    generatedCode: z.string().optional(),
+    generatedFiles: z.array(generatedFileSchema).optional(),
+    dataModel: dataModelSchema.optional(),
+    plan: planSchema.optional(),
+  }),
+  createdAt: z.number(),
+  isAutoSave: z.boolean().default(false),
+});
+
+export const projectVersions = pgTable("project_versions", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  version: bigint("version", { mode: "number" }).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  snapshot: jsonb("snapshot").notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  isAutoSave: text("is_auto_save").notNull().default("false"),
+});
+
+export const insertProjectVersionSchema = createInsertSchema(projectVersions).omit({ id: true });
+export type ProjectVersion = z.infer<typeof projectVersionSchema>;
+export type ProjectVersionDb = typeof projectVersions.$inferSelect;
+export type InsertProjectVersion = z.infer<typeof insertProjectVersionSchema>;
+
 export const users = {} as any;
 export type InsertUser = { username: string; password: string };
 export type User = { id: string; username: string; password: string };
