@@ -95,38 +95,40 @@ export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, on
         </div>
       )}
 
-      <div className="border-t p-4 bg-background">
-        <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
-          <div className="relative">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Describe the app you want to build..."
-              className="min-h-[80px] max-h-[200px] resize-none pr-14"
-              disabled={isLoading}
-              data-testid="input-chat"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!input.trim() || isLoading}
-              className="absolute right-3 bottom-3"
-              data-testid="button-send"
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            Press Enter to send, Shift+Enter for new line
-          </p>
-        </form>
-      </div>
+      {messages.length > 0 && (
+        <div className="border-t p-4 bg-background">
+          <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
+            <div className="relative">
+              <Textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Describe what you want to change..."
+                className="min-h-[80px] max-h-[200px] resize-none pr-14"
+                disabled={isLoading}
+                data-testid="input-chat"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!input.trim() || isLoading}
+                className="absolute right-3 bottom-3"
+                data-testid="button-send"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Press Enter to send, Shift+Enter for new line
+            </p>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
