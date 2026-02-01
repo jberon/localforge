@@ -67,6 +67,30 @@ LocalForge includes built-in version control for projects:
 - **Rollback**: Restore projects to any previous checkpoint
 - **Auto-save support**: Automatic checkpoints during key operations
 
+### AI Dream Team
+Expert advisory system that pauses to consult multiple AI personas for important decisions:
+
+- **Default Expert Personas**:
+  - **Alex (Senior Engineer)**: Inspired by Martin Fowler - focuses on code quality, maintainability, performance, technical debt
+  - **Maya (Software Architect)**: Inspired by Werner Vogels - focuses on system design, scalability, integration, flexibility
+  - **Jordan (UX Leader)**: Inspired by Don Norman - focuses on usability, clarity, flow, user experience
+  - **Sam (Product Leader)**: Inspired by Marty Cagan - focuses on user value, differentiation, problem solving
+
+- **Configurable Settings**:
+  - Enable/disable Dream Team
+  - Pause on major decisions (automatic consultation)
+  - Discussion depth: Brief, Balanced, or Thorough
+  - Add/remove/customize expert personas
+
+- **Features**:
+  - Animated discussion panel with expert avatars
+  - Message types: opinions, concerns, suggestions, approvals, questions
+  - Team recommendation synthesis
+  - Manual "Consult Team" button for on-demand advice
+  - Integration with Smart Mode planning workflow
+
+- **API Endpoint**: `POST /api/dream-team/discuss` - Generates multi-persona discussion
+
 ### Visual Testing
 - **Replit-Style Test Runner**: Full-featured visual test preview with animated progress
 - **Animated Checkboxes**: Test steps show green checkmarks/red X marks with smooth animations

@@ -348,6 +348,96 @@ export type ProjectVersion = z.infer<typeof projectVersionSchema>;
 export type ProjectVersionDb = typeof projectVersions.$inferSelect;
 export type InsertProjectVersion = z.infer<typeof insertProjectVersionSchema>;
 
+// AI Dream Team - Expert Personas for collaborative review
+export const dreamTeamPersonaSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  title: z.string(),
+  inspiration: z.string(), // e.g., "Martin Fowler"
+  avatar: z.string().optional(), // emoji or icon name
+  color: z.string(), // Theme color for avatar
+  focus: z.array(z.string()), // Areas of expertise
+  personality: z.string(), // Brief personality description for LLM
+  enabled: z.boolean().default(true),
+});
+
+export const dreamTeamSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  pauseOnMajorDecisions: z.boolean().default(true),
+  discussionDepth: z.enum(["brief", "balanced", "thorough"]).default("balanced"),
+  personas: z.array(dreamTeamPersonaSchema),
+});
+
+export const dreamTeamMessageSchema = z.object({
+  personaId: z.string(),
+  content: z.string(),
+  timestamp: z.number(),
+  type: z.enum(["opinion", "concern", "suggestion", "approval", "question"]),
+});
+
+export const dreamTeamDiscussionSchema = z.object({
+  id: z.string(),
+  topic: z.string(),
+  context: z.string(),
+  messages: z.array(dreamTeamMessageSchema),
+  recommendation: z.string().optional(),
+  status: z.enum(["discussing", "awaiting_input", "resolved"]),
+  createdAt: z.number(),
+});
+
+export type DreamTeamPersona = z.infer<typeof dreamTeamPersonaSchema>;
+export type DreamTeamSettings = z.infer<typeof dreamTeamSettingsSchema>;
+export type DreamTeamMessage = z.infer<typeof dreamTeamMessageSchema>;
+export type DreamTeamDiscussion = z.infer<typeof dreamTeamDiscussionSchema>;
+
+// Default Dream Team personas
+export const defaultDreamTeamPersonas: DreamTeamPersona[] = [
+  {
+    id: "senior-engineer",
+    name: "Alex",
+    title: "Senior Engineer",
+    inspiration: "Martin Fowler",
+    avatar: "code",
+    color: "blue",
+    focus: ["code quality", "maintainability", "performance", "technical debt"],
+    personality: "Pragmatic and detail-oriented. Values clean, testable code and sustainable practices. Asks 'will this be easy to change later?'",
+    enabled: true,
+  },
+  {
+    id: "architect",
+    name: "Maya",
+    title: "Software Architect",
+    inspiration: "Werner Vogels",
+    avatar: "layers",
+    color: "purple",
+    focus: ["system design", "scalability", "integration points", "long-term flexibility"],
+    personality: "Strategic thinker who sees the big picture. Considers how components interact and scale. Asks 'what happens when this grows 10x?'",
+    enabled: true,
+  },
+  {
+    id: "ux-leader",
+    name: "Jordan",
+    title: "UX Leader",
+    inspiration: "Don Norman",
+    avatar: "heart",
+    color: "pink",
+    focus: ["usability", "clarity", "flow", "user experience"],
+    personality: "Empathetic advocate for users. Focuses on intuitive interactions and delightful experiences. Asks 'how will a real person feel using this?'",
+    enabled: true,
+  },
+  {
+    id: "product-leader",
+    name: "Sam",
+    title: "Product Leader",
+    inspiration: "Marty Cagan",
+    avatar: "target",
+    color: "green",
+    focus: ["user value", "differentiation", "problem solving", "market fit"],
+    personality: "Customer-obsessed strategist. Ensures we build what matters. Asks 'does this solve a meaningful problem?'",
+    enabled: true,
+  },
+];
+
 export const users = {} as any;
 export type InsertUser = { username: string; password: string };
 export type User = { id: string; username: string; password: string };

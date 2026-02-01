@@ -12,6 +12,8 @@ import { SuccessCelebration } from "@/components/success-celebration";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { PlanReviewPanel } from "@/components/plan-review-panel";
 import { DualModelSettings } from "@/components/dual-model-settings";
+import { DreamTeamSettings } from "@/components/dream-team-settings";
+import { DreamTeamPanel } from "@/components/dream-team-panel";
 import { VersionHistory } from "@/components/version-history";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,10 +24,11 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Users } from "lucide-react";
 import { Link } from "wouter";
 import JSZip from "jszip";
-import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan } from "@shared/schema";
+import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion } from "@shared/schema";
+import { defaultDreamTeamPersonas } from "@shared/schema";
 
 export default function Home() {
   const { toast } = useToast();
@@ -61,6 +64,58 @@ export default function Home() {
       temperature: 0.5,
     },
   });
+
+  const [dreamTeamSettings, setDreamTeamSettings] = useState<DreamTeamSettingsType>({
+    enabled: true,
+    pauseOnMajorDecisions: true,
+    discussionDepth: "balanced",
+    personas: [...defaultDreamTeamPersonas],
+  });
+  const [activeDiscussion, setActiveDiscussion] = useState<DreamTeamDiscussion | null>(null);
+  const [isDiscussionGenerating, setIsDiscussionGenerating] = useState(false);
+  const [pendingGeneration, setPendingGeneration] = useState<{
+    content: string;
+    dataModel?: DataModel;
+    usePlanner: boolean;
+  } | null>(null);
+
+  const startDreamTeamDiscussion = useCallback(async (topic: string, context: string) => {
+    if (!dreamTeamSettings.enabled) return;
+    
+    const enabledPersonas = dreamTeamSettings.personas.filter(p => p.enabled);
+    if (enabledPersonas.length === 0) return;
+
+    setIsDiscussionGenerating(true);
+    try {
+      const response = await fetch("/api/dream-team/discuss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic,
+          context,
+          personas: enabledPersonas.map(p => ({
+            id: p.id,
+            name: p.name,
+            title: p.title,
+            focus: p.focus,
+            personality: p.personality,
+          })),
+          discussionDepth: dreamTeamSettings.discussionDepth,
+          endpoint: settings.endpoint,
+          temperature: 0.7,
+        }),
+      });
+      
+      if (response.ok) {
+        const discussion = await response.json();
+        setActiveDiscussion(discussion);
+      }
+    } catch (error) {
+      console.error("Dream Team discussion error:", error);
+    } finally {
+      setIsDiscussionGenerating(false);
+    }
+  }, [dreamTeamSettings, settings.endpoint]);
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -432,6 +487,34 @@ export default function Home() {
     }
   }, [activeProjectId, dualModelSettings.planner, toast]);
 
+  const handleDreamTeamResponse = useCallback(async (response: string) => {
+    if (!activeDiscussion) return;
+    
+    setActiveDiscussion(null);
+    
+    // Resume pending generation if user approves
+    if (pendingGeneration && (response === "proceed" || response.toLowerCase().includes("proceed"))) {
+      const { content, dataModel, usePlanner } = pendingGeneration;
+      setPendingGeneration(null);
+      
+      // Use full builder settings from dual model settings when in Smart Mode
+      const builderSettings: LLMSettings = dualModelSettings.builder;
+      
+      if (usePlanner) {
+        await handleCreatePlan(content, dataModel);
+      } else {
+        await handleSendMessage(content, dataModel, undefined, builderSettings);
+      }
+    } else if (pendingGeneration) {
+      // User chose to explore alternatives or cancel - clear pending
+      setPendingGeneration(null);
+      toast({
+        title: "Generation paused",
+        description: "You can modify your request and try again.",
+      });
+    }
+  }, [activeDiscussion, pendingGeneration, dualModelSettings.builder, handleCreatePlan, handleSendMessage, toast]);
+
   const handleApprovePlan = useCallback(async () => {
     if (!activeProjectId) return;
     
@@ -558,6 +641,29 @@ export default function Home() {
       const hasExistingCode = !!(activeProject?.generatedCode || streamingCode);
       const usePlanner = shouldUsePlanner(content, hasExistingCode);
 
+      // Trigger Dream Team consultation for major decisions if enabled
+      if (dreamTeamSettings.enabled && dreamTeamSettings.pauseOnMajorDecisions && usePlanner) {
+        // Store the pending generation for later continuation
+        setPendingGeneration({
+          content,
+          dataModel,
+          usePlanner: true,
+        });
+        
+        // Start the discussion and return early - generation will continue after user responds
+        await startDreamTeamDiscussion(
+          `New App Request: ${content.slice(0, 100)}${content.length > 100 ? "..." : ""}`,
+          `User wants to build: "${content}". This is a new project request that will trigger the planner. The team should discuss the approach before proceeding.`
+        );
+        
+        toast({
+          title: "Dream Team Consultation",
+          description: "Your expert advisors are reviewing the approach. Generation will continue after you respond.",
+        });
+        
+        return; // Pause here - handleDreamTeamResponse will resume generation
+      }
+
       // Show what model is being used
       toast({
         title: `${getIntentDescription(classification.intent)}`,
@@ -578,7 +684,7 @@ export default function Home() {
         await handleSendMessage(content, dataModel, undefined, builderSettings);
       }
     },
-    [planBuildMode, autoRouting, activeProject, streamingCode, handleSendMessage, handleCreatePlan, toast, dualModelSettings.builder]
+    [planBuildMode, autoRouting, activeProject, streamingCode, handleSendMessage, handleCreatePlan, toast, dualModelSettings.builder, dreamTeamSettings, startDreamTeamDiscussion, setPendingGeneration]
   );
 
   const handleDownload = useCallback(async () => {
@@ -747,6 +853,25 @@ export default function Home() {
                   />
                 </>
               )}
+              <DreamTeamSettings
+                settings={dreamTeamSettings}
+                onSettingsChange={setDreamTeamSettings}
+              />
+              {dreamTeamSettings.enabled && activeProject && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => startDreamTeamDiscussion(
+                    `Project Review: ${activeProject.name}`,
+                    `The current project "${activeProject.name}" needs expert review. ${activeProject.lastPrompt ? `Last request: "${activeProject.lastPrompt}". ` : ""}Please discuss the current approach and provide recommendations.`
+                  )}
+                  disabled={isDiscussionGenerating || !llmConnected}
+                  data-testid="button-consult-dream-team"
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  Consult Team
+                </Button>
+              )}
               {activeProject && (
                 <VersionHistory 
                   projectId={activeProject.id} 
@@ -848,6 +973,15 @@ export default function Home() {
       </div>
       <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
       <OnboardingModal />
+      {activeDiscussion && (
+        <DreamTeamPanel
+          settings={dreamTeamSettings}
+          discussion={activeDiscussion}
+          onUserResponse={handleDreamTeamResponse}
+          onDismiss={() => setActiveDiscussion(null)}
+          isGenerating={isDiscussionGenerating}
+        />
+      )}
     </SidebarProvider>
   );
 }
