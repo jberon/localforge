@@ -11,10 +11,13 @@ import { EmptyState } from "@/components/empty-state";
 import { SuccessCelebration } from "@/components/success-celebration";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Wifi, WifiOff } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
+import { Wifi, WifiOff, BarChart3 } from "lucide-react";
+import { Link } from "wouter";
 import JSZip from "jszip";
 import type { Project, LLMSettings, DataModel } from "@shared/schema";
 
@@ -69,6 +72,7 @@ export default function Home() {
     onSuccess: (newProject: Project) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setActiveProjectId(newProject.id);
+      trackEvent("project_created", newProject.id);
     },
     onError: () => {
       toast({
@@ -89,6 +93,7 @@ export default function Home() {
       if (activeProjectId === deletedId) {
         setActiveProjectId(null);
       }
+      trackEvent("project_deleted", deletedId);
     },
     onError: () => {
       toast({
@@ -180,6 +185,13 @@ export default function Home() {
       setIsGenerating(true);
       setStreamingCode("");
 
+      // Track generation started
+      trackEvent("generation_started", projectId || undefined, {
+        promptLength: content.length,
+        hasDataModel: !!dataModel,
+        isFullStack: dataModel?.enableDatabase && dataModel?.entities.length > 0,
+      });
+
       try {
         // If dataModel has entities and database is enabled, use full-stack generation
         if (dataModel && dataModel.enableDatabase && dataModel.entities.length > 0) {
@@ -202,6 +214,12 @@ export default function Home() {
           }
           
           await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+          
+          // Track successful full-stack generation
+          trackEvent("generation_completed", projectId || undefined, {
+            type: "fullstack",
+            entityCount: dataModel.entities.length,
+          });
           
           setShowCelebration(true);
           toast({
@@ -252,6 +270,11 @@ export default function Home() {
                       setStreamingCode(cleaned);
                     } else if (data.type === "done") {
                       await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                      // Track successful frontend generation
+                      trackEvent("generation_completed", projectId || undefined, {
+                        type: "frontend",
+                        codeLength: accumulatedCode.length,
+                      });
                     } else if (data.type === "error") {
                       toast({
                         title: "Generation Failed",
@@ -259,6 +282,10 @@ export default function Home() {
                         variant: "destructive",
                       });
                       await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                      // Track failed generation
+                      trackEvent("generation_failed", projectId || undefined, {
+                        error: data.error,
+                      });
                     }
                   } catch {
                     // Ignore parse errors for incomplete JSON
@@ -302,6 +329,12 @@ export default function Home() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      // Track ZIP download
+      trackEvent("code_downloaded", activeProject.id, {
+        type: "zip",
+        fileCount: activeProject.generatedFiles.length,
+      });
 
       toast({
         title: "Project Downloaded!",
@@ -348,6 +381,14 @@ export default function Home() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
+    // Track HTML download
+    if (activeProject?.id) {
+      trackEvent("code_downloaded", activeProject.id, {
+        type: "html",
+        codeLength: codeToDownload.length,
+      });
+    }
+
     toast({
       title: "Downloaded!",
       description: "Open the HTML file in any browser to run your app.",
@@ -389,6 +430,12 @@ export default function Home() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Link href="/analytics">
+                <Button variant="ghost" size="sm" data-testid="button-analytics">
+                  <BarChart3 className="h-4 w-4 mr-1" />
+                  Analytics
+                </Button>
+              </Link>
               <Badge 
                 variant={llmConnected ? "default" : "secondary"} 
                 className="gap-1.5 text-xs"

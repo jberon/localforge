@@ -1,6 +1,7 @@
 import { TEMPLATES } from "./templates";
 import type { TemplateConfig } from "./types";
 import { FreeformPrompt } from "./freeform-prompt";
+import { trackEvent } from "@/lib/analytics";
 import type { LLMSettings } from "@shared/schema";
 
 interface TemplateSelectorProps {
@@ -36,7 +37,10 @@ export function TemplateSelector({
           <button
             key={template.id}
             className="group flex flex-col items-center gap-3 p-4 rounded-2xl hover-elevate focus:outline-none focus:ring-2 focus:ring-primary/20"
-            onClick={() => onSelect(template)}
+            onClick={() => {
+              trackEvent("template_selected", undefined, { template: template.id });
+              onSelect(template);
+            }}
             data-testid={`card-template-${template.id}`}
           >
             <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center transition-colors group-hover:bg-primary/10">

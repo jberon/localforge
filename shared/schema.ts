@@ -112,6 +112,117 @@ export const insertProjectDbSchema = createInsertSchema(projects).omit({
 export type ProjectDb = typeof projects.$inferSelect;
 export type InsertProjectDb = z.infer<typeof insertProjectDbSchema>;
 
+// Analytics event types
+export const analyticsEventTypes = [
+  "generation_started",
+  "generation_completed", 
+  "generation_failed",
+  "template_selected",
+  "project_created",
+  "project_deleted",
+  "code_downloaded",
+  "code_refined",
+  "code_edited",
+  "feedback_submitted",
+  "prompt_enhanced",
+  "error_occurred",
+] as const;
+
+export const analyticsEventSchema = z.object({
+  id: z.string(),
+  type: z.enum(analyticsEventTypes),
+  projectId: z.string().optional(),
+  data: z.record(z.any()),
+  timestamp: z.number(),
+});
+
+export const feedbackSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  rating: z.enum(["positive", "negative"]),
+  comment: z.string().optional(),
+  prompt: z.string(),
+  generatedCode: z.string().optional(),
+  templateUsed: z.string().optional(),
+  timestamp: z.number(),
+});
+
+export const insightSchema = z.object({
+  id: z.string(),
+  type: z.enum(["pattern", "recommendation", "trend", "warning"]),
+  title: z.string(),
+  description: z.string(),
+  actionable: z.boolean(),
+  priority: z.enum(["low", "medium", "high"]),
+  data: z.record(z.any()).optional(),
+  generatedAt: z.number(),
+  expiresAt: z.number().optional(),
+});
+
+export const analyticsOverviewSchema = z.object({
+  totalGenerations: z.number(),
+  successfulGenerations: z.number(),
+  failedGenerations: z.number(),
+  successRate: z.number(),
+  averageGenerationTime: z.number(),
+  templateUsage: z.record(z.number()),
+  feedbackStats: z.object({
+    positive: z.number(),
+    negative: z.number(),
+  }),
+  recentTrends: z.array(z.object({
+    date: z.string(),
+    generations: z.number(),
+    successes: z.number(),
+  })),
+});
+
+export type AnalyticsEvent = z.infer<typeof analyticsEventSchema>;
+export type Feedback = z.infer<typeof feedbackSchema>;
+export type Insight = z.infer<typeof insightSchema>;
+export type AnalyticsOverview = z.infer<typeof analyticsOverviewSchema>;
+export type AnalyticsEventType = typeof analyticsEventTypes[number];
+
+// Database tables for analytics
+export const analyticsEvents = pgTable("analytics_events", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  type: varchar("type", { length: 50 }).notNull(),
+  projectId: varchar("project_id", { length: 36 }),
+  data: jsonb("data").notNull().default({}),
+  timestamp: bigint("timestamp", { mode: "number" }).notNull(),
+});
+
+export const feedbacks = pgTable("feedbacks", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  rating: varchar("rating", { length: 10 }).notNull(),
+  comment: text("comment"),
+  prompt: text("prompt").notNull(),
+  generatedCode: text("generated_code"),
+  templateUsed: varchar("template_used", { length: 100 }),
+  timestamp: bigint("timestamp", { mode: "number" }).notNull(),
+});
+
+export const insights = pgTable("insights", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  type: varchar("type", { length: 20 }).notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  actionable: text("actionable").notNull().default("false"),
+  priority: varchar("priority", { length: 10 }).notNull(),
+  data: jsonb("data"),
+  generatedAt: bigint("generated_at", { mode: "number" }).notNull(),
+  expiresAt: bigint("expires_at", { mode: "number" }),
+});
+
+export const insertAnalyticsEventSchema = createInsertSchema(analyticsEvents).omit({ id: true });
+export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({ id: true });
+export const insertInsightSchema = createInsertSchema(insights).omit({ id: true });
+
+export type AnalyticsEventDb = typeof analyticsEvents.$inferSelect;
+export type FeedbackDb = typeof feedbacks.$inferSelect;
+export type InsightDb = typeof insights.$inferSelect;
+
 export const users = {} as any;
 export type InsertUser = { username: string; password: string };
 export type User = { id: string; username: string; password: string };

@@ -1,8 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { analyticsStorage } from "./analytics-storage";
 import OpenAI from "openai";
-import { insertProjectSchema, llmSettingsSchema, dataModelSchema } from "@shared/schema";
+import { insertProjectSchema, llmSettingsSchema, dataModelSchema, analyticsEventTypes } from "@shared/schema";
+import type { AnalyticsEventType } from "@shared/schema";
 import { z } from "zod";
 import { generateFullStackProject } from "./code-generator";
 import { validateGeneratedCode } from "./generators/validator";
@@ -649,6 +651,242 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Generate fullstack error:", error);
       res.status(500).json({ error: "Failed to generate project", details: error.message });
+    }
+  });
+
+  // ========================================
+  // Analytics Routes
+  // ========================================
+
+  // Track an event
+  const trackEventSchema = z.object({
+    type: z.enum(analyticsEventTypes),
+    projectId: z.string().optional(),
+    data: z.record(z.any()).optional(),
+  });
+
+  app.post("/api/analytics/events", async (req, res) => {
+    try {
+      const parsed = trackEventSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid event data", details: parsed.error.errors });
+      }
+      
+      const event = await analyticsStorage.trackEvent(
+        parsed.data.type,
+        parsed.data.projectId,
+        parsed.data.data
+      );
+      res.json(event);
+    } catch (error: any) {
+      console.error("Track event error:", error);
+      res.status(500).json({ error: "Failed to track event" });
+    }
+  });
+
+  // Get events with optional filtering
+  app.get("/api/analytics/events", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const type = req.query.type as AnalyticsEventType | undefined;
+      
+      const events = await analyticsStorage.getEvents(limit, type);
+      res.json(events);
+    } catch (error: any) {
+      console.error("Get events error:", error);
+      res.status(500).json({ error: "Failed to get events" });
+    }
+  });
+
+  // Submit feedback
+  const feedbackRequestSchema = z.object({
+    projectId: z.string(),
+    rating: z.enum(["positive", "negative"]),
+    comment: z.string().optional(),
+    prompt: z.string(),
+    generatedCode: z.string().optional(),
+    templateUsed: z.string().optional(),
+  });
+
+  app.post("/api/analytics/feedback", async (req, res) => {
+    try {
+      const parsed = feedbackRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid feedback data", details: parsed.error.errors });
+      }
+      
+      const feedback = await analyticsStorage.submitFeedback(parsed.data);
+      
+      // Also track as event
+      await analyticsStorage.trackEvent("feedback_submitted", parsed.data.projectId, {
+        rating: parsed.data.rating,
+        hasComment: !!parsed.data.comment,
+      });
+      
+      res.json(feedback);
+    } catch (error: any) {
+      console.error("Submit feedback error:", error);
+      res.status(500).json({ error: "Failed to submit feedback" });
+    }
+  });
+
+  // Get feedbacks
+  app.get("/api/analytics/feedback", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const feedbacks = await analyticsStorage.getFeedbacks(limit);
+      res.json(feedbacks);
+    } catch (error: any) {
+      console.error("Get feedbacks error:", error);
+      res.status(500).json({ error: "Failed to get feedbacks" });
+    }
+  });
+
+  // Get analytics overview
+  app.get("/api/analytics/overview", async (req, res) => {
+    try {
+      const overview = await analyticsStorage.getOverview();
+      res.json(overview);
+    } catch (error: any) {
+      console.error("Get analytics overview error:", error);
+      res.status(500).json({ error: "Failed to get analytics overview" });
+    }
+  });
+
+  // Get insights
+  app.get("/api/analytics/insights", async (req, res) => {
+    try {
+      const insights = await analyticsStorage.getActiveInsights();
+      res.json(insights);
+    } catch (error: any) {
+      console.error("Get insights error:", error);
+      res.status(500).json({ error: "Failed to get insights" });
+    }
+  });
+
+  // Generate insights using LLM
+  const generateInsightsSchema = z.object({
+    settings: llmSettingsSchema,
+  });
+
+  app.post("/api/analytics/generate-insights", async (req, res) => {
+    try {
+      const parsed = generateInsightsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { settings } = parsed.data;
+      
+      // Gather data for analysis
+      const overview = await analyticsStorage.getOverview();
+      const recentFeedbacks = await analyticsStorage.getFeedbacks(50);
+      const positivePrompts = await analyticsStorage.getPositiveFeedbacks();
+      
+      const openai = new OpenAI({
+        baseURL: settings.endpoint || "http://localhost:1234/v1",
+        apiKey: "lm-studio",
+      });
+
+      const analysisPrompt = `You are an analytics expert. Analyze this app usage data and provide actionable insights.
+
+DATA SUMMARY:
+- Total generations: ${overview.totalGenerations}
+- Success rate: ${overview.successRate.toFixed(1)}%
+- Average generation time: ${(overview.averageGenerationTime / 1000).toFixed(1)}s
+- Positive feedback: ${overview.feedbackStats.positive}
+- Negative feedback: ${overview.feedbackStats.negative}
+- Template usage: ${JSON.stringify(overview.templateUsage)}
+
+RECENT TRENDS (last 7 days):
+${overview.recentTrends.map(t => `${t.date}: ${t.generations} generations, ${t.successes} successes`).join('\n')}
+
+SAMPLE POSITIVE FEEDBACK PROMPTS:
+${positivePrompts.slice(0, 5).map(f => `- "${f.prompt.substring(0, 100)}..."`).join('\n')}
+
+SAMPLE NEGATIVE FEEDBACK:
+${recentFeedbacks.filter(f => f.rating === 'negative').slice(0, 5).map(f => `- "${f.comment || 'No comment'}"`).join('\n')}
+
+Based on this data, provide 3-5 specific, actionable insights. For each insight include:
+1. A clear title
+2. Description of what the data shows
+3. Whether it's actionable (yes/no)
+4. Priority (high/medium/low)
+5. Type (pattern/recommendation/trend/warning)
+
+Output as JSON array:
+[{"title": "...", "description": "...", "actionable": true, "priority": "high", "type": "recommendation"}]`;
+
+      const response = await openai.chat.completions.create({
+        model: settings.model || "local-model",
+        messages: [
+          { role: "system", content: "You are a data analyst. Respond only with valid JSON arrays." },
+          { role: "user", content: analysisPrompt },
+        ],
+        temperature: 0.5,
+        max_tokens: 2000,
+      });
+
+      const content = response.choices[0]?.message?.content?.trim() || "[]";
+      
+      // Parse insights from response
+      let parsedInsights: any[] = [];
+      try {
+        // Extract JSON array from response
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          parsedInsights = JSON.parse(jsonMatch[0]);
+        }
+      } catch (parseError) {
+        console.error("Failed to parse insights JSON:", parseError);
+      }
+
+      // Save insights to database
+      const savedInsights = [];
+      for (const insight of parsedInsights) {
+        if (insight.title && insight.description) {
+          const saved = await analyticsStorage.saveInsight({
+            type: insight.type || "recommendation",
+            title: insight.title,
+            description: insight.description,
+            actionable: insight.actionable ?? true,
+            priority: insight.priority || "medium",
+            data: { source: "llm_analysis" },
+            generatedAt: Date.now(),
+            expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000), // Expire in 7 days
+          });
+          savedInsights.push(saved);
+        }
+      }
+
+      res.json({ 
+        generated: savedInsights.length,
+        insights: savedInsights 
+      });
+    } catch (error: any) {
+      console.error("Generate insights error:", error);
+      res.status(500).json({ error: "Failed to generate insights", details: error.message });
+    }
+  });
+
+  // Get successful prompts for learning (used as examples)
+  app.get("/api/analytics/successful-prompts", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 10;
+      const positiveFeedbacks = await analyticsStorage.getPositiveFeedbacks();
+      
+      const successfulPrompts = positiveFeedbacks
+        .slice(0, limit)
+        .map(f => ({
+          prompt: f.prompt,
+          template: f.templateUsed,
+          timestamp: f.timestamp,
+        }));
+      
+      res.json(successfulPrompts);
+    } catch (error: any) {
+      console.error("Get successful prompts error:", error);
+      res.status(500).json({ error: "Failed to get successful prompts" });
     }
   });
 

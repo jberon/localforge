@@ -13,6 +13,7 @@ import { PreviewErrorBoundary } from "./error-boundary";
 import { RefinementPanel } from "./refinement-panel";
 import { ConsolePanel, type ConsoleLog } from "./console-panel";
 import { CodeAssistant } from "./code-assistant";
+import { FeedbackPanel } from "./feedback-panel";
 import { apiRequest } from "@/lib/queryClient";
 import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@shared/schema";
 import type { editor } from "monaco-editor";
@@ -65,6 +66,7 @@ export function PreviewPanel({
     endColumn: number;
   } | null>(null);
   const [showAssistant, setShowAssistant] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(true);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const nonceRef = useRef<string>(crypto.randomUUID());
@@ -136,6 +138,11 @@ export function PreviewPanel({
   
   const hasFullStackProject = generatedFiles.length > 0;
   const canRegenerate = hasFullStackProject && onRegenerate && !isGenerating;
+  
+  // Reset feedback panel when new generation starts or lastPrompt changes
+  useEffect(() => {
+    setShowFeedback(true);
+  }, [lastPrompt, projectId]);
   
   // Sync local code with props when new code comes in (from generation)
   useEffect(() => {
@@ -420,6 +427,16 @@ export function PreviewPanel({
                       />
                     </div>
                     <ConsolePanel logs={consoleLogs} onClear={clearConsole} />
+                    {projectId && lastPrompt && showFeedback && (
+                      <div className="p-3 border-t bg-background">
+                        <FeedbackPanel
+                          projectId={projectId}
+                          prompt={lastPrompt}
+                          generatedCode={code}
+                          onClose={() => setShowFeedback(false)}
+                        />
+                      </div>
+                    )}
                     {projectId && settings && !hasFullStackProject && (
                       <div className="p-3 border-t bg-background">
                         <RefinementPanel
