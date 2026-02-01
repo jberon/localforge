@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
@@ -23,7 +29,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Settings, Trash2, Hammer, Pencil, Check, X } from "lucide-react";
+import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal } from "lucide-react";
 import type { Project, LLMSettings } from "@shared/schema";
 
 interface ProjectSidebarProps {
@@ -65,8 +71,7 @@ export function ProjectSidebar({
     setSettingsOpen(false);
   };
 
-  const startEditing = (project: Project, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const startEditing = (project: Project) => {
     setEditingId(project.id);
     setEditingName(project.name);
   };
@@ -90,18 +95,6 @@ export function ProjectSidebar({
     } else if (e.key === "Escape") {
       cancelEdit();
     }
-  };
-
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
-    if (days === 0) return "Today";
-    if (days === 1) return "Yesterday";
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   return (
@@ -138,7 +131,7 @@ export function ProjectSidebar({
                   projects.map((project) => (
                     <SidebarMenuItem key={project.id} className="mb-0.5">
                       {editingId === project.id ? (
-                        <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-accent">
+                        <div className="flex items-center gap-1 px-3 py-2 rounded-lg bg-accent">
                           <Input
                             ref={inputRef}
                             value={editingName}
@@ -148,24 +141,6 @@ export function ProjectSidebar({
                             className="h-7 text-sm border-0 bg-transparent focus-visible:ring-0 px-1"
                             data-testid={`input-rename-project-${project.id}`}
                           />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6 shrink-0"
-                            onClick={saveEdit}
-                            data-testid={`button-save-rename-${project.id}`}
-                          >
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6 shrink-0"
-                            onClick={cancelEdit}
-                            data-testid={`button-cancel-rename-${project.id}`}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
                         </div>
                       ) : (
                         <SidebarMenuButton
@@ -174,35 +149,43 @@ export function ProjectSidebar({
                           className="group py-2.5"
                           data-testid={`button-project-${project.id}`}
                         >
-                          <div className="flex-1 min-w-0">
-                            <div className="truncate font-medium text-sm">{project.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatDate(project.updatedAt)}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={(e) => startEditing(project, e)}
-                              data-testid={`button-edit-project-${project.id}`}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteProject(project.id);
-                              }}
-                              data-testid={`button-delete-project-${project.id}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
+                          <span className="truncate flex-1 text-sm">{project.name}</span>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                                data-testid={`button-menu-project-${project.id}`}
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startEditing(project);
+                                }}
+                                data-testid={`button-edit-project-${project.id}`}
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteProject(project.id);
+                                }}
+                                className="text-destructive focus:text-destructive"
+                                data-testid={`button-delete-project-${project.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </SidebarMenuButton>
                       )}
                     </SidebarMenuItem>
