@@ -11,7 +11,7 @@ LocalForge is an AI-powered application builder that leverages local Large Langu
 ## System Architecture
 
 ### Core Functionality
-LocalForge offers a chat-based interface for application generation, supporting streaming responses for real-time code generation. It includes project management features such as saving projects to a PostgreSQL database, live preview of generated applications, and code validation to ensure syntax correctness. The system also features an AI-powered prompt enhancement mechanism and iterative refinement capabilities, allowing users to modify generated applications through follow-up requests. A "Smart Mode" intelligently routes requests to different LLM configurations (planner vs. builder) based on user intent, allowing for more structured plan-and-build workflows.
+LocalForge offers a chat-based interface for application generation, supporting streaming responses for real-time code generation. It includes project management features such as saving projects to a PostgreSQL database, live preview of generated applications, and code validation to ensure syntax correctness. The system features an AI-powered prompt enhancement mechanism and iterative refinement capabilities, allowing users to modify generated applications through follow-up requests. The platform intelligently routes all requests through its smart processing system, automatically detecting intent (plan/build/refine/question) and using optimal LLM configurations for each task type.
 
 ### Frontend
 The frontend is built with **React + TypeScript** using **Vite**, styled with **Tailwind CSS** and **Shadcn UI** components. It integrates the **Monaco Editor** for code viewing and editing, and **TanStack Query** for data fetching. Key UI components include a chat panel, live preview, project sidebar, and a modular generation wizard.
@@ -24,7 +24,7 @@ The backend utilizes an **Express.js** API server. It uses the **OpenAI SDK** co
 - **LLM Integration**: Connects to LM Studio's OpenAI-compatible API, with configurable endpoint and model temperature.
 - **Code Generation**: Generates full-stack applications including database schemas, API routes, and React components.
 - **Real-time Interaction**: Streaming responses, live code preview, and instant preview updates on code changes.
-- **Intelligent Workflows**: "Smart Mode" for routing requests, AI-powered prompt enhancement, and iterative refinement.
+- **Intelligent Workflows**: Automatic intent detection and routing, AI-powered prompt enhancement, and iterative refinement.
 - **Code Quality**: Built-in code validation and AI-powered error recovery and code assistance (explain, fix, improve).
 - **User Onboarding**: First-run tutorial modal for new users.
 - **Data Model Builder**: Visual tool for defining data structures without coding.

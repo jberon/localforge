@@ -44,7 +44,7 @@ export default function Home() {
   });
   
   // Plan & Build mode state
-  const [planBuildMode, setPlanBuildMode] = useState(false);
+  const planBuildMode = true; // Always use intelligent mode
   const [isPlanning, setIsPlanning] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -808,51 +808,23 @@ export default function Home() {
               )}
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50">
-                <Zap className={`h-3.5 w-3.5 ${planBuildMode ? "text-amber-500" : "text-muted-foreground"}`} />
-                <Switch
-                  id="plan-build-mode"
-                  checked={planBuildMode}
-                  onCheckedChange={setPlanBuildMode}
-                  data-testid="switch-plan-build-mode"
-                />
-                <Label 
-                  htmlFor="plan-build-mode" 
-                  className={`text-xs cursor-pointer ${planBuildMode ? "text-foreground" : "text-muted-foreground"}`}
+              {detectedIntent && (
+                <Badge 
+                  variant="secondary" 
+                  className="text-xs gap-1"
+                  data-testid="badge-detected-intent"
                 >
-                  Smart Mode
-                </Label>
-                {planBuildMode && (
-                  <Badge 
-                    variant="outline" 
-                    className="text-[10px] px-1.5 py-0 h-4 text-amber-600 border-amber-500/30"
-                    data-testid="badge-auto-routing"
-                  >
-                    Auto
-                  </Badge>
-                )}
-              </div>
-              {planBuildMode && (
-                <>
-                  {detectedIntent && (
-                    <Badge 
-                      variant="secondary" 
-                      className="text-xs gap-1"
-                      data-testid="badge-detected-intent"
-                    >
-                      {detectedIntent === "plan" && <Brain className="h-3 w-3 text-purple-500" />}
-                      {detectedIntent === "build" && <Hammer className="h-3 w-3 text-orange-500" />}
-                      {detectedIntent === "refine" && <Hammer className="h-3 w-3 text-blue-500" />}
-                      {detectedIntent === "question" && <Brain className="h-3 w-3 text-green-500" />}
-                      {detectedIntent}
-                    </Badge>
-                  )}
-                  <DualModelSettings
-                    settings={dualModelSettings}
-                    onSettingsChange={setDualModelSettings}
-                  />
-                </>
+                  {detectedIntent === "plan" && <Brain className="h-3 w-3 text-purple-500" />}
+                  {detectedIntent === "build" && <Hammer className="h-3 w-3 text-orange-500" />}
+                  {detectedIntent === "refine" && <Hammer className="h-3 w-3 text-blue-500" />}
+                  {detectedIntent === "question" && <Brain className="h-3 w-3 text-green-500" />}
+                  {detectedIntent}
+                </Badge>
               )}
+              <DualModelSettings
+                settings={dualModelSettings}
+                onSettingsChange={setDualModelSettings}
+              />
               <DreamTeamSettings
                 settings={dreamTeamSettings}
                 onSettingsChange={setDreamTeamSettings}
@@ -910,7 +882,7 @@ export default function Home() {
               <EmptyState onCreateProject={() => createProjectMutation.mutate()} />
             ) : !displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
               <GenerationWizard
-                onGenerate={planBuildMode ? handleIntelligentGenerate : handleSendMessage}
+                onGenerate={handleIntelligentGenerate}
                 isGenerating={isGenerating || isPlanning}
                 llmConnected={llmConnected}
                 onCheckConnection={checkConnection}
@@ -934,7 +906,7 @@ export default function Home() {
                   <ChatPanel
                     messages={activeProject?.messages || []}
                     isLoading={isGenerating || isPlanning}
-                    onSendMessage={planBuildMode ? handleIntelligentGenerate : handleSendMessage}
+                    onSendMessage={handleIntelligentGenerate}
                     llmConnected={llmConnected}
                     onCheckConnection={checkConnection}
                   />
