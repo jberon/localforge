@@ -349,54 +349,44 @@ export function GenerationWizard({ onGenerate, isGenerating, llmConnected, onChe
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full p-6 overflow-y-auto">
-      <div className="max-w-2xl w-full space-y-6">
+    <div className="flex flex-col items-center justify-center h-full p-8 overflow-y-auto">
+      <div className="max-w-3xl w-full">
         {step === "template" && (
-          <>
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight">What would you like to build?</h1>
-              <p className="text-sm text-muted-foreground">
-                Choose a template to get started, or describe your own idea below
+          <div className="space-y-12">
+            <div className="text-center space-y-4">
+              <h1 className="text-4xl font-bold tracking-tight">
+                What will you create?
+              </h1>
+              <p className="text-lg text-muted-foreground max-w-md mx-auto">
+                Choose a starting point, or describe your vision.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-6 justify-items-center">
               {TEMPLATES.map((template) => (
-                <Card
+                <button
                   key={template.id}
-                  className="p-6 cursor-pointer hover-elevate"
+                  className="group flex flex-col items-center gap-3 p-4 rounded-2xl hover-elevate focus:outline-none focus:ring-2 focus:ring-primary/20"
                   onClick={() => handleTemplateSelect(template)}
                   data-testid={`card-template-${template.id}`}
                 >
-                  <div className="flex flex-col items-center text-center gap-4">
-                    <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <template.icon className="h-7 w-7 text-primary" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="font-semibold">{template.name}</h3>
-                      <p className="text-xs text-muted-foreground leading-relaxed">{template.description}</p>
-                    </div>
+                  <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center transition-colors group-hover:bg-primary/10">
+                    <template.icon className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
-                </Card>
+                  <span className="text-sm font-medium text-center">{template.name}</span>
+                </button>
               ))}
             </div>
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">or describe your own</span>
-              </div>
+            <div className="max-w-xl mx-auto">
+              <FreeformPrompt 
+                onGenerate={onGenerate} 
+                isGenerating={isGenerating} 
+                llmConnected={llmConnected}
+                onCheckConnection={onCheckConnection}
+              />
             </div>
-
-            <FreeformPrompt 
-              onGenerate={onGenerate} 
-              isGenerating={isGenerating} 
-              llmConnected={llmConnected}
-              onCheckConnection={onCheckConnection}
-            />
-          </>
+          </div>
         )}
 
         {step === "configure" && selectedTemplate && (
@@ -626,58 +616,56 @@ function FreeformPrompt({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3" data-testid="form-freeform">
-      <Textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Describe the app you want to build in detail..."
-        disabled={isGenerating}
-        data-testid="textarea-freeform-prompt"
-      />
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {llmConnected === false && (
-            <div className="flex items-center gap-2">
-              <span className="text-destructive flex items-center gap-1">
-                <XCircle className="h-3 w-3" />
-                LLM not connected
-              </span>
-              <Button 
-                type="button" 
-                variant="ghost" 
-                size="sm" 
-                onClick={onCheckConnection}
-                data-testid="button-freeform-retry"
-              >
-                Retry
-              </Button>
-            </div>
-          )}
-          {llmConnected === null && (
-            <span className="flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Checking connection...
-            </span>
-          )}
-        </div>
-        <Button
-          type="submit"
-          disabled={!prompt.trim() || isGenerating || !llmConnected}
-          className="gap-2"
-          data-testid="button-freeform-generate"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4" />
-              Generate
-            </>
-          )}
-        </Button>
+    <form onSubmit={handleSubmit} className="space-y-4" data-testid="form-freeform">
+      <div className="relative">
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Or describe your idea..."
+          disabled={isGenerating}
+          className="min-h-[100px] text-base resize-none pr-4"
+          data-testid="textarea-freeform-prompt"
+        />
+      </div>
+      
+      <div className="flex items-center justify-center gap-4">
+        {llmConnected === false ? (
+          <Button 
+            type="button" 
+            variant="outline"
+            onClick={onCheckConnection}
+            className="gap-2"
+            data-testid="button-freeform-retry"
+          >
+            <XCircle className="h-4 w-4 text-destructive" />
+            Reconnect to LLM
+          </Button>
+        ) : llmConnected === null ? (
+          <Button variant="outline" disabled className="gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Connecting...
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            size="lg"
+            disabled={!prompt.trim() || isGenerating}
+            className="gap-2 px-8"
+            data-testid="button-freeform-generate"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                Create App
+              </>
+            )}
+          </Button>
+        )}
       </div>
     </form>
   );
