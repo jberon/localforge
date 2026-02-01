@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,8 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, ArrowRight, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Sparkles, Loader2, Mic, MicOff } from "lucide-react";
 import type { TemplateConfig } from "./types";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 
 interface ConfigureStepProps {
   template: TemplateConfig;
@@ -35,6 +37,29 @@ export function ConfigureStep({
   isGenerating,
   llmConnected,
 }: ConfigureStepProps) {
+  const [activeVoiceField, setActiveVoiceField] = useState<string | null>(null);
+
+  const handleTranscript = useCallback((transcript: string) => {
+    if (activeVoiceField) {
+      onFieldChange(activeVoiceField, (fieldValues[activeVoiceField] || "") + (fieldValues[activeVoiceField] ? " " : "") + transcript);
+    }
+  }, [activeVoiceField, fieldValues, onFieldChange]);
+
+  const { isListening, isSupported, toggleListening, stopListening, error: speechError } = useSpeechRecognition(handleTranscript);
+
+  const handleVoiceToggle = (fieldId: string) => {
+    if (isListening && activeVoiceField === fieldId) {
+      stopListening();
+      setActiveVoiceField(null);
+    } else {
+      if (isListening) {
+        stopListening();
+      }
+      setActiveVoiceField(fieldId);
+      setTimeout(() => toggleListening(), 100);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -64,14 +89,35 @@ export function ConfigureStep({
               />
             )}
             {field.type === "textarea" && (
-              <Textarea
-                id={field.id}
-                value={fieldValues[field.id] || ""}
-                onChange={(e) => onFieldChange(field.id, e.target.value)}
-                placeholder={field.placeholder}
-                className="min-h-[80px]"
-                data-testid={`textarea-wizard-${field.id}`}
-              />
+              <div className="relative">
+                <Textarea
+                  id={field.id}
+                  value={fieldValues[field.id] || ""}
+                  onChange={(e) => onFieldChange(field.id, e.target.value)}
+                  placeholder={field.placeholder}
+                  className="min-h-[80px] pr-12"
+                  data-testid={`textarea-wizard-${field.id}`}
+                />
+                {isSupported && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={isListening && activeVoiceField === field.id ? "default" : "ghost"}
+                    onClick={() => handleVoiceToggle(field.id)}
+                    className={`absolute right-2 top-2 ${isListening && activeVoiceField === field.id ? "bg-red-500 hover:bg-red-600 animate-pulse" : ""}`}
+                    data-testid={`button-voice-${field.id}`}
+                  >
+                    {isListening && activeVoiceField === field.id ? (
+                      <MicOff className="h-4 w-4" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                {isListening && activeVoiceField === field.id && (
+                  <p className="text-xs text-red-500 mt-1">Listening... Click mic to stop</p>
+                )}
+              </div>
             )}
             {field.type === "select" && field.options && (
               <Select
@@ -93,6 +139,10 @@ export function ConfigureStep({
           </div>
         ))}
       </div>
+
+      {speechError && (
+        <p className="text-xs text-destructive text-center">{speechError}</p>
+      )}
 
       <div className="flex justify-between items-center pt-4 border-t">
         {onQuickGenerate ? (

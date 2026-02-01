@@ -109,6 +109,7 @@ Expert advisory system that pauses to consult multiple AI personas for important
 - **Inline Connection Helper**: Friendly messaging when LM Studio is offline
 - **Command Palette**: Press Cmd+K (Mac) or Ctrl+K (Windows/Linux) for quick access to all actions
 - **Generation Phase Tracking**: Real-time progress indicators showing what's happening during generation (e.g., "Analyzing request...", "Generating code...", "Writing code...", "Finalizing...")
+- **Voice Input**: Click the microphone button to dictate app descriptions instead of typing. Uses browser's built-in speech recognition (Chrome, Edge, Safari). Red pulsing mic indicates active listening.
 
 ### File Explorer (Replit-like Interface)
 - **Tree View**: Hierarchical folder/file display with expand/collapse

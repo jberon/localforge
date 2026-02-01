@@ -143,13 +143,15 @@ export function ProjectSidebar({
                           />
                         </div>
                       ) : (
-                        <SidebarMenuButton
-                          isActive={project.id === activeProjectId}
-                          onClick={() => onSelectProject(project.id)}
-                          className="group/item py-2.5"
-                          data-testid={`button-project-${project.id}`}
-                        >
-                          <span className="truncate flex-1 text-sm">{project.name}</span>
+                        <div className="flex items-center group/item">
+                          <SidebarMenuButton
+                            isActive={project.id === activeProjectId}
+                            onClick={() => onSelectProject(project.id)}
+                            className="flex-1 py-2.5"
+                            data-testid={`button-project-${project.id}`}
+                          >
+                            <span className="truncate flex-1 text-sm">{project.name}</span>
+                          </SidebarMenuButton>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -186,7 +188,7 @@ export function ProjectSidebar({
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </SidebarMenuButton>
+                        </div>
                       )}
                     </SidebarMenuItem>
                   ))

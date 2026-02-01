@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, User, Sparkles, FileCode, Loader2 } from "lucide-react";
+import { Send, User, Sparkles, FileCode, Loader2, Mic, MicOff } from "lucide-react";
 import type { Message, DataModel } from "@shared/schema";
 import { GenerationWizard } from "./generation-wizard";
 import { WorkingIndicator } from "./working-indicator";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 
 interface ChatPanelProps {
   messages: Message[];
@@ -104,6 +105,12 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
   const [input, setInput] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleTranscript = useCallback((transcript: string) => {
+    setInput((prev) => prev + (prev ? " " : "") + transcript);
+  }, []);
+
+  const { isListening, isSupported, toggleListening, error: speechError } = useSpeechRecognition(handleTranscript);
 
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -212,28 +219,53 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Describe what you want to change..."
-                  className="resize-none pr-14 text-sm"
+                  className="resize-none pr-24 text-sm"
                   rows={3}
                   disabled={isLoading}
                   data-testid="input-chat"
                 />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!input.trim() || isLoading}
-                  className="absolute right-2 bottom-2"
-                  data-testid="button-send"
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
+                <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                  {isSupported && (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant={isListening ? "default" : "ghost"}
+                      onClick={toggleListening}
+                      disabled={isLoading}
+                      className={isListening ? "bg-red-500 hover:bg-red-600 animate-pulse" : ""}
+                      data-testid="button-voice-input"
+                    >
+                      {isListening ? (
+                        <MicOff className="h-4 w-4" />
+                      ) : (
+                        <Mic className="h-4 w-4" />
+                      )}
+                    </Button>
                   )}
-                </Button>
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!input.trim() || isLoading}
+                    data-testid="button-send"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2 text-center">
-                Press Enter to send, Shift+Enter for new line
+                {isListening ? (
+                  <span className="text-red-500">Listening... Click mic to stop</span>
+                ) : (
+                  "Press Enter to send, Shift+Enter for new line"
+                )}
               </p>
+              {speechError && (
+                <p className="text-xs text-destructive mt-1 text-center">{speechError}</p>
+              )}
             </form>
           </div>
         </div>
