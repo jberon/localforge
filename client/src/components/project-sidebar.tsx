@@ -146,7 +146,7 @@ export function ProjectSidebar({
                         <SidebarMenuButton
                           isActive={project.id === activeProjectId}
                           onClick={() => onSelectProject(project.id)}
-                          className="group py-2.5"
+                          className="group/item py-2.5"
                           data-testid={`button-project-${project.id}`}
                         >
                           <span className="truncate flex-1 text-sm">{project.name}</span>
@@ -155,7 +155,7 @@ export function ProjectSidebar({
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                className="h-7 w-7 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0"
                                 onClick={(e) => e.stopPropagation()}
                                 data-testid={`button-menu-project-${project.id}`}
                               >
