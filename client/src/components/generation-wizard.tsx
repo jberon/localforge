@@ -360,21 +360,21 @@ export function GenerationWizard({ onGenerate, isGenerating, llmConnected, onChe
               </p>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {TEMPLATES.map((template) => (
                 <Card
                   key={template.id}
-                  className="p-4 cursor-pointer hover-elevate transition-all"
+                  className="p-6 cursor-pointer hover-elevate"
                   onClick={() => handleTemplateSelect(template)}
                   data-testid={`card-template-${template.id}`}
                 >
-                  <div className="flex flex-col items-center text-center gap-2">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <template.icon className="h-5 w-5 text-primary" />
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <template.icon className="h-7 w-7 text-primary" />
                     </div>
-                    <div>
-                      <h3 className="font-medium text-sm">{template.name}</h3>
-                      <p className="text-xs text-muted-foreground">{template.description}</p>
+                    <div className="space-y-1">
+                      <h3 className="font-semibold">{template.name}</h3>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{template.description}</p>
                     </div>
                   </div>
                 </Card>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -6,8 +6,11 @@ import { ProjectSidebar } from "@/components/project-sidebar";
 import { ChatPanel } from "@/components/chat-panel";
 import { PreviewPanel } from "@/components/preview-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { EmptyState } from "@/components/empty-state";
+import { SuccessCelebration } from "@/components/success-celebration";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Wifi, WifiOff } from "lucide-react";
 import JSZip from "jszip";
@@ -19,6 +22,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingCode, setStreamingCode] = useState("");
   const [llmConnected, setLlmConnected] = useState<boolean | null>(null);
+  const [showCelebration, setShowCelebration] = useState(false);
   const [settings, setSettings] = useState<LLMSettings>({
     endpoint: "http://localhost:1234/v1",
     model: "",
@@ -93,6 +97,18 @@ export default function Home() {
     },
   });
 
+  // Keyboard shortcuts (Cmd+N on Mac, Ctrl+N on Windows/Linux)
+  const shortcuts = useMemo(() => [
+    {
+      key: "n",
+      cmdOrCtrl: true,
+      action: () => createProjectMutation.mutate(),
+      description: "New project",
+    },
+  ], [createProjectMutation]);
+
+  useKeyboardShortcuts(shortcuts);
+
   const handleSendMessage = useCallback(
     async (content: string, dataModel?: DataModel) => {
       let projectId = activeProjectId;
@@ -135,6 +151,7 @@ export default function Home() {
           
           await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
           
+          setShowCelebration(true);
           toast({
             title: "Full-Stack Project Generated!",
             description: "Check the Files tab to view and download your project.",
@@ -346,38 +363,43 @@ export default function Home() {
           </header>
           
           <main className="flex-1 overflow-hidden">
-            <ResizablePanelGroup direction="horizontal">
-              <ResizablePanel defaultSize={45} minSize={30}>
-                <ChatPanel
-                  messages={activeProject?.messages || []}
-                  isLoading={isGenerating}
-                  onSendMessage={handleSendMessage}
-                  llmConnected={llmConnected}
-                  onCheckConnection={checkConnection}
-                />
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={55} minSize={30}>
-                <PreviewPanel
-                  code={displayCode}
-                  isGenerating={isGenerating}
-                  onDownload={handleDownload}
-                  generatedFiles={activeProject?.generatedFiles}
-                  projectName={activeProject?.name || "My Project"}
-                  lastPrompt={activeProject?.lastPrompt}
-                  dataModel={activeProject?.dataModel}
-                  validation={activeProject?.validation}
-                  onRegenerate={(prompt, dataModel) => {
-                    if (activeProject && dataModel) {
-                      handleSendMessage(prompt, dataModel);
-                    }
-                  }}
-                />
-              </ResizablePanel>
-            </ResizablePanelGroup>
+            {projects.length === 0 && !activeProject ? (
+              <EmptyState onCreateProject={() => createProjectMutation.mutate()} />
+            ) : (
+              <ResizablePanelGroup direction="horizontal">
+                <ResizablePanel defaultSize={45} minSize={30}>
+                  <ChatPanel
+                    messages={activeProject?.messages || []}
+                    isLoading={isGenerating}
+                    onSendMessage={handleSendMessage}
+                    llmConnected={llmConnected}
+                    onCheckConnection={checkConnection}
+                  />
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={55} minSize={30}>
+                  <PreviewPanel
+                    code={displayCode}
+                    isGenerating={isGenerating}
+                    onDownload={handleDownload}
+                    generatedFiles={activeProject?.generatedFiles}
+                    projectName={activeProject?.name || "My Project"}
+                    lastPrompt={activeProject?.lastPrompt}
+                    dataModel={activeProject?.dataModel}
+                    validation={activeProject?.validation}
+                    onRegenerate={(prompt, dataModel) => {
+                      if (activeProject && dataModel) {
+                        handleSendMessage(prompt, dataModel);
+                      }
+                    }}
+                  />
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            )}
           </main>
         </div>
       </div>
+      <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
     </SidebarProvider>
   );
 }
