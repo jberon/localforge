@@ -72,6 +72,22 @@ LocalForge includes built-in version control for projects:
 - **Test Steps**: Auto-generated test scenarios based on code analysis
 - **Visual Feedback**: See test progress with animated cursor overlay
 
+### File Explorer (Replit-like Interface)
+- **Tree View**: Hierarchical folder/file display with expand/collapse
+- **Search Files**: Filter files by name in the search bar
+- **File Icons**: Extension-based icons for common file types
+- **Monaco Editor**: View and edit files with syntax highlighting
+- **File Operations**:
+  - Create new files with path and content
+  - Edit files with "Modified" indicator for unsaved changes
+  - Delete files with confirmation dialog
+  - Save files with real-time sync to backend
+- **Real-time Updates**: Files sync automatically during generation
+- **API Endpoints**:
+  - `POST /api/projects/:id/files` - Create a new file
+  - `PATCH /api/projects/:id/files` - Update file content
+  - `DELETE /api/projects/:id/files` - Delete a file
+
 ## Local LLM Optimization (Mac M4 Pro)
 
 ### LM Studio Integration
