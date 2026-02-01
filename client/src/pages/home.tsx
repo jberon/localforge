@@ -48,6 +48,7 @@ export default function Home() {
   const [detectedIntent, setDetectedIntent] = useState<RequestIntent | null>(null);
   const [autoRouting, setAutoRouting] = useState(true);
   const [dualModelSettings, setDualModelSettings] = useState<DualModelSettingsType>({
+    mode: "auto",
     planner: {
       endpoint: "http://localhost:1234/v1",
       model: "",

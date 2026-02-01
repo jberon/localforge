@@ -2,9 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Loader2, CheckCircle2, XCircle, Wand2, Database, Brain } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle2, XCircle, Wand2, Database, Brain, Rocket } from "lucide-react";
 import type { TemplateConfig } from "./types";
-import type { DataModel } from "@shared/schema";
+import type { DataModel, ProductionModules } from "@shared/schema";
 
 interface ReviewStepProps {
   template: TemplateConfig;
@@ -16,7 +16,25 @@ interface ReviewStepProps {
   onGenerate: () => void;
   onCheckConnection: () => void;
   planBuildMode?: boolean;
+  productionModules?: ProductionModules;
 }
+
+const MODULE_LABELS: Record<keyof ProductionModules, string> = {
+  authentication: "Auth",
+  authorization: "RBAC",
+  testing: "Testing",
+  cicd: "CI/CD",
+  docker: "Docker",
+  migrations: "Migrations",
+  logging: "Logging",
+  errorHandling: "Errors",
+  apiDocs: "API Docs",
+  envConfig: "Env Config",
+  rateLimiting: "Rate Limit",
+  caching: "Caching",
+  monitoring: "Monitoring",
+  billing: "Billing",
+};
 
 export function ReviewStep({
   template,
@@ -28,7 +46,13 @@ export function ReviewStep({
   onGenerate,
   onCheckConnection,
   planBuildMode,
+  productionModules,
 }: ReviewStepProps) {
+  const isProduction = productionModules !== undefined;
+  const enabledModules = productionModules 
+    ? (Object.entries(productionModules).filter(([_, v]) => v) as [keyof ProductionModules, boolean][])
+    : [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -47,16 +71,35 @@ export function ReviewStep({
             <template.icon className="h-3 w-3" />
             {template.name}
           </Badge>
+          {isProduction && (
+            <Badge variant="default" className="gap-1 bg-gradient-to-r from-purple-600 to-blue-600">
+              <Rocket className="h-3 w-3" />
+              Production
+            </Badge>
+          )}
           {dataModel.enableDatabase && dataModel.entities.length > 0 && (
             <Badge variant="default" className="gap-1">
               <Database className="h-3 w-3" />
               Full-Stack
             </Badge>
           )}
-          {(!dataModel.enableDatabase || dataModel.entities.length === 0) && (
+          {(!dataModel.enableDatabase || dataModel.entities.length === 0) && !isProduction && (
             <Badge variant="outline" className="gap-1">Frontend Only</Badge>
           )}
         </div>
+
+        {isProduction && enabledModules.length > 0 && (
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Production Modules</Label>
+            <div className="flex flex-wrap gap-1">
+              {enabledModules.map(([key]) => (
+                <Badge key={key} variant="outline" className="text-xs">
+                  {MODULE_LABELS[key]}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
         {dataModel.enableDatabase && dataModel.entities.length > 0 && (
           <div className="space-y-2">

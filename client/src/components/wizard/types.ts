@@ -1,7 +1,9 @@
 import type { LucideIcon } from "lucide-react";
-import type { DataModel } from "@shared/schema";
+import type { DataModel, ProductionModules } from "@shared/schema";
 
 export type TemplateType = "dashboard" | "todo" | "data-tool" | "landing" | "calculator" | "creative";
+export type ProductionTemplateType = "saas-starter" | "marketplace" | "admin-dashboard" | "api-service" | "ecommerce" | "content-platform";
+export type TemplateCategory = "quick" | "production";
 
 export interface FieldConfig {
   id: string;
@@ -19,15 +21,35 @@ export interface TemplateConfig {
   icon: LucideIcon;
   fields: FieldConfig[];
   promptBuilder: (values: Record<string, string>) => string;
-  temperature: number; // Auto-optimized temperature for this template type
+  temperature: number;
 }
 
-export type WizardStep = "template" | "configure" | "data-model" | "review";
+export interface ProductionTemplateConfig {
+  id: ProductionTemplateType;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  category: "saas" | "marketplace" | "internal" | "api" | "ecommerce" | "content";
+  fields: FieldConfig[];
+  defaultModules: ProductionModules;
+  suggestedStack: {
+    frontend: string;
+    backend: string;
+    database: string;
+  };
+  promptBuilder: (values: Record<string, string>, modules: ProductionModules) => string;
+  temperature: number;
+}
+
+export type WizardStep = "template" | "configure" | "modules" | "data-model" | "review";
 
 export interface WizardState {
   step: WizardStep;
+  templateCategory: TemplateCategory;
   selectedTemplate: TemplateConfig | null;
+  selectedProductionTemplate: ProductionTemplateConfig | null;
   fieldValues: Record<string, string>;
+  productionModules: ProductionModules;
   dataModel: DataModel;
 }
 

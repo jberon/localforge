@@ -4,10 +4,16 @@ import {
   ConfigureStep,
   DataModelBuilder,
   ReviewStep,
+  ModuleSelector,
   DEFAULT_DATA_MODELS,
+  PRODUCTION_DATA_MODELS,
+  DEFAULT_PRODUCTION_MODULES,
 } from "./wizard";
-import type { TemplateConfig, WizardStep, GenerationWizardProps } from "./wizard";
-import type { DataModel, LLMSettings } from "@shared/schema";
+import type { TemplateConfig, ProductionTemplateConfig, WizardStep, GenerationWizardProps } from "./wizard";
+import type { DataModel, LLMSettings, ProductionModules } from "@shared/schema";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 
 interface ExtendedWizardProps extends GenerationWizardProps {
   settings?: LLMSettings;
@@ -24,14 +30,30 @@ export function GenerationWizard({
 }: ExtendedWizardProps) {
   const [step, setStep] = useState<WizardStep>("template");
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateConfig | null>(null);
+  const [selectedProductionTemplate, setSelectedProductionTemplate] = useState<ProductionTemplateConfig | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [dataModel, setDataModel] = useState<DataModel>({ entities: [], enableDatabase: false });
+  const [productionModules, setProductionModules] = useState<ProductionModules>(DEFAULT_PRODUCTION_MODULES);
+
+  const isProductionMode = selectedProductionTemplate !== null;
 
   const handleTemplateSelect = (template: TemplateConfig) => {
     setSelectedTemplate(template);
+    setSelectedProductionTemplate(null);
     setFieldValues({});
     const defaultEntities = DEFAULT_DATA_MODELS[template.id] || [];
     setDataModel({ entities: defaultEntities, enableDatabase: defaultEntities.length > 0 });
+    setProductionModules(DEFAULT_PRODUCTION_MODULES);
+    setStep("configure");
+  };
+
+  const handleProductionTemplateSelect = (template: ProductionTemplateConfig, modules: ProductionModules) => {
+    setSelectedProductionTemplate(template);
+    setSelectedTemplate(null);
+    setFieldValues({});
+    const defaultEntities = PRODUCTION_DATA_MODELS[template.id] || [];
+    setDataModel({ entities: defaultEntities, enableDatabase: true });
+    setProductionModules(modules);
     setStep("configure");
   };
 
@@ -43,8 +65,15 @@ export function GenerationWizard({
     if (step === "configure") {
       setStep("template");
       setSelectedTemplate(null);
-    } else if (step === "data-model") {
+      setSelectedProductionTemplate(null);
+    } else if (step === "modules") {
       setStep("configure");
+    } else if (step === "data-model") {
+      if (isProductionMode) {
+        setStep("modules");
+      } else {
+        setStep("configure");
+      }
     } else if (step === "review") {
       setStep("data-model");
     }
@@ -52,6 +81,12 @@ export function GenerationWizard({
 
   const handleNext = () => {
     if (step === "configure") {
+      if (isProductionMode) {
+        setStep("modules");
+      } else {
+        setStep("data-model");
+      }
+    } else if (step === "modules") {
       setStep("data-model");
     } else if (step === "data-model") {
       setStep("review");
@@ -59,14 +94,24 @@ export function GenerationWizard({
   };
 
   const canProceed = () => {
-    if (!selectedTemplate) return false;
-    const requiredFields = selectedTemplate.fields.filter((f) => f.required);
+    const template = selectedTemplate || selectedProductionTemplate;
+    if (!template) return false;
+    const requiredFields = template.fields.filter((f) => f.required);
     return requiredFields.every((f) => fieldValues[f.id]?.trim());
   };
 
   const buildFullPrompt = () => {
-    if (!selectedTemplate) return "";
-    let prompt = selectedTemplate.promptBuilder(fieldValues);
+    const template = selectedTemplate || selectedProductionTemplate;
+    if (!template) return "";
+    
+    let prompt: string;
+    if (selectedProductionTemplate) {
+      prompt = selectedProductionTemplate.promptBuilder(fieldValues, productionModules);
+    } else if (selectedTemplate) {
+      prompt = selectedTemplate.promptBuilder(fieldValues);
+    } else {
+      return "";
+    }
 
     if (dataModel.enableDatabase && dataModel.entities.length > 0) {
       prompt += "\n\n## Full-Stack Requirements:\n";
@@ -102,17 +147,26 @@ export function GenerationWizard({
   };
 
   const generatedPrompt = buildFullPrompt();
+  const currentTemplate = selectedTemplate || selectedProductionTemplate;
+  const currentTemperature = currentTemplate?.temperature || 0.5;
 
   const handleGenerate = () => {
-    if (generatedPrompt && llmConnected && selectedTemplate) {
-      onGenerate(generatedPrompt, dataModel, selectedTemplate.temperature);
+    if (generatedPrompt && llmConnected && currentTemplate) {
+      onGenerate(generatedPrompt, dataModel, currentTemperature);
     }
   };
 
   const handleQuickGenerate = () => {
-    if (selectedTemplate && canProceed() && llmConnected) {
-      const quickPrompt = selectedTemplate.promptBuilder(fieldValues);
-      onGenerate(quickPrompt, undefined, selectedTemplate.temperature);
+    if (currentTemplate && canProceed() && llmConnected) {
+      let quickPrompt: string;
+      if (selectedProductionTemplate) {
+        quickPrompt = selectedProductionTemplate.promptBuilder(fieldValues, productionModules);
+      } else if (selectedTemplate) {
+        quickPrompt = selectedTemplate.promptBuilder(fieldValues);
+      } else {
+        return;
+      }
+      onGenerate(quickPrompt, undefined, currentTemperature);
     }
   };
 
@@ -127,6 +181,7 @@ export function GenerationWizard({
         {step === "template" && (
           <TemplateSelector
             onSelect={handleTemplateSelect}
+            onSelectProduction={handleProductionTemplateSelect}
             onGenerate={onGenerate}
             isGenerating={isGenerating}
             llmConnected={llmConnected}
@@ -135,33 +190,79 @@ export function GenerationWizard({
           />
         )}
 
-        {step === "configure" && selectedTemplate && (
+        {step === "configure" && currentTemplate && (
           <ConfigureStep
-            template={selectedTemplate}
+            template={selectedTemplate || {
+              ...selectedProductionTemplate!,
+              id: selectedProductionTemplate!.id as any,
+              promptBuilder: (v: Record<string, string>) => selectedProductionTemplate!.promptBuilder(v, productionModules),
+            }}
             fieldValues={fieldValues}
             onFieldChange={handleFieldChange}
             onBack={handleBack}
             onNext={handleNext}
-            onQuickGenerate={handleQuickGenerate}
+            onQuickGenerate={isProductionMode ? undefined : handleQuickGenerate}
             canProceed={canProceed()}
             isGenerating={isGenerating}
             llmConnected={llmConnected}
           />
         )}
 
-        {step === "data-model" && selectedTemplate && (
+        {step === "modules" && selectedProductionTemplate && (
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle>Configure Production Modules</CardTitle>
+              <CardDescription>
+                Select the features to include in your {selectedProductionTemplate.name}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <ModuleSelector
+                modules={productionModules}
+                onChange={setProductionModules}
+                disabled={isGenerating}
+              />
+              
+              <div className="flex justify-between gap-4 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  disabled={isGenerating}
+                  data-testid="button-modules-back"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back
+                </Button>
+                <Button
+                  onClick={handleNext}
+                  disabled={isGenerating}
+                  data-testid="button-modules-next"
+                >
+                  Continue to Data Model
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {step === "data-model" && currentTemplate && (
           <DataModelBuilder
             dataModel={dataModel}
             onChange={setDataModel}
             onBack={handleBack}
             onNext={handleNext}
-            onSkip={handleSkipDataModel}
+            onSkip={isProductionMode ? undefined : handleSkipDataModel}
           />
         )}
 
-        {step === "review" && selectedTemplate && (
+        {step === "review" && currentTemplate && (
           <ReviewStep
-            template={selectedTemplate}
+            template={selectedTemplate || {
+              ...selectedProductionTemplate!,
+              id: selectedProductionTemplate!.id as any,
+              promptBuilder: (v: Record<string, string>) => selectedProductionTemplate!.promptBuilder(v, productionModules),
+            }}
             dataModel={dataModel}
             generatedPrompt={generatedPrompt}
             llmConnected={llmConnected}
@@ -170,6 +271,7 @@ export function GenerationWizard({
             onGenerate={handleGenerate}
             onCheckConnection={onCheckConnection}
             planBuildMode={planBuildMode}
+            productionModules={isProductionMode ? productionModules : undefined}
           />
         )}
       </div>

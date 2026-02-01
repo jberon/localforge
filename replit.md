@@ -30,6 +30,36 @@ The backend utilizes an **Express.js** API server. It uses the **OpenAI SDK** co
 - **Data Model Builder**: Visual tool for defining data structures without coding.
 - **Analytics & Learning System**: Tracks user actions, collects feedback, and uses LLM-powered analysis to generate insights and optimize template defaults. Includes a portfolio view of generated projects.
 
+### Production-Grade Development
+LocalForge supports building production-ready applications with enterprise features:
+
+- **Production Templates**: Six production-grade starter templates:
+  - **SaaS Starter**: Auth, billing, user management, subscription tiers
+  - **Marketplace**: Two-sided marketplace with listings, search, transactions
+  - **Admin Dashboard**: Internal tools with analytics, CRUD, user management
+  - **API Service**: RESTful API with auth, rate limiting, documentation
+  - **E-commerce**: Online store with cart, checkout, orders
+  - **Content Platform**: Blog/CMS with rich content management
+
+- **Production Modules**: Configurable enterprise features:
+  - Authentication & Authorization (RBAC)
+  - Testing Suite (unit, integration, e2e)
+  - CI/CD Pipeline (GitHub Actions)
+  - Docker Support
+  - Database Migrations
+  - Structured Logging
+  - Error Handling
+  - API Documentation (OpenAPI)
+  - Environment Configuration
+  - Rate Limiting & Caching
+  - Monitoring & Health Checks
+  - Billing Integration (Stripe stubs)
+
+- **Code Generators** (server/generators/):
+  - `testing.ts`: Unit tests, integration tests, e2e stubs, Playwright config
+  - `cicd.ts`: GitHub Actions, Dockerfile, docker-compose, Makefile
+  - `environment.ts`: .env templates, config loader, health checks, logging middleware
+
 ## External Dependencies
 - **LM Studio**: Used for local LLM inference via its OpenAI-compatible API.
 - **PostgreSQL**: Primary database for persistent project storage.

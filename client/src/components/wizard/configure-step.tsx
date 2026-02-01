@@ -18,7 +18,7 @@ interface ConfigureStepProps {
   onFieldChange: (fieldId: string, value: string) => void;
   onBack: () => void;
   onNext: () => void;
-  onQuickGenerate: () => void;
+  onQuickGenerate?: () => void;
   canProceed: boolean;
   isGenerating: boolean;
   llmConnected: boolean | null;
@@ -95,27 +95,31 @@ export function ConfigureStep({
       </div>
 
       <div className="flex justify-between items-center pt-4 border-t">
-        <Button
-          variant="default"
-          onClick={onQuickGenerate}
-          disabled={!canProceed || isGenerating || !llmConnected}
-          className="gap-2"
-          data-testid="button-quick-generate"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Creating...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4" />
-              Quick Generate
-            </>
-          )}
-        </Button>
+        {onQuickGenerate ? (
+          <Button
+            variant="default"
+            onClick={onQuickGenerate}
+            disabled={!canProceed || isGenerating || !llmConnected}
+            className="gap-2"
+            data-testid="button-quick-generate"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                Quick Generate
+              </>
+            )}
+          </Button>
+        ) : (
+          <div />
+        )}
         <Button onClick={onNext} disabled={!canProceed} variant="outline" className="gap-2" data-testid="button-wizard-next">
-          Customize More
+          {onQuickGenerate ? "Customize More" : "Continue"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </div>

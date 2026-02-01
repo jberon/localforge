@@ -19,7 +19,7 @@ interface DataModelBuilderProps {
   onChange: (model: DataModel) => void;
   onBack: () => void;
   onNext: () => void;
-  onSkip: () => void;
+  onSkip?: () => void;
 }
 
 let idCounter = 0;

@@ -1390,7 +1390,7 @@ Generate complete, working code that implements this plan. Follow the file struc
         return res.status(404).json({ error: "Project not found" });
       }
 
-      await storage.updateProject(id, { plan: null });
+      await storage.updateProject(id, { plan: undefined });
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete plan error:", error);

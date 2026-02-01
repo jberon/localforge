@@ -124,6 +124,40 @@ export const dualModelSettingsSchema = z.object({
   }),
 });
 
+// Production modules for enterprise-grade applications
+export const productionModulesSchema = z.object({
+  authentication: z.boolean().default(false),
+  authorization: z.boolean().default(false), // RBAC roles
+  testing: z.boolean().default(false),
+  cicd: z.boolean().default(false),
+  docker: z.boolean().default(false),
+  migrations: z.boolean().default(false),
+  logging: z.boolean().default(false),
+  errorHandling: z.boolean().default(false),
+  apiDocs: z.boolean().default(false),
+  envConfig: z.boolean().default(false),
+  rateLimiting: z.boolean().default(false),
+  caching: z.boolean().default(false),
+  monitoring: z.boolean().default(false),
+  billing: z.boolean().default(false), // Stripe integration stubs
+});
+
+// Production template configuration
+export const productionTemplateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  category: z.enum(["saas", "marketplace", "internal", "api", "ecommerce", "content"]),
+  modules: productionModulesSchema,
+  baseEntities: z.array(dataEntitySchema),
+  suggestedStack: z.object({
+    frontend: z.string(),
+    backend: z.string(),
+    database: z.string(),
+    hosting: z.string().optional(),
+  }),
+});
+
 export type Message = z.infer<typeof messageSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
@@ -139,6 +173,8 @@ export type DataModel = z.infer<typeof dataModelSchema>;
 export type GeneratedFile = z.infer<typeof generatedFileSchema>;
 export type ValidationResult = z.infer<typeof validationResultSchema>;
 export type GenerationMetrics = z.infer<typeof generationMetricsSchema>;
+export type ProductionModules = z.infer<typeof productionModulesSchema>;
+export type ProductionTemplate = z.infer<typeof productionTemplateSchema>;
 
 // Database table for persistent project storage
 export const projects = pgTable("projects", {
@@ -172,6 +208,7 @@ export const analyticsEventTypes = [
   "generation_completed", 
   "generation_failed",
   "template_selected",
+  "production_template_selected",
   "project_created",
   "project_deleted",
   "code_downloaded",
