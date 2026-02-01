@@ -293,6 +293,8 @@ export default function Home() {
                   messages={activeProject?.messages || []}
                   isLoading={isGenerating}
                   onSendMessage={handleSendMessage}
+                  llmConnected={llmConnected}
+                  onCheckConnection={checkConnection}
                 />
               </ResizablePanel>
               <ResizableHandle withHandle />

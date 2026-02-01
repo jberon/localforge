@@ -1,17 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Loader2, User, Bot, Sparkles } from "lucide-react";
+import { Send, Loader2, User, Bot } from "lucide-react";
 import type { Message } from "@shared/schema";
-import { ExamplePrompts } from "./example-prompts";
+import { GenerationWizard } from "./generation-wizard";
 
 interface ChatPanelProps {
   messages: Message[];
   isLoading: boolean;
   onSendMessage: (content: string) => void;
+  llmConnected: boolean | null;
+  onCheckConnection: () => void;
 }
 
-export function ChatPanel({ messages, isLoading, onSendMessage }: ChatPanelProps) {
+export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, onCheckConnection }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -37,15 +39,15 @@ export function ChatPanel({ messages, isLoading, onSendMessage }: ChatPanelProps
     }
   };
 
-  const handleSelectPrompt = (prompt: string) => {
-    setInput(prompt);
-    textareaRef.current?.focus();
-  };
-
   return (
     <div className="flex flex-col h-full">
       {messages.length === 0 ? (
-        <ExamplePrompts onSelectPrompt={handleSelectPrompt} />
+        <GenerationWizard
+          onGenerate={onSendMessage}
+          isGenerating={isLoading}
+          llmConnected={llmConnected}
+          onCheckConnection={onCheckConnection}
+        />
       ) : (
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
           <div className="space-y-4 max-w-2xl mx-auto">

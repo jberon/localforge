@@ -50,9 +50,12 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Temperature slider for LLM creativity control
 
 ## Recent Changes
+- Added Generation Wizard with template selection and structured inputs
+- Templates: Dashboard, Task Manager, Data Analyzer, Landing Page, Calculator, Creative Apps
+- Smart prompt generation from wizard selections
+- Preflight LLM connection check before generation
 - Added streaming responses with real-time code preview
 - Added LLM connection status indicator
-- Fixed UI layout issues with example prompts and chat input
 - Improved SSE parsing with proper buffering
 - Preview panel now waits for generation to complete before rendering
 
