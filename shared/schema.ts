@@ -51,6 +51,33 @@ export const generationMetricsSchema = z.object({
   tokenCount: z.number().optional(),
 });
 
+// Plan structure from the planning model (must be defined before projectSchema)
+export const planStepSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  type: z.enum(["architecture", "component", "api", "database", "styling", "testing"]),
+  status: z.enum(["pending", "in_progress", "completed", "skipped"]).default("pending"),
+});
+
+export const planSchema = z.object({
+  id: z.string(),
+  summary: z.string(),
+  assumptions: z.array(z.string()).optional(),
+  architecture: z.string().optional(),
+  filePlan: z.array(z.object({
+    path: z.string(),
+    purpose: z.string(),
+    dependencies: z.array(z.string()).optional(),
+  })).optional(),
+  dataModel: dataModelSchema.optional(),
+  steps: z.array(planStepSchema),
+  risks: z.array(z.string()).optional(),
+  status: z.enum(["draft", "approved", "building", "completed", "failed"]).default("draft"),
+  createdAt: z.number(),
+  approvedAt: z.number().optional(),
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -62,6 +89,7 @@ export const projectSchema = z.object({
   lastPrompt: z.string().optional(),
   validation: validationResultSchema.optional(),
   generationMetrics: generationMetricsSchema.optional(),
+  plan: planSchema.optional(), // Current implementation plan
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -75,11 +103,36 @@ export const llmSettingsSchema = z.object({
   temperature: z.number().min(0).max(2).default(0.7),
 });
 
+// Model settings for Plan/Build mode
+export const modelConfigSchema = z.object({
+  endpoint: z.string().default("http://localhost:1234/v1"),
+  model: z.string().default(""),
+  temperature: z.number().min(0).max(2).default(0.7),
+});
+
+export const dualModelSettingsSchema = z.object({
+  mode: z.enum(["plan", "build", "auto"]).default("auto"),
+  planner: modelConfigSchema.default({
+    endpoint: "http://localhost:1234/v1",
+    model: "",
+    temperature: 0.3, // Lower for structured planning
+  }),
+  builder: modelConfigSchema.default({
+    endpoint: "http://localhost:1234/v1",
+    model: "",
+    temperature: 0.5, // Medium for code generation
+  }),
+});
+
 export type Message = z.infer<typeof messageSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type LLMSettings = z.infer<typeof llmSettingsSchema>;
+export type ModelConfig = z.infer<typeof modelConfigSchema>;
+export type DualModelSettings = z.infer<typeof dualModelSettingsSchema>;
+export type PlanStep = z.infer<typeof planStepSchema>;
+export type Plan = z.infer<typeof planSchema>;
 export type DataField = z.infer<typeof dataFieldSchema>;
 export type DataEntity = z.infer<typeof dataEntitySchema>;
 export type DataModel = z.infer<typeof dataModelSchema>;
@@ -99,6 +152,7 @@ export const projects = pgTable("projects", {
   lastPrompt: text("last_prompt"),
   validation: jsonb("validation"),
   generationMetrics: jsonb("generation_metrics"),
+  plan: jsonb("plan"), // Current implementation plan
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });

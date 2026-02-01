@@ -936,7 +936,7 @@ Provide a clear, helpful answer based on the data. Be specific with numbers when
   // Get code inventory - breakdown of all generated code
   app.get("/api/analytics/code-inventory", async (req, res) => {
     try {
-      const allProjects = await storage.getAllProjects();
+      const allProjects = await storage.getProjects();
       
       // Language detection helpers
       const detectLanguage = (filename: string, content: string): string => {
@@ -1054,7 +1054,7 @@ Provide a clear, helpful answer based on the data. Be specific with numbers when
   // Export all projects as a package manifest
   app.get("/api/analytics/export-manifest", async (req, res) => {
     try {
-      const allProjects = await storage.getAllProjects();
+      const allProjects = await storage.getProjects();
       
       const manifest = {
         exportedAt: new Date().toISOString(),
@@ -1098,6 +1098,303 @@ Provide a clear, helpful answer based on the data. Be specific with numbers when
     } catch (error: any) {
       console.error("Get successful prompts error:", error);
       res.status(500).json({ error: "Failed to get successful prompts" });
+    }
+  });
+
+  // ==========================================
+  // PLAN & BUILD MODE ROUTES
+  // ==========================================
+
+  const PLANNING_SYSTEM_PROMPT = `You are an expert software architect and planner. Your job is to analyze user requests and create detailed implementation plans.
+
+OUTPUT FORMAT: You MUST respond with valid JSON only. No markdown, no code blocks, just raw JSON.
+
+{
+  "summary": "Brief description of what will be built",
+  "assumptions": ["assumption 1", "assumption 2"],
+  "architecture": "High-level architecture description",
+  "filePlan": [
+    {"path": "App.jsx", "purpose": "Main application component", "dependencies": []},
+    {"path": "components/Header.jsx", "purpose": "Navigation header", "dependencies": ["App.jsx"]}
+  ],
+  "steps": [
+    {"id": "1", "title": "Step title", "description": "What this step does", "type": "architecture"},
+    {"id": "2", "title": "Build components", "description": "Create React components", "type": "component"}
+  ],
+  "risks": ["potential risk 1", "potential risk 2"]
+}
+
+Step types: architecture, component, api, database, styling, testing
+
+Be thorough but concise. Focus on practical implementation details.`;
+
+  // Create a plan for a project
+  app.post("/api/projects/:id/plan", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { prompt, plannerSettings } = req.body;
+
+      const project = await storage.getProject(id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const settings = plannerSettings || {
+        endpoint: "http://localhost:1234/v1",
+        model: "",
+        temperature: 0.3,
+      };
+
+      const openai = new OpenAI({
+        baseURL: settings.endpoint,
+        apiKey: "not-needed-for-local",
+      });
+
+      // Set up SSE
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      let planContent = "";
+
+      try {
+        const stream = await openai.chat.completions.create({
+          model: settings.model || "local-model",
+          messages: [
+            { role: "system", content: PLANNING_SYSTEM_PROMPT },
+            { role: "user", content: `Create an implementation plan for: ${prompt}` },
+          ],
+          temperature: settings.temperature || 0.3,
+          stream: true,
+        });
+
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+            planContent += content;
+            res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
+          }
+        }
+
+        // Try to parse the plan
+        let plan;
+        try {
+          // Clean up any markdown code blocks
+          const cleaned = planContent
+            .replace(/```json\n?/g, "")
+            .replace(/```\n?/g, "")
+            .trim();
+          plan = JSON.parse(cleaned);
+        } catch (parseError) {
+          // If parsing fails, create a basic plan structure
+          plan = {
+            summary: prompt,
+            steps: [
+              { id: "1", title: "Build application", description: prompt, type: "component" as const, status: "pending" as const }
+            ],
+          };
+        }
+
+        // Create the full plan object
+        const fullPlan = {
+          id: crypto.randomUUID(),
+          summary: plan.summary || prompt,
+          assumptions: plan.assumptions || [],
+          architecture: plan.architecture || "",
+          filePlan: plan.filePlan || [],
+          dataModel: plan.dataModel,
+          steps: (plan.steps || []).map((s: any, i: number) => ({
+            id: s.id || String(i + 1),
+            title: s.title || `Step ${i + 1}`,
+            description: s.description || "",
+            type: s.type || "component",
+            status: "pending" as const,
+          })),
+          risks: plan.risks || [],
+          status: "draft" as const,
+          createdAt: Date.now(),
+        };
+
+        // Save plan to project
+        await storage.updateProject(id, { plan: fullPlan });
+
+        res.write(`data: ${JSON.stringify({ type: "plan", plan: fullPlan })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+        res.end();
+
+      } catch (error: any) {
+        res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+        res.end();
+      }
+    } catch (error: any) {
+      console.error("Plan error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Approve a plan and optionally start building
+  app.post("/api/projects/:id/plan/approve", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.plan) {
+        return res.status(400).json({ error: "No plan to approve" });
+      }
+
+      const approvedPlan = {
+        ...project.plan,
+        status: "approved" as const,
+        approvedAt: Date.now(),
+      };
+
+      await storage.updateProject(id, { plan: approvedPlan });
+      res.json({ success: true, plan: approvedPlan });
+    } catch (error: any) {
+      console.error("Approve plan error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Build from an approved plan
+  app.post("/api/projects/:id/build", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { builderSettings } = req.body;
+
+      const project = await storage.getProject(id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.plan) {
+        return res.status(400).json({ error: "No plan found. Create a plan first." });
+      }
+
+      if (project.plan.status !== "approved") {
+        return res.status(400).json({ error: "Plan must be approved before building." });
+      }
+
+      const settings = builderSettings || {
+        endpoint: "http://localhost:1234/v1",
+        model: "",
+        temperature: 0.5,
+      };
+
+      const openai = new OpenAI({
+        baseURL: settings.endpoint,
+        apiKey: "not-needed-for-local",
+      });
+
+      // Update plan status
+      await storage.updateProject(id, { 
+        plan: { ...project.plan, status: "building" as const }
+      });
+
+      // Set up SSE
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const buildPrompt = `Based on this implementation plan, generate a complete, working React application:
+
+PLAN:
+${JSON.stringify(project.plan, null, 2)}
+
+ORIGINAL REQUEST: ${project.lastPrompt || project.plan.summary}
+
+Generate complete, working code that implements this plan. Follow the file structure suggested in the plan.`;
+
+      try {
+        const stream = await openai.chat.completions.create({
+          model: settings.model || "local-model",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: buildPrompt },
+          ],
+          temperature: settings.temperature || 0.5,
+          stream: true,
+        });
+
+        let generatedCode = "";
+
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+            generatedCode += content;
+            res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
+          }
+        }
+
+        // Clean and validate the code
+        const cleanedCode = generatedCode
+          .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+          .replace(/```$/gm, "")
+          .trim();
+
+        const validation = validateGeneratedCode([{ path: "App.jsx", content: cleanedCode }]);
+
+        // Update project with generated code
+        await storage.updateProject(id, {
+          generatedCode: cleanedCode,
+          validation,
+          plan: { ...project.plan, status: "completed" as const },
+        });
+
+        res.write(`data: ${JSON.stringify({ type: "code", code: cleanedCode })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "validation", validation })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+        res.end();
+
+      } catch (error: any) {
+        await storage.updateProject(id, { 
+          plan: { ...project.plan, status: "failed" as const }
+        });
+        res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+        res.end();
+      }
+    } catch (error: any) {
+      console.error("Build error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get current plan status
+  app.get("/api/projects/:id/plan", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json({ plan: project.plan || null });
+    } catch (error: any) {
+      console.error("Get plan error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete/clear a plan (for rejection)
+  app.delete("/api/projects/:id/plan", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const project = await storage.getProject(id);
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      await storage.updateProject(id, { plan: null });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete plan error:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

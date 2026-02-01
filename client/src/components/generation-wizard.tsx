@@ -11,6 +11,7 @@ import type { DataModel, LLMSettings } from "@shared/schema";
 
 interface ExtendedWizardProps extends GenerationWizardProps {
   settings?: LLMSettings;
+  planBuildMode?: boolean;
 }
 
 export function GenerationWizard({
@@ -19,6 +20,7 @@ export function GenerationWizard({
   llmConnected,
   onCheckConnection,
   settings,
+  planBuildMode,
 }: ExtendedWizardProps) {
   const [step, setStep] = useState<WizardStep>("template");
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateConfig | null>(null);
@@ -167,6 +169,7 @@ export function GenerationWizard({
             onBack={handleBack}
             onGenerate={handleGenerate}
             onCheckConnection={onCheckConnection}
+            planBuildMode={planBuildMode}
           />
         )}
       </div>

@@ -10,16 +10,21 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { EmptyState } from "@/components/empty-state";
 import { SuccessCelebration } from "@/components/success-celebration";
 import { OnboardingModal } from "@/components/onboarding-modal";
+import { PlanReviewPanel } from "@/components/plan-review-panel";
+import { DualModelSettings } from "@/components/dual-model-settings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
-import { Wifi, WifiOff, BarChart3 } from "lucide-react";
+import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap } from "lucide-react";
 import { Link } from "wouter";
 import JSZip from "jszip";
-import type { Project, LLMSettings, DataModel } from "@shared/schema";
+import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan } from "@shared/schema";
 
 export default function Home() {
   const { toast } = useToast();
@@ -32,6 +37,27 @@ export default function Home() {
     endpoint: "http://localhost:1234/v1",
     model: "",
     temperature: 0.7,
+  });
+  
+  // Plan & Build mode state
+  const [planBuildMode, setPlanBuildMode] = useState(false);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [streamingPlan, setStreamingPlan] = useState("");
+  const [detectedIntent, setDetectedIntent] = useState<RequestIntent | null>(null);
+  const [autoRouting, setAutoRouting] = useState(true);
+  const [dualModelSettings, setDualModelSettings] = useState<DualModelSettingsType>({
+    planner: {
+      endpoint: "http://localhost:1234/v1",
+      model: "",
+      temperature: 0.3,
+    },
+    builder: {
+      endpoint: "http://localhost:1234/v1",
+      model: "",
+      temperature: 0.5,
+    },
   });
 
   const { data: projects = [] } = useQuery<Project[]>({
@@ -160,7 +186,7 @@ export default function Home() {
   };
 
   const handleSendMessage = useCallback(
-    async (content: string, dataModel?: DataModel, templateTemperature?: number) => {
+    async (content: string, dataModel?: DataModel, templateTemperature?: number, overrideSettings?: LLMSettings) => {
       let projectId = activeProjectId;
       const projectName = generateProjectName(content);
       
@@ -228,16 +254,24 @@ export default function Home() {
           });
         } else {
           // Use regular LLM streaming for frontend-only apps
-          // Use template-optimized temperature if provided, otherwise use settings
+          // Use override settings (from Smart Mode) if provided, otherwise use default settings
+          // Temperature priority: overrideSettings > templateTemperature > default settings
+          const baseSettings = overrideSettings || settings;
           const effectiveSettings = {
-            ...settings,
-            temperature: templateTemperature ?? settings.temperature,
+            ...baseSettings,
+            temperature: templateTemperature ?? baseSettings.temperature,
           };
           const response = await fetch(`/api/projects/${projectId}/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ content, settings: effectiveSettings }),
           });
+
+          // Check for non-SSE error responses
+          if (!response.ok && !response.headers.get("content-type")?.includes("text/event-stream")) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+          }
 
           const reader = response.body?.getReader();
           const decoder = new TextDecoder();
@@ -312,6 +346,237 @@ export default function Home() {
       }
     },
     [activeProjectId, settings, toast, projects]
+  );
+
+  // Plan & Build mode handlers
+  const handleCreatePlan = useCallback(async (prompt: string, dataModel?: DataModel) => {
+    let projectId = activeProjectId;
+    const projectName = generateProjectName(prompt);
+    
+    if (!projectId) {
+      const response = await apiRequest("POST", "/api/projects", {
+        name: projectName,
+        messages: [],
+      });
+      const newProject = await response.json();
+      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      projectId = newProject.id;
+      setActiveProjectId(projectId);
+    }
+
+    setIsPlanning(true);
+    setStreamingPlan("");
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          plannerSettings: dualModelSettings.planner,
+        }),
+      });
+
+      // Check for non-SSE error responses
+      if (!response.ok && !response.headers.get("content-type")?.includes("text/event-stream")) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value);
+        const lines = text.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === "chunk") {
+                setStreamingPlan((prev) => prev + data.content);
+              } else if (data.type === "plan") {
+                await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                toast({
+                  title: "Plan Created",
+                  description: "Review the plan and approve it to start building.",
+                });
+              } else if (data.type === "error") {
+                throw new Error(data.error);
+              }
+            } catch (parseError) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Planning Error",
+        description: error.message || "Failed to create plan",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPlanning(false);
+      setStreamingPlan("");
+    }
+  }, [activeProjectId, dualModelSettings.planner, toast]);
+
+  const handleApprovePlan = useCallback(async () => {
+    if (!activeProjectId) return;
+    
+    setIsApproving(true);
+    try {
+      await apiRequest("POST", `/api/projects/${activeProjectId}/plan/approve`);
+      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({
+        title: "Plan Approved",
+        description: "Ready to start building!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve plan",
+        variant: "destructive",
+      });
+    } finally {
+      setIsApproving(false);
+    }
+  }, [activeProjectId, toast]);
+
+  const handleRejectPlan = useCallback(async () => {
+    if (!activeProjectId) return;
+    
+    try {
+      // Clear the plan using the dedicated endpoint
+      await apiRequest("DELETE", `/api/projects/${activeProjectId}/plan`);
+      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setDetectedIntent(null);
+      toast({
+        title: "Plan Rejected",
+        description: "You can create a new plan with different requirements.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject plan",
+        variant: "destructive",
+      });
+    }
+  }, [activeProjectId, toast]);
+
+  const handleStartBuild = useCallback(async () => {
+    if (!activeProjectId) return;
+    
+    setIsBuilding(true);
+    setStreamingCode("");
+
+    try {
+      const response = await fetch(`/api/projects/${activeProjectId}/build`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          builderSettings: dualModelSettings.builder,
+        }),
+      });
+
+      // Check for non-SSE error responses
+      if (!response.ok && !response.headers.get("content-type")?.includes("text/event-stream")) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value);
+        const lines = text.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === "chunk") {
+                setStreamingCode((prev) => prev + data.content);
+              } else if (data.type === "done") {
+                await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                setShowCelebration(true);
+                toast({
+                  title: "Build Complete!",
+                  description: "Your app has been generated successfully.",
+                });
+              } else if (data.type === "error") {
+                throw new Error(data.error);
+              }
+            } catch (parseError) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Build Error",
+        description: error.message || "Failed to build app",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBuilding(false);
+    }
+  }, [activeProjectId, dualModelSettings.builder, toast]);
+
+  // Intelligent routing handler - automatically routes to plan or build based on request analysis
+  const handleIntelligentGenerate = useCallback(
+    async (content: string, dataModel?: DataModel, templateTemperature?: number) => {
+      if (!planBuildMode || !autoRouting) {
+        // Use standard generation when Plan & Build mode is off
+        return handleSendMessage(content, dataModel, templateTemperature);
+      }
+
+      // Classify the request to determine intent
+      const classification = classifyRequest(content);
+      setDetectedIntent(classification.intent);
+      
+      const hasExistingCode = !!(activeProject?.generatedCode || streamingCode);
+      const usePlanner = shouldUsePlanner(content, hasExistingCode);
+
+      // Show what model is being used
+      toast({
+        title: `${getIntentDescription(classification.intent)}`,
+        description: `Detected ${classification.intent} intent (${Math.round(classification.confidence * 100)}% confidence)`,
+      });
+
+      // Use full builder settings (endpoint, model, temperature) from dual model settings when in Smart Mode
+      const builderSettings: LLMSettings = dualModelSettings.builder;
+
+      if (usePlanner) {
+        // Route to planner model for planning/reasoning requests
+        await handleCreatePlan(content, dataModel);
+      } else if (classification.intent === "refine" && hasExistingCode) {
+        // Use builder settings for refinements
+        await handleSendMessage(content, dataModel, undefined, builderSettings);
+      } else {
+        // Use builder model directly for direct build requests
+        await handleSendMessage(content, dataModel, undefined, builderSettings);
+      }
+    },
+    [planBuildMode, autoRouting, activeProject, streamingCode, handleSendMessage, handleCreatePlan, toast, dualModelSettings.builder]
   );
 
   const handleDownload = useCallback(async () => {
@@ -434,13 +699,58 @@ export default function Home() {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <Link href="/analytics">
-                <Button variant="ghost" size="sm" data-testid="button-analytics">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50">
+                <Zap className={`h-3.5 w-3.5 ${planBuildMode ? "text-amber-500" : "text-muted-foreground"}`} />
+                <Switch
+                  id="plan-build-mode"
+                  checked={planBuildMode}
+                  onCheckedChange={setPlanBuildMode}
+                  data-testid="switch-plan-build-mode"
+                />
+                <Label 
+                  htmlFor="plan-build-mode" 
+                  className={`text-xs cursor-pointer ${planBuildMode ? "text-foreground" : "text-muted-foreground"}`}
+                >
+                  Smart Mode
+                </Label>
+                {planBuildMode && (
+                  <Badge 
+                    variant="outline" 
+                    className="text-[10px] px-1.5 py-0 h-4 text-amber-600 border-amber-500/30"
+                    data-testid="badge-auto-routing"
+                  >
+                    Auto
+                  </Badge>
+                )}
+              </div>
+              {planBuildMode && (
+                <>
+                  {detectedIntent && (
+                    <Badge 
+                      variant="secondary" 
+                      className="text-xs gap-1"
+                      data-testid="badge-detected-intent"
+                    >
+                      {detectedIntent === "plan" && <Brain className="h-3 w-3 text-purple-500" />}
+                      {detectedIntent === "build" && <Hammer className="h-3 w-3 text-orange-500" />}
+                      {detectedIntent === "refine" && <Hammer className="h-3 w-3 text-blue-500" />}
+                      {detectedIntent === "question" && <Brain className="h-3 w-3 text-green-500" />}
+                      {detectedIntent}
+                    </Badge>
+                  )}
+                  <DualModelSettings
+                    settings={dualModelSettings}
+                    onSettingsChange={setDualModelSettings}
+                  />
+                </>
+              )}
+              <Button variant="ghost" size="sm" asChild data-testid="button-analytics">
+                <Link href="/analytics">
                   <BarChart3 className="h-4 w-4 mr-1" />
                   Analytics
-                </Button>
-              </Link>
+                </Link>
+              </Button>
               <Badge 
                 variant={llmConnected ? "default" : "secondary"} 
                 className="gap-1.5 text-xs"
@@ -470,21 +780,33 @@ export default function Home() {
           <main className="flex-1 overflow-hidden">
             {projects.length === 0 && !activeProject ? (
               <EmptyState onCreateProject={() => createProjectMutation.mutate()} />
-            ) : !displayCode && !isGenerating && (!activeProject?.messages || activeProject.messages.length === 0) ? (
+            ) : !displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan ? (
               <GenerationWizard
-                onGenerate={handleSendMessage}
-                isGenerating={isGenerating}
+                onGenerate={planBuildMode ? handleIntelligentGenerate : handleSendMessage}
+                isGenerating={isGenerating || isPlanning}
                 llmConnected={llmConnected}
                 onCheckConnection={checkConnection}
                 settings={settings}
+                planBuildMode={planBuildMode}
               />
+            ) : activeProject?.plan && !displayCode && !isBuilding ? (
+              <div className="h-full max-w-3xl mx-auto">
+                <PlanReviewPanel
+                  plan={activeProject.plan}
+                  onApprove={handleApprovePlan}
+                  onReject={handleRejectPlan}
+                  onBuild={handleStartBuild}
+                  isApproving={isApproving}
+                  isBuilding={isBuilding}
+                />
+              </div>
             ) : (
               <ResizablePanelGroup direction="horizontal">
                 <ResizablePanel defaultSize={40} minSize={25}>
                   <ChatPanel
                     messages={activeProject?.messages || []}
-                    isLoading={isGenerating}
-                    onSendMessage={handleSendMessage}
+                    isLoading={isGenerating || isPlanning}
+                    onSendMessage={planBuildMode ? handleIntelligentGenerate : handleSendMessage}
                     llmConnected={llmConnected}
                     onCheckConnection={checkConnection}
                   />

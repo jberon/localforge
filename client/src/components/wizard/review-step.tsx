@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Loader2, CheckCircle2, XCircle, Wand2, Database } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle2, XCircle, Wand2, Database, Brain } from "lucide-react";
 import type { TemplateConfig } from "./types";
 import type { DataModel } from "@shared/schema";
 
@@ -15,6 +15,7 @@ interface ReviewStepProps {
   onBack: () => void;
   onGenerate: () => void;
   onCheckConnection: () => void;
+  planBuildMode?: boolean;
 }
 
 export function ReviewStep({
@@ -26,6 +27,7 @@ export function ReviewStep({
   onBack,
   onGenerate,
   onCheckConnection,
+  planBuildMode,
 }: ReviewStepProps) {
   return (
     <div className="space-y-6">
@@ -113,7 +115,12 @@ export function ReviewStep({
           {isGenerating ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Generating...
+              {planBuildMode ? "Creating Plan..." : "Generating..."}
+            </>
+          ) : planBuildMode ? (
+            <>
+              <Brain className="h-4 w-4" />
+              Create Plan
             </>
           ) : (
             <>
