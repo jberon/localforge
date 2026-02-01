@@ -5,6 +5,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { ProjectSidebar } from "@/components/project-sidebar";
 import { ChatPanel } from "@/components/chat-panel";
 import { PreviewPanel } from "@/components/preview-panel";
+import { GenerationWizard } from "@/components/generation-wizard";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { EmptyState } from "@/components/empty-state";
 import { SuccessCelebration } from "@/components/success-celebration";
@@ -365,9 +366,16 @@ export default function Home() {
           <main className="flex-1 overflow-hidden">
             {projects.length === 0 && !activeProject ? (
               <EmptyState onCreateProject={() => createProjectMutation.mutate()} />
+            ) : !displayCode && !isGenerating && (!activeProject?.messages || activeProject.messages.length === 0) ? (
+              <GenerationWizard
+                onGenerate={handleSendMessage}
+                isGenerating={isGenerating}
+                llmConnected={llmConnected}
+                onCheckConnection={checkConnection}
+              />
             ) : (
               <ResizablePanelGroup direction="horizontal">
-                <ResizablePanel defaultSize={45} minSize={30}>
+                <ResizablePanel defaultSize={40} minSize={25}>
                   <ChatPanel
                     messages={activeProject?.messages || []}
                     isLoading={isGenerating}
@@ -377,7 +385,7 @@ export default function Home() {
                   />
                 </ResizablePanel>
                 <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={55} minSize={30}>
+                <ResizablePanel defaultSize={60} minSize={35}>
                   <PreviewPanel
                     code={displayCode}
                     isGenerating={isGenerating}
