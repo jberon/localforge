@@ -5,10 +5,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
-import { LaunchGuide } from "./launch-guide";
+import { PublishingPanel } from "./publishing-panel";
 import { PreviewErrorBoundary } from "./error-boundary";
 import { RefinementPanel } from "./refinement-panel";
 import { ConsolePanel, type ConsoleLog } from "./console-panel";
@@ -51,7 +52,7 @@ export function PreviewPanel({
   onCodeUpdate,
   onFilesUpdate,
 }: PreviewPanelProps) {
-  const [activeTab, setActiveTab] = useState<"preview" | "code" | "files" | "launch">("preview");
+  const [activeTab, setActiveTab] = useState<"preview" | "code" | "files" | "publish" | "console" | "search">("preview");
   const [copied, setCopied] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -73,6 +74,8 @@ export function PreviewPanel({
   const [showFeedback, setShowFeedback] = useState(true);
   const [showTestPreview, setShowTestPreview] = useState(false);
   const [editingFileContent, setEditingFileContent] = useState<string | null>(null);
+  const [codeSearchQuery, setCodeSearchQuery] = useState("");
+  const [codeSearchResults, setCodeSearchResults] = useState<Array<{ file: string; line: number; content: string; match: string }>>([]);
   const [isFileSaving, setIsFileSaving] = useState(false);
   const [hasFileChanges, setHasFileChanges] = useState(false);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -388,7 +391,7 @@ export function PreviewPanel({
     <div className={`flex flex-col h-full bg-card border-l ${isFullscreen ? "fixed inset-0 z-50" : ""}`}>
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
         <div className="flex items-center gap-3">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code" | "files" | "launch")}>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code" | "files" | "publish" | "console" | "search")}>
             <TabsList className="h-8">
               <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
                 <Eye className="h-3.5 w-3.5" />
@@ -405,9 +408,17 @@ export function PreviewPanel({
                     Files
                     <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{generatedFiles.length}</Badge>
                   </TabsTrigger>
-                  <TabsTrigger value="launch" className="text-xs gap-1.5" data-testid="tab-launch">
-                    <Rocket className="h-3.5 w-3.5" />
-                    Launch
+                  <TabsTrigger value="search" className="text-xs gap-1.5" data-testid="tab-search">
+                    <Search className="h-3.5 w-3.5" />
+                    Search
+                  </TabsTrigger>
+                  <TabsTrigger value="console" className="text-xs gap-1.5" data-testid="tab-console">
+                    <Terminal className="h-3.5 w-3.5" />
+                    Console
+                  </TabsTrigger>
+                  <TabsTrigger value="publish" className="text-xs gap-1.5" data-testid="tab-publish">
+                    <Package className="h-3.5 w-3.5" />
+                    Publish
                   </TabsTrigger>
                 </>
               )}
@@ -738,16 +749,133 @@ export function PreviewPanel({
                   )}
                 </div>
               </div>
-            ) : activeTab === "launch" ? (
-              <ScrollArea className="h-full">
-                <div className="p-4">
-                  <LaunchGuide
-                    projectName={projectName}
-                    isFullStack={hasFullStackProject}
-                    entityCount={generatedFiles.filter(f => f.path.includes('/routes/')).length}
-                  />
+            ) : activeTab === "search" ? (
+              <div className="h-full flex flex-col">
+                <div className="p-4 border-b">
+                  <div className="flex items-center gap-2">
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search in all files..."
+                      value={codeSearchQuery}
+                      onChange={(e) => {
+                        const query = e.target.value;
+                        setCodeSearchQuery(query);
+                        if (query.length >= 2) {
+                          const results: Array<{ file: string; line: number; content: string; match: string }> = [];
+                          generatedFiles.forEach(file => {
+                            const lines = file.content.split('\n');
+                            lines.forEach((line, index) => {
+                              if (line.toLowerCase().includes(query.toLowerCase())) {
+                                results.push({
+                                  file: file.path,
+                                  line: index + 1,
+                                  content: line.trim(),
+                                  match: query,
+                                });
+                              }
+                            });
+                          });
+                          setCodeSearchResults(results);
+                        } else {
+                          setCodeSearchResults([]);
+                        }
+                      }}
+                      className="flex-1"
+                      data-testid="input-code-search"
+                    />
+                    {codeSearchResults.length > 0 && (
+                      <Badge variant="secondary">{codeSearchResults.length} results</Badge>
+                    )}
+                  </div>
                 </div>
-              </ScrollArea>
+                <ScrollArea className="flex-1">
+                  {codeSearchResults.length > 0 ? (
+                    <div className="divide-y">
+                      {codeSearchResults.map((result, i) => (
+                        <div
+                          key={i}
+                          className="p-3 hover-elevate cursor-pointer"
+                          onClick={() => {
+                            const file = generatedFiles.find(f => f.path === result.file);
+                            if (file) {
+                              setSelectedFile(file);
+                              setEditingFileContent(file.content);
+                              setActiveTab("files");
+                            }
+                          }}
+                          data-testid={`search-result-${i}`}
+                        >
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                            <FileCode className="h-3 w-3" />
+                            <span className="font-medium">{result.file}</span>
+                            <span>Line {result.line}</span>
+                          </div>
+                          <pre className="text-sm font-mono truncate">{result.content}</pre>
+                        </div>
+                      ))}
+                    </div>
+                  ) : codeSearchQuery.length >= 2 ? (
+                    <div className="flex items-center justify-center h-48 text-muted-foreground">
+                      No results found for "{codeSearchQuery}"
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                      <Search className="h-8 w-8 mb-2" />
+                      <p className="text-sm">Enter at least 2 characters to search</p>
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            ) : activeTab === "console" ? (
+              <div className="h-full flex flex-col">
+                <div className="p-4 border-b flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="h-4 w-4" />
+                    <span className="font-medium">Console Output</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setConsoleLogs([])}
+                    data-testid="button-clear-console"
+                  >
+                    Clear
+                  </Button>
+                </div>
+                <ScrollArea className="flex-1 bg-muted/30">
+                  {consoleLogs.length > 0 ? (
+                    <div className="p-2 font-mono text-xs space-y-1">
+                      {consoleLogs.map((log, i) => (
+                        <div
+                          key={i}
+                          className={`px-2 py-1 rounded ${
+                            log.type === 'error' ? 'bg-red-500/10 text-red-500' :
+                            log.type === 'warn' ? 'bg-yellow-500/10 text-yellow-600' :
+                            log.type === 'info' ? 'bg-blue-500/10 text-blue-500' :
+                            'text-foreground'
+                          }`}
+                        >
+                          <span className="text-muted-foreground mr-2">[{log.timestamp}]</span>
+                          {log.message}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                      <Terminal className="h-8 w-8 mb-2" />
+                      <p className="text-sm">No console output yet</p>
+                      <p className="text-xs">Run your app to see logs here</p>
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            ) : activeTab === "publish" ? (
+              <PublishingPanel
+                projectId={projectId ? parseInt(projectId) : 0}
+                projectName={projectName}
+                generatedFiles={generatedFiles}
+                isFullStack={hasFullStackProject}
+              />
             ) : null}
           </>
         )}

@@ -300,6 +300,226 @@ export async function registerRoutes(
     }
   });
 
+  // Package Download Route
+  const packageSchema = z.object({
+    format: z.enum(["zip"]).default("zip"),
+    includeDocker: z.boolean().default(true),
+    includeCICD: z.boolean().default(false),
+    includeEnvTemplate: z.boolean().default(true),
+  });
+
+  app.post("/api/projects/:id/package", async (req, res) => {
+    const archiver = await import("archiver");
+    
+    try {
+      const parsed = packageSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const files = project.generatedFiles || [];
+      if (files.length === 0) {
+        return res.status(400).json({ error: "No files to package" });
+      }
+
+      const safeName = project.name.toLowerCase().replace(/[^a-z0-9]/g, "_");
+      const isFullStack = files.some(f => f.path.includes("server/") || f.path.includes("routes/"));
+      
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}-project.zip"`);
+
+      const archive = archiver.default("zip", { zlib: { level: 9 } });
+      archive.pipe(res);
+
+      // Sanitize file paths to prevent Zip Slip vulnerability
+      const sanitizePath = (filePath: string): string | null => {
+        // Normalize the path
+        let normalized = filePath.replace(/\\/g, '/');
+        
+        // Remove leading slashes
+        normalized = normalized.replace(/^\/+/, '');
+        
+        // Reject paths with .. traversal
+        if (normalized.includes('..')) {
+          console.warn(`Rejected path with traversal: ${filePath}`);
+          return null;
+        }
+        
+        // Reject absolute paths
+        if (normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) {
+          console.warn(`Rejected absolute path: ${filePath}`);
+          return null;
+        }
+        
+        // Ensure path stays within project directory
+        const parts = normalized.split('/').filter(Boolean);
+        if (parts.length === 0) {
+          return null;
+        }
+        
+        return parts.join('/');
+      };
+
+      for (const file of files) {
+        const safePath = sanitizePath(file.path);
+        if (safePath) {
+          archive.append(file.content, { name: safePath });
+        }
+      }
+
+      if (parsed.data.includeDocker) {
+        const dockerfile = `FROM node:18-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
+
+FROM node:18-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+EXPOSE 3000
+CMD ["node", "dist/index.js"]`;
+        archive.append(dockerfile, { name: "Dockerfile" });
+
+        if (isFullStack) {
+          const dockerCompose = `version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: ${safeName}
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/${safeName}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: ${safeName}_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=${safeName}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:`;
+          archive.append(dockerCompose, { name: "docker-compose.yml" });
+        }
+
+        archive.append(`.env*
+node_modules/
+dist/
+*.log
+.DS_Store`, { name: ".dockerignore" });
+      }
+
+      if (parsed.data.includeEnvTemplate) {
+        const envTemplate = `# ${project.name} Environment Configuration
+
+# Database
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/${safeName}
+
+# Server
+PORT=3000
+NODE_ENV=development
+
+# Add your API keys below
+# OPENAI_API_KEY=your-key-here
+# STRIPE_SECRET_KEY=your-key-here
+`;
+        archive.append(envTemplate, { name: ".env.example" });
+      }
+
+      if (parsed.data.includeCICD) {
+        const githubAction = `name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: echo "Add your deployment commands here"
+`;
+        archive.append(githubAction, { name: ".github/workflows/ci.yml" });
+      }
+
+      const readme = `# ${project.name}
+
+Generated by LocalForge
+
+## Quick Start
+
+\`\`\`bash
+npm install
+${isFullStack ? "npm run db:push\n" : ""}npm run dev
+\`\`\`
+
+## Docker
+
+\`\`\`bash
+docker-compose up -d
+\`\`\`
+
+## Environment Variables
+
+Copy \`.env.example\` to \`.env\` and configure your settings.
+`;
+      archive.append(readme, { name: "README.md" });
+
+      await archive.finalize();
+    } catch (error) {
+      console.error("Error creating package:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to create package" });
+      }
+    }
+  });
+
   // Version Control Routes
 
   // Get all versions for a project
