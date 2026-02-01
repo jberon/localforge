@@ -268,7 +268,7 @@ export function ProjectSidebar({
           </DialogContent>
         </Dialog>
         <p className="text-xs text-muted-foreground text-center mt-2">
-          made by Josh Beron
+          Built by Josh Beron
         </p>
       </SidebarFooter>
     </Sidebar>

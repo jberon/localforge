@@ -869,6 +869,70 @@ Output as JSON array:
     }
   });
 
+  // Natural language query for analytics
+  const analyticsQuerySchema = z.object({
+    query: z.string().min(1),
+    settings: llmSettingsSchema,
+  });
+
+  app.post("/api/analytics/query", async (req, res) => {
+    try {
+      const parsed = analyticsQuerySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { query, settings } = parsed.data;
+      
+      // Gather current data for context
+      const overview = await analyticsStorage.getOverview();
+      const recentEvents = await analyticsStorage.getEvents(50);
+      
+      const openai = new OpenAI({
+        baseURL: settings.endpoint || "http://localhost:1234/v1",
+        apiKey: "lm-studio",
+      });
+
+      const queryPrompt = `You are an analytics assistant. Answer the user's question about their app generation data.
+
+CURRENT DATA:
+- Total generations: ${overview.totalGenerations}
+- Success rate: ${overview.successRate.toFixed(1)}%
+- Successful: ${overview.successfulGenerations}, Failed: ${overview.failedGenerations}
+- Average generation time: ${(overview.averageGenerationTime / 1000).toFixed(1)} seconds
+- Template usage: ${JSON.stringify(overview.templateUsage)}
+
+RECENT TRENDS (last 7 days):
+${overview.recentTrends.map(t => `${t.date}: ${t.generations} generations, ${t.successes} successful`).join('\n')}
+
+USER QUESTION: "${query}"
+
+Provide a clear, helpful answer based on the data. Be specific with numbers when relevant. Keep the response concise but informative.`;
+
+      const response = await openai.chat.completions.create({
+        model: settings.model || "local-model",
+        messages: [
+          { role: "system", content: "You are a helpful analytics assistant. Give clear, data-driven answers." },
+          { role: "user", content: queryPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 500,
+      });
+
+      const answer = response.choices[0]?.message?.content?.trim() || "I couldn't analyze that question. Try asking about success rates, templates, or trends.";
+      
+      res.json({ 
+        answer,
+        data: overview,
+        visualization: "number"
+      });
+    } catch (error: any) {
+      console.error("Analytics query error:", error);
+      // Return a fallback that client can handle
+      res.status(500).json({ error: "Query processing failed", details: error.message });
+    }
+  });
+
   // Get successful prompts for learning (used as examples)
   app.get("/api/analytics/successful-prompts", async (req, res) => {
     try {
