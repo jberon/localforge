@@ -8,7 +8,8 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Streaming responses - see code being generated in real-time
 - Connection status indicator shows if LM Studio is reachable
 - Connects to LM Studio's OpenAI-compatible API (default: http://localhost:1234/v1)
-- In-memory storage for projects (data persists during session)
+- **PostgreSQL database** for persistent project storage (projects survive restarts)
+- **Code validation** - generated code is checked for syntax errors before showing "Ready" state
 
 ## Project Architecture
 
@@ -23,14 +24,18 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - **Express.js** API server
 - **OpenAI SDK** configured for LM Studio compatibility
 - **Server-Sent Events (SSE)** for streaming LLM responses
-- In-memory storage for projects and messages
+- **PostgreSQL + Drizzle ORM** for persistent storage
+- **Modular code generators** in `server/generators/` (schema, routes, frontend, docker, validator)
 
 ### Key Components
 - `client/src/pages/home.tsx` - Main application layout with resizable panels
 - `client/src/components/chat-panel.tsx` - Chat interface with example prompts
 - `client/src/components/preview-panel.tsx` - Live app preview and code viewer
 - `client/src/components/project-sidebar.tsx` - Project list and LLM settings
+- `client/src/components/error-boundary.tsx` - Error handling for React components
+- `client/src/components/connection-helper.tsx` - LLM connection troubleshooting UI
 - `server/routes.ts` - API endpoints for projects, LLM chat, and connection status
+- `server/generators/` - Modular code generators (schema, routes, frontend, docker, validator)
 
 ### API Endpoints
 - `GET /api/projects` - List all projects
@@ -40,9 +45,10 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - `POST /api/llm/status` - Check LM Studio connection status
 
 ### Data Models (shared/schema.ts)
-- **Project**: id, name, description, messages, generatedCode, createdAt, updatedAt
+- **Project**: id, name, description, messages, generatedCode, generatedFiles, dataModel, lastPrompt, validation, createdAt, updatedAt
 - **Message**: id, role (user/assistant), content, timestamp
 - **LLMSettings**: endpoint, model, temperature
+- **ValidationResult**: valid, errors[], warnings[]
 
 ## User Preferences
 - Uses dark mode by default
@@ -50,6 +56,23 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Temperature slider for LLM creativity control
 
 ## Recent Changes
+- **Code Validation** - Generated code is validated for syntax errors before showing "Ready" state
+  - Checks for mismatched braces, parentheses, brackets
+  - Validates JSON files
+  - Shows validation status badges in UI (errors/warnings)
+- **Error Handling** - React error boundaries catch crashes and show recovery UI
+  - Global ErrorBoundary wraps entire app
+  - PreviewErrorBoundary for preview-specific errors
+  - ConnectionHelper shows LLM troubleshooting when disconnected
+- **Regenerate Feature** - Edit and regenerate projects with same data model
+  - Stores lastPrompt for each project
+  - Dialog to modify prompt before regenerating
+- **Modular Code Generators** - Refactored into organized modules
+  - server/generators/schema.ts - Database schema generation
+  - server/generators/routes.ts - API route generation
+  - server/generators/frontend.ts - React component generation
+  - server/generators/docker.ts - Docker and deployment files
+  - server/generators/validator.ts - Code validation
 - **Launch Guide** - Post-generation "Run & Deploy" experience with:
   - Prerequisites checklist (Node.js, PostgreSQL, etc.)
   - Step-by-step copyable terminal commands
