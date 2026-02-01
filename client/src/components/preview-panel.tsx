@@ -3,11 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { LaunchGuide } from "./launch-guide";
-import type { GeneratedFile } from "@shared/schema";
+import { PreviewErrorBoundary } from "./error-boundary";
+import type { GeneratedFile, DataModel, ValidationResult } from "@shared/schema";
 
 interface PreviewPanelProps {
   code: string;
@@ -15,17 +18,34 @@ interface PreviewPanelProps {
   onDownload: () => void;
   generatedFiles?: GeneratedFile[];
   projectName?: string;
+  lastPrompt?: string;
+  dataModel?: DataModel;
+  validation?: ValidationResult;
+  onRegenerate?: (prompt: string, dataModel?: DataModel) => void;
 }
 
-export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = [], projectName = "My Project" }: PreviewPanelProps) {
+export function PreviewPanel({ 
+  code, 
+  isGenerating, 
+  onDownload, 
+  generatedFiles = [], 
+  projectName = "My Project",
+  lastPrompt,
+  dataModel,
+  validation,
+  onRegenerate
+}: PreviewPanelProps) {
   const [activeTab, setActiveTab] = useState<"preview" | "code" | "files" | "launch">("preview");
   const [copied, setCopied] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(generatedFiles[0] || null);
+  const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState("");
   const { toast } = useToast();
   
   const hasFullStackProject = generatedFiles.length > 0;
+  const canRegenerate = hasFullStackProject && onRegenerate && !isGenerating;
   
   // Auto-select first file when generatedFiles change
   if (hasFullStackProject && !selectedFile && generatedFiles.length > 0) {
@@ -45,6 +65,18 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
 
   const handleRefresh = () => {
     setIframeKey((k) => k + 1);
+  };
+
+  const handleOpenRegenerate = () => {
+    setEditedPrompt(lastPrompt || projectName);
+    setShowRegenerateDialog(true);
+  };
+
+  const handleRegenerate = () => {
+    if (onRegenerate && editedPrompt.trim()) {
+      onRegenerate(editedPrompt.trim(), dataModel);
+      setShowRegenerateDialog(false);
+    }
   };
 
   const createPreviewHTML = () => {
@@ -128,26 +160,40 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
               <RefreshCw className="h-4 w-4" />
             </Button>
           )}
-          {code && (
+          {(code || hasFullStackProject) && (
             <>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleCopy}
-                className="h-8 w-8"
-                data-testid="button-copy-code"
-              >
-                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setIsFullscreen(!isFullscreen)}
-                className="h-8 w-8"
-                data-testid="button-fullscreen"
-              >
-                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              </Button>
+              {code && (
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={handleCopy}
+                    data-testid="button-copy-code"
+                  >
+                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setIsFullscreen(!isFullscreen)}
+                    data-testid="button-fullscreen"
+                  >
+                    {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </Button>
+                </>
+              )}
+              {canRegenerate && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenRegenerate}
+                  className="gap-1.5"
+                  data-testid="button-regenerate"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Regenerate
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="default"
@@ -199,15 +245,44 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
                   </div>
                 ) : hasFullStackProject ? (
                   <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-                    <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center">
-                      <Rocket className="h-8 w-8 text-green-500" />
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                      validation && !validation.valid ? "bg-yellow-500/10" : "bg-green-500/10"
+                    }`}>
+                      {validation && !validation.valid ? (
+                        <AlertTriangle className="h-8 w-8 text-yellow-500" />
+                      ) : (
+                        <Rocket className="h-8 w-8 text-green-500" />
+                      )}
                     </div>
                     <div>
-                      <h3 className="font-semibold text-lg mb-2">Full-Stack Project Ready!</h3>
+                      <h3 className="font-semibold text-lg mb-2">
+                        {validation && !validation.valid ? "Project Generated (with warnings)" : "Full-Stack Project Ready!"}
+                      </h3>
                       <p className="text-sm text-muted-foreground max-w-md">
                         Your complete project has been generated. Use the <strong>Files</strong> tab to browse all generated code,
                         or the <strong>Launch</strong> tab for step-by-step instructions to run your app.
                       </p>
+                      {validation && (validation.warnings.length > 0 || validation.errors.length > 0) && (
+                        <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                          {validation.valid ? (
+                            <Badge variant="secondary" className="gap-1">
+                              <Check className="h-3 w-3" />
+                              Validated
+                            </Badge>
+                          ) : validation.errors.length > 0 ? (
+                            <Badge variant="destructive" className="gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              {validation.errors.length} error{validation.errors.length > 1 ? "s" : ""}
+                            </Badge>
+                          ) : null}
+                          {validation.warnings.length > 0 && (
+                            <Badge variant="secondary" className="gap-1 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
+                              <AlertTriangle className="h-3 w-3" />
+                              {validation.warnings.length} warning{validation.warnings.length > 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : null}
@@ -285,6 +360,40 @@ export function PreviewPanel({ code, isGenerating, onDownload, generatedFiles = 
           </>
         )}
       </div>
+
+      <Dialog open={showRegenerateDialog} onOpenChange={setShowRegenerateDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Regenerate Project</DialogTitle>
+            <DialogDescription>
+              Edit the prompt and regenerate your project with the same data model.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              value={editedPrompt}
+              onChange={(e) => setEditedPrompt(e.target.value)}
+              placeholder="Describe what you want to build..."
+              className="min-h-[120px]"
+              data-testid="input-regenerate-prompt"
+            />
+            {dataModel && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Will regenerate with {dataModel.entities.length} data {dataModel.entities.length === 1 ? 'entity' : 'entities'}: {dataModel.entities.map(e => e.name).join(', ')}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRegenerateDialog(false)} data-testid="button-cancel-regenerate">
+              Cancel
+            </Button>
+            <Button onClick={handleRegenerate} disabled={!editedPrompt.trim()} data-testid="button-confirm-regenerate">
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Regenerate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

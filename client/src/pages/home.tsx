@@ -125,6 +125,7 @@ export default function Home() {
           const response = await apiRequest("POST", `/api/projects/${projectId}/generate-fullstack`, {
             projectName,
             dataModel,
+            prompt: content,
           });
           
           if (!response.ok) {
@@ -363,6 +364,14 @@ export default function Home() {
                   onDownload={handleDownload}
                   generatedFiles={activeProject?.generatedFiles}
                   projectName={activeProject?.name || "My Project"}
+                  lastPrompt={activeProject?.lastPrompt}
+                  dataModel={activeProject?.dataModel}
+                  validation={activeProject?.validation}
+                  onRegenerate={(prompt, dataModel) => {
+                    if (activeProject && dataModel) {
+                      handleSendMessage(prompt, dataModel);
+                    }
+                  }}
                 />
               </ResizablePanel>
             </ResizablePanelGroup>

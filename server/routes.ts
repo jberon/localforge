@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import { insertProjectSchema, llmSettingsSchema, dataModelSchema } from "@shared/schema";
 import { z } from "zod";
 import { generateFullStackProject } from "./code-generator";
+import { validateGeneratedCode } from "./generators/validator";
 
 const SYSTEM_PROMPT = `You are an expert React developer. When the user describes an app they want, you generate a complete, working React component that renders the app.
 
@@ -75,6 +76,7 @@ export async function registerRoutes(
       });
       res.json(project);
     } catch (error) {
+      console.error("Error creating project:", error);
       res.status(500).json({ error: "Failed to create project" });
     }
   });
@@ -224,6 +226,7 @@ export async function registerRoutes(
   const generateRequestSchema = z.object({
     projectName: z.string().min(1),
     dataModel: dataModelSchema,
+    prompt: z.string().optional(),
   });
 
   app.post("/api/projects/:id/generate-fullstack", async (req, res) => {
@@ -233,7 +236,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
 
-      const { projectName, dataModel } = parsed.data;
+      const { projectName, dataModel, prompt } = parsed.data;
       const projectId = req.params.id;
 
       const project = await storage.getProject(projectId);
@@ -244,16 +247,24 @@ export async function registerRoutes(
       // Generate the full-stack project files
       const generatedFiles = generateFullStackProject(projectName, dataModel);
 
-      // Update project with generated files and data model
+      // Validate the generated code
+      const validation = validateGeneratedCode(generatedFiles);
+
+      // Update project with generated files, data model, validation, and last prompt
       await storage.updateProject(projectId, {
         generatedFiles,
         dataModel,
+        validation,
+        lastPrompt: prompt || projectName,
       });
 
-      // Add assistant message
+      // Add assistant message with validation status
+      const validationNote = validation.valid 
+        ? "" 
+        : ` Note: ${validation.warnings.length} warnings found during validation.`;
       await storage.addMessage(projectId, {
         role: "assistant",
-        content: `I've generated a complete full-stack project with ${dataModel.entities.length} data entities. You can download the project files and preview the generated code.`,
+        content: `I've generated a complete full-stack project with ${dataModel.entities.length} data entities.${validationNote} You can download the project files and preview the generated code.`,
       });
 
       const finalProject = await storage.getProject(projectId);

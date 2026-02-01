@@ -1,4 +1,7 @@
-import type { Project, Message, InsertProject } from "@shared/schema";
+import { db } from "./db";
+import { projects } from "@shared/schema";
+import type { Project, Message, InsertProject, DataModel, GeneratedFile, ValidationResult } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -10,55 +13,84 @@ export interface IStorage {
   addMessage(projectId: string, message: Omit<Message, "id" | "timestamp">): Promise<Message | undefined>;
 }
 
-export class MemStorage implements IStorage {
-  private projects: Map<string, Project>;
+function dbToProject(row: typeof projects.$inferSelect): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    messages: (row.messages as Message[]) ?? [],
+    generatedCode: row.generatedCode ?? undefined,
+    generatedFiles: (row.generatedFiles as GeneratedFile[]) ?? undefined,
+    dataModel: (row.dataModel as DataModel) ?? undefined,
+    lastPrompt: row.lastPrompt ?? undefined,
+    validation: (row.validation as ValidationResult) ?? undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
 
-  constructor() {
-    this.projects = new Map();
-  }
-
+export class DatabaseStorage implements IStorage {
   async getProjects(): Promise<Project[]> {
-    return Array.from(this.projects.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+    const rows = await db.select().from(projects).orderBy(projects.updatedAt);
+    return rows.map(dbToProject).reverse();
   }
 
   async getProject(id: string): Promise<Project | undefined> {
-    return this.projects.get(id);
+    const [row] = await db.select().from(projects).where(eq(projects.id, id));
+    return row ? dbToProject(row) : undefined;
   }
 
   async createProject(insertProject: InsertProject): Promise<Project> {
     const id = randomUUID();
     const now = Date.now();
-    const project: Project = {
-      ...insertProject,
+    
+    const [row] = await db.insert(projects).values({
       id,
-      messages: insertProject.messages || [],
+      name: insertProject.name,
+      description: insertProject.description ?? null,
+      messages: insertProject.messages ?? [],
+      generatedCode: insertProject.generatedCode ?? null,
+      generatedFiles: insertProject.generatedFiles ?? [],
+      dataModel: insertProject.dataModel ?? null,
       createdAt: now,
       updatedAt: now,
-    };
-    this.projects.set(id, project);
-    return project;
+    }).returning();
+    
+    return dbToProject(row);
   }
 
   async updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined> {
-    const project = this.projects.get(id);
-    if (!project) return undefined;
+    const existing = await this.getProject(id);
+    if (!existing) return undefined;
     
-    const updated: Project = {
-      ...project,
-      ...updates,
-      id,
+    const updateData: Partial<typeof projects.$inferInsert> = {
       updatedAt: Date.now(),
     };
-    this.projects.set(id, updated);
-    return updated;
+    
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.description !== undefined) updateData.description = updates.description;
+    if (updates.messages !== undefined) updateData.messages = updates.messages;
+    if (updates.generatedCode !== undefined) updateData.generatedCode = updates.generatedCode;
+    if (updates.generatedFiles !== undefined) updateData.generatedFiles = updates.generatedFiles;
+    if (updates.dataModel !== undefined) updateData.dataModel = updates.dataModel;
+    if (updates.lastPrompt !== undefined) updateData.lastPrompt = updates.lastPrompt;
+    if (updates.validation !== undefined) updateData.validation = updates.validation;
+    
+    const [row] = await db.update(projects)
+      .set(updateData)
+      .where(eq(projects.id, id))
+      .returning();
+    
+    return row ? dbToProject(row) : undefined;
   }
 
   async deleteProject(id: string): Promise<boolean> {
-    return this.projects.delete(id);
+    const result = await db.delete(projects).where(eq(projects.id, id)).returning();
+    return result.length > 0;
   }
 
   async addMessage(projectId: string, message: Omit<Message, "id" | "timestamp">): Promise<Message | undefined> {
-    const project = this.projects.get(projectId);
+    const project = await this.getProject(projectId);
     if (!project) return undefined;
     
     const newMessage: Message = {
@@ -67,12 +99,17 @@ export class MemStorage implements IStorage {
       timestamp: Date.now(),
     };
     
-    project.messages.push(newMessage);
-    project.updatedAt = Date.now();
-    this.projects.set(projectId, project);
+    const updatedMessages = [...project.messages, newMessage];
+    
+    await db.update(projects)
+      .set({ 
+        messages: updatedMessages,
+        updatedAt: Date.now(),
+      })
+      .where(eq(projects.id, projectId));
     
     return newMessage;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

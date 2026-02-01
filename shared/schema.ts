@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { pgTable, text, varchar, bigint, jsonb } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
 
 export const messageSchema = z.object({
   id: z.string(),
@@ -31,6 +33,12 @@ export const generatedFileSchema = z.object({
   content: z.string(),
 });
 
+export const validationResultSchema = z.object({
+  valid: z.boolean(),
+  errors: z.array(z.string()),
+  warnings: z.array(z.string()),
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -39,6 +47,8 @@ export const projectSchema = z.object({
   generatedCode: z.string().optional(),
   generatedFiles: z.array(generatedFileSchema).optional(),
   dataModel: dataModelSchema.optional(),
+  lastPrompt: z.string().optional(),
+  validation: validationResultSchema.optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -61,6 +71,31 @@ export type DataField = z.infer<typeof dataFieldSchema>;
 export type DataEntity = z.infer<typeof dataEntitySchema>;
 export type DataModel = z.infer<typeof dataModelSchema>;
 export type GeneratedFile = z.infer<typeof generatedFileSchema>;
+export type ValidationResult = z.infer<typeof validationResultSchema>;
+
+// Database table for persistent project storage
+export const projects = pgTable("projects", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  messages: jsonb("messages").notNull().default([]),
+  generatedCode: text("generated_code"),
+  generatedFiles: jsonb("generated_files").default([]),
+  dataModel: jsonb("data_model"),
+  lastPrompt: text("last_prompt"),
+  validation: jsonb("validation"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+export const insertProjectDbSchema = createInsertSchema(projects).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type ProjectDb = typeof projects.$inferSelect;
+export type InsertProjectDb = z.infer<typeof insertProjectDbSchema>;
 
 export const users = {} as any;
 export type InsertUser = { username: string; password: string };
