@@ -156,6 +156,38 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Added streaming responses with real-time code preview
 - Added LLM connection status indicator
 
+## Analytics & Learning System
+LocalForge includes a smart analytics system that learns from usage patterns:
+
+### Analytics Features
+- **Event Tracking** - All user actions are tracked (generation, downloads, template selection)
+- **Feedback Collection** - Thumbs up/down after generation with optional comments
+- **AI Insights** - LLM-powered analysis of usage patterns generates actionable recommendations
+- **Analytics Dashboard** - View metrics at /analytics:
+  - Success rate, total events, average generation time
+  - Template usage breakdown
+  - 7-day trend charts
+  - AI-generated insights with priority levels
+
+### Learning Loop
+- Successful prompts (positive feedback) appear as "Popular creations" examples
+- Failed patterns inform system improvements
+- Usage patterns help optimize template defaults
+
+### Analytics API Endpoints
+- `POST /api/analytics/events` - Track events
+- `GET /api/analytics/events` - Get events with filtering
+- `POST /api/analytics/feedback` - Submit user feedback
+- `GET /api/analytics/overview` - Get metrics overview
+- `GET /api/analytics/insights` - Get active AI insights
+- `POST /api/analytics/generate-insights` - Trigger AI analysis
+- `GET /api/analytics/successful-prompts` - Get successful prompts for learning loop
+
+### Analytics Data Models
+- **AnalyticsEvent**: type, projectId, data (jsonb), timestamp
+- **Feedback**: projectId, rating (boolean), comment, prompt, template
+- **Insight**: type, title, description, priority, data (jsonb), isActive, expiresAt
+
 ## Full-Stack Generation
 When you enable "Full-Stack with Database" in the Data Model step:
 - **Database Schema** - Generates Drizzle ORM schema for PostgreSQL
