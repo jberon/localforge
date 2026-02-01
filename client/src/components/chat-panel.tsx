@@ -9,6 +9,7 @@ import { WorkingIndicator } from "./working-indicator";
 interface ChatPanelProps {
   messages: Message[];
   isLoading: boolean;
+  loadingPhase?: string | null;
   onSendMessage: (content: string, dataModel?: DataModel) => void;
   llmConnected: boolean | null;
   onCheckConnection: () => void;
@@ -99,7 +100,7 @@ function formatMessageContent(content: string): JSX.Element[] {
   return elements;
 }
 
-export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, onCheckConnection }: ChatPanelProps) {
+export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, llmConnected, onCheckConnection }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -184,13 +185,13 @@ export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, on
                   </div>
                 </div>
                 <div className="pl-9">
-                  <WorkingIndicator text="Working" />
+                  <WorkingIndicator text={loadingPhase || "Working"} />
                   <div className="mt-3 space-y-2">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="status-analyzing">
                       <div className="w-4 h-4 rounded border border-primary/30 flex items-center justify-center">
                         <div className="w-2 h-2 bg-primary/50 rounded-sm animate-pulse" />
                       </div>
-                      <span>Analyzing your request...</span>
+                      <span>{loadingPhase || "Analyzing your request..."}</span>
                     </div>
                   </div>
                 </div>

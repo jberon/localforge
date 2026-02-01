@@ -15,11 +15,13 @@ import { DualModelSettings } from "@/components/dual-model-settings";
 import { DreamTeamSettings } from "@/components/dream-team-settings";
 import { DreamTeamPanel } from "@/components/dream-team-panel";
 import { VersionHistory } from "@/components/version-history";
+import { CommandPalette } from "@/components/command-palette";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/hooks/use-theme";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
@@ -32,8 +34,10 @@ import { defaultDreamTeamPersonas } from "@shared/schema";
 
 export default function Home() {
   const { toast } = useToast();
+  const { isDarkMode, toggleTheme } = useTheme();
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationPhase, setGenerationPhase] = useState<string | null>(null);
   const [streamingCode, setStreamingCode] = useState("");
   const [llmConnected, setLlmConnected] = useState<boolean | null>(null);
   const [loadedModel, setLoadedModel] = useState<string | null>(null);
@@ -213,7 +217,7 @@ export default function Home() {
     },
   });
 
-  // Keyboard shortcuts (Cmd+N on Mac, Ctrl+N on Windows/Linux)
+  // Keyboard shortcuts (Cmd on Mac, Ctrl on Windows/Linux)
   const shortcuts = useMemo(() => [
     {
       key: "n",
@@ -276,6 +280,7 @@ export default function Home() {
 
       setIsGenerating(true);
       setStreamingCode("");
+      setGenerationPhase("Analyzing request...");
 
       // Track generation started
       trackEvent("generation_started", projectId || undefined, {
@@ -287,12 +292,16 @@ export default function Home() {
       try {
         // If dataModel has entities and database is enabled, use full-stack generation
         if (dataModel && dataModel.enableDatabase && dataModel.entities.length > 0) {
+          setGenerationPhase("Building full-stack application...");
+          
           // Add user message first
           await apiRequest("POST", `/api/projects/${projectId}/chat`, {
             content,
             settings,
           }).catch(() => {});
 
+          setGenerationPhase("Generating database schema...");
+          
           // Then generate full-stack project
           const response = await apiRequest("POST", `/api/projects/${projectId}/generate-fullstack`, {
             projectName,
@@ -319,6 +328,8 @@ export default function Home() {
             description: "Check the Files tab to view and download your project.",
           });
         } else {
+          setGenerationPhase("Generating code...");
+          
           // Use regular LLM streaming for frontend-only apps
           // Use override settings (from Smart Mode) if provided, otherwise use default settings
           // Temperature priority: overrideSettings > templateTemperature > default settings
@@ -367,6 +378,10 @@ export default function Home() {
                     const data = JSON.parse(line.slice(6));
                     
                     if (data.type === "chunk") {
+                      // Update phase on first chunk
+                      if (!accumulatedCode) {
+                        setGenerationPhase("Writing code...");
+                      }
                       accumulatedCode += data.content;
                       // Clean markdown as we go for preview
                       const cleaned = accumulatedCode
@@ -374,6 +389,7 @@ export default function Home() {
                         .replace(/```$/gm, "");
                       setStreamingCode(cleaned);
                     } else if (data.type === "done") {
+                      setGenerationPhase("Finalizing...");
                       await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                       // Track successful frontend generation
                       trackEvent("generation_completed", projectId || undefined, {
@@ -408,6 +424,7 @@ export default function Home() {
         });
       } finally {
         setIsGenerating(false);
+        setGenerationPhase(null);
         setStreamingCode("");
       }
     },
@@ -432,6 +449,7 @@ export default function Home() {
 
     setIsPlanning(true);
     setStreamingPlan("");
+    setGenerationPhase("Creating plan...");
 
     try {
       const response = await fetch(`/api/projects/${projectId}/plan`, {
@@ -492,6 +510,7 @@ export default function Home() {
       });
     } finally {
       setIsPlanning(false);
+      setGenerationPhase(null);
       setStreamingPlan("");
     }
   }, [activeProjectId, dualModelSettings.planner, toast]);
@@ -922,6 +941,7 @@ export default function Home() {
                   <ChatPanel
                     messages={activeProject?.messages || []}
                     isLoading={isGenerating || isPlanning}
+                    loadingPhase={generationPhase}
                     onSendMessage={handleIntelligentGenerate}
                     llmConnected={llmConnected}
                     onCheckConnection={checkConnection}
@@ -961,6 +981,18 @@ export default function Home() {
       </div>
       <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
       <OnboardingModal />
+      <CommandPalette
+        onNewProject={() => createProjectMutation.mutate()}
+        onDownload={activeProject ? handleDownload : undefined}
+        onOpenSettings={() => {}}
+        onOpenDreamTeam={() => {}}
+        onRefreshConnection={checkConnection}
+        onToggleTheme={toggleTheme}
+        onConsultTeam={dreamTeamSettings.enabled && activeProject ? () => startDreamTeamDiscussion(activeProject.name, "General consultation") : undefined}
+        hasActiveProject={!!activeProject}
+        isGenerating={isGenerating || isPlanning}
+        isDarkMode={isDarkMode}
+      />
       {activeDiscussion && (
         <DreamTeamPanel
           settings={dreamTeamSettings}

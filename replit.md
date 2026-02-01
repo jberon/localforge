@@ -107,6 +107,8 @@ Expert advisory system that pauses to consult multiple AI personas for important
 - **Smart Connection**: Subtle green dot when connected, non-intrusive offline badge when disconnected
 - **Polished Animations**: Smooth transitions for loading states, tab changes, and preview updates
 - **Inline Connection Helper**: Friendly messaging when LM Studio is offline
+- **Command Palette**: Press Cmd+K (Mac) or Ctrl+K (Windows/Linux) for quick access to all actions
+- **Generation Phase Tracking**: Real-time progress indicators showing what's happening during generation (e.g., "Analyzing request...", "Generating code...", "Writing code...", "Finalizing...")
 
 ### File Explorer (Replit-like Interface)
 - **Tree View**: Hierarchical folder/file display with expand/collapse
