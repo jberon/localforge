@@ -156,22 +156,46 @@ Expert advisory system that pauses to consult multiple AI personas for important
 - `GET /api/llm/models` - List available models from LM Studio
 - `POST /api/llm/status` - Check connection status and health
 
-### Temperature Presets
-- **Planner**: 0.3 (structured, deterministic planning)
-- **Builder**: 0.5 (balanced code generation)
+### Temperature Presets (Optimized for M4 Pro)
+- **Planner**: 0.2 (lower for structured, deterministic planning)
+- **Builder**: 0.4 (balanced for consistent code generation)
 - **Creative**: 0.7 (exploratory features)
 - **Deterministic**: 0.1 (precise, repeatable outputs)
+- **Refine**: 0.3 (careful code modifications)
 
-### Token Limits by Use Case
-- Quick Apps: 4,096 tokens
-- Full-Stack: 8,192 tokens
-- Production: 16,384 tokens
-- Plans: 2,048 tokens
+### Token Limits (Optimized for 48GB RAM)
+- Quick Apps: 8,192 tokens (2x increase)
+- Full-Stack: 16,384 tokens (2x increase)
+- Production: 32,768 tokens (2x increase)
+- Plans: 4,096 tokens (2x increase)
+- Analysis: 2,048 tokens (intent detection)
+
+### Recommended Models for M4 Pro 48GB
+
+**Best for Coding:**
+- `qwen2.5-coder-32b-instruct` - Best balance of speed/quality
+- `deepseek-coder-v2-lite-instruct` - Fast, excellent for code
+- `codellama-34b-instruct` - Strong code generation
+
+**Best for General/Reasoning:**
+- `qwen2.5-32b-instruct` - Excellent all-around
+- `llama-3.1-70b-instruct-q4` - High quality, fits in 48GB
+- `mistral-large-instruct-2407` - Good reasoning
+
+**Fast Iteration:**
+- `qwen2.5-coder-7b-instruct` - Very fast, good quality
+- `deepseek-coder-6.7b-instruct` - Lightweight, responsive
+- `codellama-7b-instruct` - Quick iterations
 
 ### Streaming Optimizations
 - All streaming endpoints use array-based chunk accumulation
 - Client disconnect detection to prevent unnecessary processing
 - Proper SSE headers for reliable streaming
+- Client connection caching for performance
+- Extended timeout (120s) for complex generations
+- Automatic retry logic (2 retries)
+- Array-based streaming for memory efficiency
+- Client disconnect handling to stop processing when clients leave
 
 ## External Dependencies
 - **LM Studio**: Used for local LLM inference via its OpenAI-compatible API.

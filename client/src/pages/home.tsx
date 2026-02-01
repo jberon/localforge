@@ -36,6 +36,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingCode, setStreamingCode] = useState("");
   const [llmConnected, setLlmConnected] = useState<boolean | null>(null);
+  const [loadedModel, setLoadedModel] = useState<string | null>(null);
   const [showCelebration, setShowCelebration] = useState(false);
   const [settings, setSettings] = useState<LLMSettings>({
     endpoint: "http://localhost:1234/v1",
@@ -56,12 +57,12 @@ export default function Home() {
     planner: {
       endpoint: "http://localhost:1234/v1",
       model: "",
-      temperature: 0.3,
+      temperature: 0.2,  // Optimized for M4 Pro - lower for structured planning
     },
     builder: {
       endpoint: "http://localhost:1234/v1",
       model: "",
-      temperature: 0.5,
+      temperature: 0.4,  // Optimized for M4 Pro - balanced for code generation
     },
   });
 
@@ -133,10 +134,18 @@ export default function Home() {
       });
       const data = await response.json();
       setLlmConnected(data.connected);
+      if (data.connected && data.models?.length > 0) {
+        // Use configured model if set, otherwise show first available
+        const activeModel = settings.model || data.models[0];
+        setLoadedModel(activeModel);
+      } else {
+        setLoadedModel(null);
+      }
     } catch {
       setLlmConnected(false);
+      setLoadedModel(null);
     }
-  }, [settings.endpoint]);
+  }, [settings.endpoint, settings.model]);
 
   useEffect(() => {
     checkConnection();
@@ -871,7 +880,14 @@ export default function Home() {
                 </Badge>
               )}
               {llmConnected === true && (
-                <div className="w-2 h-2 bg-green-500 rounded-full" title="LM Studio connected" data-testid="indicator-connected" />
+                <div className="flex items-center gap-1.5" data-testid="indicator-connected">
+                  <div className="w-2 h-2 bg-green-500 rounded-full" title="LM Studio connected" />
+                  {loadedModel && (
+                    <span className="text-xs text-muted-foreground truncate max-w-[180px]" title={`Model: ${loadedModel}`}>
+                      {loadedModel}
+                    </span>
+                  )}
+                </div>
               )}
               <ThemeToggle />
             </div>
