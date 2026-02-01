@@ -79,6 +79,12 @@ LocalForge includes built-in version control for projects:
 - Client connection caching for performance
 - Extended timeout (120s) for complex generations
 - Automatic retry logic (2 retries)
+- Array-based streaming for memory efficiency
+- Client disconnect handling to stop processing when clients leave
+
+### API Endpoints for LM Studio
+- `GET /api/llm/models` - List available models from LM Studio
+- `POST /api/llm/status` - Check connection status and health
 
 ### Temperature Presets
 - **Planner**: 0.3 (structured, deterministic planning)
@@ -91,6 +97,11 @@ LocalForge includes built-in version control for projects:
 - Full-Stack: 8,192 tokens
 - Production: 16,384 tokens
 - Plans: 2,048 tokens
+
+### Streaming Optimizations
+- All streaming endpoints use array-based chunk accumulation
+- Client disconnect detection to prevent unnecessary processing
+- Proper SSE headers for reliable streaming
 
 ## External Dependencies
 - **LM Studio**: Used for local LLM inference via its OpenAI-compatible API.
