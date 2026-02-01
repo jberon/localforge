@@ -38,6 +38,13 @@ import {
   ChevronRight,
   Brain,
   MessageSquare,
+  FolderCode,
+  Package,
+  Code2,
+  FileText,
+  ExternalLink,
+  Briefcase,
+  Rocket,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -51,6 +58,34 @@ interface QueryResult {
   answer: string;
   data?: any;
   visualization?: "bar" | "line" | "pie" | "number" | "list";
+}
+
+interface ProjectInventory {
+  id: string;
+  name: string;
+  description?: string;
+  files: Array<{ path: string; language: string; lines: number; size: number }>;
+  totalFiles: number;
+  totalLines: number;
+  totalSize: number;
+  languageCounts: Record<string, number>;
+  createdAt: number;
+  updatedAt: number;
+  hasCode: boolean;
+  prompt?: string;
+}
+
+interface CodeInventory {
+  summary: {
+    totalProjects: number;
+    projectsWithCode: number;
+    totalFiles: number;
+    totalLines: number;
+    totalSize: number;
+    averageLinesPerProject: number;
+  };
+  languageBreakdown: Record<string, { lines: number; files: number; projects: number }>;
+  projects: ProjectInventory[];
 }
 
 export default function AnalyticsPage({ settings }: AnalyticsPageProps) {
@@ -75,6 +110,13 @@ export default function AnalyticsPage({ settings }: AnalyticsPageProps) {
   const { data: events = [] } = useQuery<AnalyticsEvent[]>({
     queryKey: ["/api/analytics/events"],
   });
+
+  const { data: codeInventory, isLoading: inventoryLoading } = useQuery<CodeInventory>({
+    queryKey: ["/api/analytics/code-inventory"],
+  });
+
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const generateInsightsMutation = useMutation({
     mutationFn: async () => {
@@ -537,6 +579,13 @@ export default function AnalyticsPage({ settings }: AnalyticsPageProps) {
                 <Search className="h-4 w-4 mr-2" />
                 Data Explorer
               </TabsTrigger>
+              <TabsTrigger value="portfolio" data-testid="tab-portfolio">
+                <FolderCode className="h-4 w-4 mr-2" />
+                <span data-testid="tab-portfolio-label">Portfolio</span>
+                {codeInventory && codeInventory.summary.projectsWithCode > 0 && (
+                  <Badge variant="secondary" className="ml-2" data-testid="badge-portfolio-count">{codeInventory.summary.projectsWithCode}</Badge>
+                )}
+              </TabsTrigger>
             </TabsList>
 
             {/* Filters */}
@@ -880,6 +929,302 @@ export default function AnalyticsPage({ settings }: AnalyticsPageProps) {
                 </ScrollArea>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Portfolio Tab */}
+          <TabsContent value="portfolio" className="space-y-6">
+            {/* Portfolio Summary Stats */}
+            {inventoryLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <Card key={i} className="animate-pulse">
+                    <CardHeader className="pb-2">
+                      <div className="h-4 bg-muted rounded w-1/2" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-8 bg-muted rounded w-1/3" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : codeInventory ? (
+              <>
+                {/* Portfolio Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card data-testid="stat-total-projects">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+                      <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+                      <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">{codeInventory.summary.totalProjects}</div>
+                      <p className="text-xs text-muted-foreground">
+                        {codeInventory.summary.projectsWithCode} with code
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card data-testid="stat-total-files">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+                      <CardTitle className="text-sm font-medium">Total Files</CardTitle>
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">{codeInventory.summary.totalFiles}</div>
+                      <p className="text-xs text-muted-foreground">
+                        Across all projects
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card data-testid="stat-total-lines">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+                      <CardTitle className="text-sm font-medium">Lines of Code</CardTitle>
+                      <Code2 className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">{codeInventory.summary.totalLines.toLocaleString()}</div>
+                      <p className="text-xs text-muted-foreground">
+                        ~{codeInventory.summary.averageLinesPerProject} per project
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card data-testid="stat-total-size">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+                      <CardTitle className="text-sm font-medium">Total Size</CardTitle>
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">
+                        {(codeInventory.summary.totalSize / 1024).toFixed(1)} KB
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Raw code size
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Language Breakdown & Actions */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Language Breakdown */}
+                  <Card data-testid="card-languages">
+                    <CardHeader>
+                      <CardTitle className="text-base">Language Breakdown</CardTitle>
+                      <CardDescription>Technologies used across all projects</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {Object.keys(codeInventory.languageBreakdown).length > 0 ? (
+                        <div className="space-y-3">
+                          {Object.entries(codeInventory.languageBreakdown)
+                            .sort(([, a], [, b]) => b.lines - a.lines)
+                            .map(([language, stats], index) => {
+                              const totalLines = codeInventory.summary.totalLines;
+                              const percentage = totalLines > 0 ? (stats.lines / totalLines) * 100 : 0;
+                              const langKey = language.replace(/\s+/g, '-').toLowerCase();
+                              const colorClasses = [
+                                'bg-primary',
+                                'bg-chart-1',
+                                'bg-chart-2',
+                                'bg-chart-3',
+                                'bg-chart-4',
+                                'bg-chart-5',
+                                'bg-accent',
+                                'bg-secondary',
+                                'bg-muted-foreground',
+                              ];
+                              return (
+                                <div key={language} className="space-y-1" data-testid={`lang-row-${langKey}`}>
+                                  <div className="flex items-center justify-between gap-4 text-sm">
+                                    <span className="font-medium" data-testid={`lang-name-${langKey}`}>{language}</span>
+                                    <span className="text-muted-foreground" data-testid={`lang-stats-${langKey}`}>
+                                      {stats.lines.toLocaleString()} lines ({percentage.toFixed(0)}%)
+                                    </span>
+                                  </div>
+                                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                    <div 
+                                      className={`h-full transition-all ${colorClasses[index % colorClasses.length]}`}
+                                      style={{ width: `${percentage}%` }}
+                                      data-testid={`lang-bar-${langKey}`}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <span data-testid={`lang-files-${langKey}`}>{stats.files} files</span>
+                                    <span data-testid={`lang-projects-${langKey}`}>{stats.projects} projects</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No code generated yet</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Export & Actions */}
+                  <Card data-testid="card-export">
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Rocket className="h-4 w-4" />
+                        Local Packaging
+                      </CardTitle>
+                      <CardDescription>Export and manage your projects locally</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="p-4 bg-muted/50 rounded-lg">
+                        <h4 className="font-medium mb-2">Your Product Portfolio</h4>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          You have {codeInventory.summary.projectsWithCode} projects with generated code ready for local development or deployment.
+                        </p>
+                        <div className="space-y-2">
+                          <Button
+                            className="w-full"
+                            onClick={async () => {
+                              setIsExporting(true);
+                              try {
+                                const response = await fetch("/api/analytics/export-manifest");
+                                if (!response.ok) {
+                                  throw new Error(`Export failed: ${response.status}`);
+                                }
+                                const manifest = await response.json();
+                                const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = `localforge-portfolio-${new Date().toISOString().split('T')[0]}.json`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                                toast({ title: "Portfolio manifest exported!" });
+                              } catch (error) {
+                                toast({ title: "Export failed", description: "Could not generate portfolio manifest", variant: "destructive" });
+                              } finally {
+                                setIsExporting(false);
+                              }
+                            }}
+                            disabled={isExporting}
+                            data-testid="button-export-manifest"
+                          >
+                            {isExporting ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4 mr-2" />
+                            )}
+                            Export Portfolio Manifest
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-muted-foreground">
+                        <p className="font-medium mb-1">Tips for Product Development:</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                          <li>Use templates like "Task Manager" for validated product ideas</li>
+                          <li>Iterate with refinements to polish your MVP</li>
+                          <li>Download full-stack apps for local hosting</li>
+                          <li>Track successful prompts for reusable patterns</li>
+                        </ul>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Project List */}
+                <Card data-testid="card-project-list">
+                  <CardHeader>
+                    <CardTitle className="text-base">Project Inventory</CardTitle>
+                    <CardDescription>All your generated apps with code details</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[400px]">
+                      {codeInventory.projects.filter(p => p.hasCode).length > 0 ? (
+                        <div className="space-y-3">
+                          {codeInventory.projects.filter(p => p.hasCode).map((project) => (
+                            <div
+                              key={project.id}
+                              className={`p-4 rounded-lg border hover-elevate cursor-pointer ${
+                                selectedProject === project.id ? 'ring-2 ring-primary' : ''
+                              }`}
+                              onClick={() => setSelectedProject(selectedProject === project.id ? null : project.id)}
+                              data-testid={`project-${project.id}`}
+                            >
+                              <div className="flex items-start justify-between gap-4 flex-wrap">
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-medium truncate" data-testid={`project-name-${project.id}`}>{project.name}</h4>
+                                  {project.prompt && (
+                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1" data-testid={`project-prompt-${project.id}`}>
+                                      {project.prompt}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge variant="secondary" data-testid={`project-files-count-${project.id}`}>{project.totalFiles} files</Badge>
+                                  <Badge variant="outline" data-testid={`project-lines-count-${project.id}`}>{project.totalLines} lines</Badge>
+                                </div>
+                              </div>
+
+                              {selectedProject === project.id && (
+                                <div className="mt-4 pt-4 border-t space-y-3" data-testid={`project-details-${project.id}`}>
+                                  {/* Languages used */}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {Object.entries(project.languageCounts).map(([lang, lines]) => (
+                                      <Badge key={lang} variant="outline" className="text-xs" data-testid={`project-lang-${project.id}-${lang.replace(/\s+/g, '-').toLowerCase()}`}>
+                                        {lang}: {lines} lines
+                                      </Badge>
+                                    ))}
+                                  </div>
+
+                                  {/* Files list */}
+                                  <div className="space-y-1">
+                                    {project.files.slice(0, 10).map((file, i) => (
+                                      <div key={i} className="flex items-center justify-between gap-4 text-xs" data-testid={`project-file-${project.id}-${i}`}>
+                                        <span className="font-mono truncate" data-testid={`project-file-path-${project.id}-${i}`}>{file.path}</span>
+                                        <span className="text-muted-foreground whitespace-nowrap" data-testid={`project-file-lines-${project.id}-${i}`}>
+                                          {file.lines} lines
+                                        </span>
+                                      </div>
+                                    ))}
+                                    {project.files.length > 10 && (
+                                      <p className="text-xs text-muted-foreground" data-testid={`project-more-files-${project.id}`}>
+                                        +{project.files.length - 10} more files
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* Actions */}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Link href={`/?project=${project.id}`}>
+                                      <Button size="sm" variant="outline" data-testid={`open-project-${project.id}`}>
+                                        <ExternalLink className="h-3 w-3 mr-1" />
+                                        Open Project
+                                      </Button>
+                                    </Link>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-12">
+                          <FolderCode className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                          <h3 className="text-lg font-medium mb-2">No Projects Yet</h3>
+                          <p className="text-muted-foreground mb-4">
+                            Start building apps to see your portfolio grow
+                          </p>
+                          <Link href="/">
+                            <Button data-testid="button-start-building">
+                              <Rocket className="h-4 w-4 mr-2" />
+                              Start Building
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </>
+            ) : null}
           </TabsContent>
         </Tabs>
 

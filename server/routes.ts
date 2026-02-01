@@ -933,6 +933,153 @@ Provide a clear, helpful answer based on the data. Be specific with numbers when
     }
   });
 
+  // Get code inventory - breakdown of all generated code
+  app.get("/api/analytics/code-inventory", async (req, res) => {
+    try {
+      const allProjects = await storage.getAllProjects();
+      
+      // Language detection helpers
+      const detectLanguage = (filename: string, content: string): string => {
+        const ext = filename.split('.').pop()?.toLowerCase() || '';
+        const extMap: Record<string, string> = {
+          'js': 'JavaScript',
+          'jsx': 'React JSX',
+          'ts': 'TypeScript',
+          'tsx': 'React TSX',
+          'html': 'HTML',
+          'css': 'CSS',
+          'scss': 'SCSS',
+          'json': 'JSON',
+          'md': 'Markdown',
+          'py': 'Python',
+          'sql': 'SQL',
+          'sh': 'Shell',
+          'yml': 'YAML',
+          'yaml': 'YAML',
+          'env': 'Environment',
+          'dockerfile': 'Docker',
+        };
+        return extMap[ext] || 'Other';
+      };
+
+      const countLines = (content: string): number => {
+        return content.split('\n').length;
+      };
+
+      // Process all projects
+      const projectInventory = allProjects.map(project => {
+        const files: Array<{ path: string; language: string; lines: number; size: number }> = [];
+        let totalLines = 0;
+        let totalSize = 0;
+        const languageCounts: Record<string, number> = {};
+
+        // Process generatedFiles if available
+        if (project.generatedFiles && Array.isArray(project.generatedFiles)) {
+          for (const file of project.generatedFiles as Array<{ path: string; content: string }>) {
+            const language = detectLanguage(file.path, file.content);
+            const lines = countLines(file.content);
+            const size = file.content.length;
+            
+            files.push({ path: file.path, language, lines, size });
+            totalLines += lines;
+            totalSize += size;
+            languageCounts[language] = (languageCounts[language] || 0) + lines;
+          }
+        }
+
+        // Process generatedCode (single file apps)
+        if (project.generatedCode && project.generatedCode.length > 0) {
+          const lines = countLines(project.generatedCode);
+          const size = project.generatedCode.length;
+          files.push({ path: 'app.jsx', language: 'React JSX', lines, size });
+          totalLines += lines;
+          totalSize += size;
+          languageCounts['React JSX'] = (languageCounts['React JSX'] || 0) + lines;
+        }
+
+        return {
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          files,
+          totalFiles: files.length,
+          totalLines,
+          totalSize,
+          languageCounts,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt,
+          hasCode: totalLines > 0,
+          prompt: project.lastPrompt || (project.messages as any)?.[0]?.content?.substring(0, 200),
+        };
+      });
+
+      // Aggregate stats
+      const totalProjects = projectInventory.length;
+      const projectsWithCode = projectInventory.filter(p => p.hasCode).length;
+      const totalFiles = projectInventory.reduce((sum, p) => sum + p.totalFiles, 0);
+      const totalLines = projectInventory.reduce((sum, p) => sum + p.totalLines, 0);
+      const totalSize = projectInventory.reduce((sum, p) => sum + p.totalSize, 0);
+      
+      // Aggregate language breakdown
+      const languageBreakdown: Record<string, { lines: number; files: number; projects: number }> = {};
+      for (const project of projectInventory) {
+        for (const [lang, lines] of Object.entries(project.languageCounts)) {
+          if (!languageBreakdown[lang]) {
+            languageBreakdown[lang] = { lines: 0, files: 0, projects: 0 };
+          }
+          languageBreakdown[lang].lines += lines;
+          languageBreakdown[lang].files += project.files.filter(f => f.language === lang).length;
+          languageBreakdown[lang].projects += 1;
+        }
+      }
+
+      res.json({
+        summary: {
+          totalProjects,
+          projectsWithCode,
+          totalFiles,
+          totalLines,
+          totalSize,
+          averageLinesPerProject: projectsWithCode > 0 ? Math.round(totalLines / projectsWithCode) : 0,
+        },
+        languageBreakdown,
+        projects: projectInventory.sort((a, b) => b.updatedAt - a.updatedAt),
+      });
+    } catch (error: any) {
+      console.error("Get code inventory error:", error);
+      res.status(500).json({ error: "Failed to get code inventory" });
+    }
+  });
+
+  // Export all projects as a package manifest
+  app.get("/api/analytics/export-manifest", async (req, res) => {
+    try {
+      const allProjects = await storage.getAllProjects();
+      
+      const manifest = {
+        exportedAt: new Date().toISOString(),
+        version: "1.0.0",
+        generator: "LocalForge",
+        totalProjects: allProjects.length,
+        projects: allProjects.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          prompt: p.lastPrompt || (p.messages as any)?.[0]?.content,
+          hasFullStack: p.generatedFiles && (p.generatedFiles as any[]).length > 0,
+          hasSingleFile: !!p.generatedCode,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+        })),
+      };
+
+      res.json(manifest);
+    } catch (error: any) {
+      console.error("Get export manifest error:", error);
+      res.status(500).json({ error: "Failed to get export manifest" });
+    }
+  });
+
   // Get successful prompts for learning (used as examples)
   app.get("/api/analytics/successful-prompts", async (req, res) => {
     try {
