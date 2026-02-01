@@ -94,6 +94,15 @@ export function ConfigureStep({
                   id={field.id}
                   value={fieldValues[field.id] || ""}
                   onChange={(e) => onFieldChange(field.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onQuickGenerate && canProceed && !isGenerating && llmConnected) {
+                      e.preventDefault();
+                      onQuickGenerate();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      (e.target as HTMLTextAreaElement).blur();
+                    }
+                  }}
                   placeholder={field.placeholder}
                   className="min-h-[80px] pr-12"
                   data-testid={`textarea-wizard-${field.id}`}
@@ -114,8 +123,12 @@ export function ConfigureStep({
                     )}
                   </Button>
                 )}
-                {isListening && activeVoiceField === field.id && (
+                {isListening && activeVoiceField === field.id ? (
                   <p className="text-xs text-red-500 mt-1">Listening... Click mic to stop</p>
+                ) : (
+                  onQuickGenerate && (
+                    <p className="text-xs text-muted-foreground mt-1">⌘+Enter to generate • Esc to cancel</p>
+                  )
                 )}
               </div>
             )}

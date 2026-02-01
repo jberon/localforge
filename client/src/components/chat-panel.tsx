@@ -130,6 +130,13 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSubmit(e);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      textareaRef.current?.blur();
+      setInput("");
     }
   };
 
@@ -260,7 +267,7 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
                 {isListening ? (
                   <span className="text-red-500">Listening... Click mic to stop</span>
                 ) : (
-                  "Press Enter to send, Shift+Enter for new line"
+                  "Enter to send • Shift+Enter for new line • Esc to clear"
                 )}
               </p>
               {speechError && (
