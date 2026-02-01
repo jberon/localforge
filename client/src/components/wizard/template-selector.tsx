@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { TEMPLATES, PRODUCTION_TEMPLATES, DEFAULT_PRODUCTION_MODULES } from "./templates";
 import type { TemplateConfig, ProductionTemplateConfig, TemplateCategory } from "./types";
 import { FreeformPrompt } from "./freeform-prompt";
@@ -7,7 +7,8 @@ import type { LLMSettings, ProductionModules } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Zap, Rocket, Sparkles, X, ArrowRight, Settings2 } from "lucide-react";
+import { Zap, Rocket, Sparkles, X, ArrowRight, Settings2, Mic, MicOff } from "lucide-react";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 
 interface TemplateSelectorProps {
   onSelect: (template: TemplateConfig) => void;
@@ -31,6 +32,12 @@ export function TemplateSelector({
   const [category, setCategory] = useState<TemplateCategory>("quick");
   const [quickStartTemplate, setQuickStartTemplate] = useState<TemplateConfig | null>(null);
   const [quickStartDescription, setQuickStartDescription] = useState("");
+
+  const handleTranscript = useCallback((transcript: string) => {
+    setQuickStartDescription((prev) => prev + (prev ? " " : "") + transcript);
+  }, []);
+
+  const { isListening, isSupported, toggleListening, error: speechError } = useSpeechRecognition(handleTranscript);
 
   const handleQuickStart = (template: TemplateConfig) => {
     setQuickStartTemplate(template);
@@ -118,22 +125,52 @@ export function TemplateSelector({
                 
                 <div className="space-y-4">
                   <div>
-                    <Input
-                      placeholder={`Describe your ${quickStartTemplate.name.toLowerCase()}...`}
-                      value={quickStartDescription}
-                      onChange={(e) => setQuickStartDescription(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !isGenerating && llmConnected) {
-                          handleQuickGenerate();
-                        }
-                      }}
-                      className="h-11"
-                      autoFocus
-                      data-testid="input-quickstart-description"
-                    />
+                    <div className="relative">
+                      <Input
+                        placeholder={`Describe your ${quickStartTemplate.name.toLowerCase()}...`}
+                        value={quickStartDescription}
+                        onChange={(e) => setQuickStartDescription(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !isGenerating && llmConnected) {
+                            handleQuickGenerate();
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            (e.target as HTMLInputElement).blur();
+                            setQuickStartDescription("");
+                          }
+                        }}
+                        className="h-11 pr-10"
+                        autoFocus
+                        data-testid="input-quickstart-description"
+                      />
+                      {isSupported && (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant={isListening ? "default" : "ghost"}
+                          onClick={toggleListening}
+                          disabled={isGenerating}
+                          className={`absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 ${isListening ? "bg-red-500 hover:bg-red-600 animate-pulse" : ""}`}
+                          data-testid="button-quickstart-voice"
+                        >
+                          {isListening ? (
+                            <MicOff className="h-4 w-4" />
+                          ) : (
+                            <Mic className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Press Enter to generate, or leave blank for a default {quickStartTemplate.name.toLowerCase()}
+                      {isListening ? (
+                        <span className="text-red-500">Listening... Click mic to stop</span>
+                      ) : (
+                        `Enter to generate • Esc to clear${isSupported ? " • Click mic to speak" : ""}`
+                      )}
                     </p>
+                    {speechError && (
+                      <p className="text-xs text-destructive mt-1">{speechError}</p>
+                    )}
                   </div>
                   
                   {llmConnected === false ? (
