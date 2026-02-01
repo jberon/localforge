@@ -1,37 +1,77 @@
-import { type User, type InsertUser } from "@shared/schema";
+import type { Project, Message, InsertProject } from "@shared/schema";
 import { randomUUID } from "crypto";
 
-// modify the interface with any CRUD methods
-// you might need
-
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  getProjects(): Promise<Project[]>;
+  getProject(id: string): Promise<Project | undefined>;
+  createProject(project: InsertProject): Promise<Project>;
+  updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined>;
+  deleteProject(id: string): Promise<boolean>;
+  addMessage(projectId: string, message: Omit<Message, "id" | "timestamp">): Promise<Message | undefined>;
 }
 
 export class MemStorage implements IStorage {
-  private users: Map<string, User>;
+  private projects: Map<string, Project>;
 
   constructor() {
-    this.users = new Map();
+    this.projects = new Map();
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getProjects(): Promise<Project[]> {
+    return Array.from(this.projects.values()).sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async getProject(id: string): Promise<Project | undefined> {
+    return this.projects.get(id);
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createProject(insertProject: InsertProject): Promise<Project> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+    const now = Date.now();
+    const project: Project = {
+      ...insertProject,
+      id,
+      messages: insertProject.messages || [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.projects.set(id, project);
+    return project;
+  }
+
+  async updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined> {
+    const project = this.projects.get(id);
+    if (!project) return undefined;
+    
+    const updated: Project = {
+      ...project,
+      ...updates,
+      id,
+      updatedAt: Date.now(),
+    };
+    this.projects.set(id, updated);
+    return updated;
+  }
+
+  async deleteProject(id: string): Promise<boolean> {
+    return this.projects.delete(id);
+  }
+
+  async addMessage(projectId: string, message: Omit<Message, "id" | "timestamp">): Promise<Message | undefined> {
+    const project = this.projects.get(projectId);
+    if (!project) return undefined;
+    
+    const newMessage: Message = {
+      ...message,
+      id: randomUUID(),
+      timestamp: Date.now(),
+    };
+    
+    project.messages.push(newMessage);
+    project.updatedAt = Date.now();
+    this.projects.set(projectId, project);
+    
+    return newMessage;
   }
 }
 
