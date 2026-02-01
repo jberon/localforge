@@ -197,9 +197,16 @@ export class AnalyticsStorage implements IAnalyticsStorage {
     const generationCompleted = allEvents.filter(e => e.type === "generation_completed");
     const generationFailed = allEvents.filter(e => e.type === "generation_failed");
     
+    // Only count as successful if code was actually generated (codeLength > 0)
+    const actuallySuccessful = generationCompleted.filter(e => {
+      const codeLength = e.data?.codeLength;
+      return typeof codeLength === "number" && codeLength > 0;
+    });
+    
     const totalGenerations = generationStarted.length;
-    const successfulGenerations = generationCompleted.length;
-    const failedGenerations = generationFailed.length;
+    const successfulGenerations = actuallySuccessful.length;
+    // Failed = explicit failures + completions with no code
+    const failedGenerations = generationFailed.length + (generationCompleted.length - actuallySuccessful.length);
     const successRate = totalGenerations > 0 
       ? (successfulGenerations / totalGenerations) * 100 
       : 0;
