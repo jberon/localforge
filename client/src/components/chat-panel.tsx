@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, User, Sparkles, FileCode, CheckCircle2, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Send, User, Sparkles, FileCode, Loader2 } from "lucide-react";
 import type { Message, DataModel } from "@shared/schema";
 import { GenerationWizard } from "./generation-wizard";
 import { WorkingIndicator } from "./working-indicator";
@@ -44,7 +44,7 @@ function formatMessageContent(content: string): JSX.Element[] {
         i++;
       }
       elements.push(
-        <div key={`code-${sectionIndex}`} className="my-2 rounded-md bg-muted/50 border overflow-hidden">
+        <div key={`code-${sectionIndex}`} className="my-2 rounded-md bg-muted/50 border overflow-hidden" data-testid={`code-block-${sectionIndex}`}>
           <div className="px-3 py-1.5 bg-muted/80 border-b flex items-center gap-2">
             <FileCode className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground font-medium">Code</span>
@@ -99,31 +99,6 @@ function formatMessageContent(content: string): JSX.Element[] {
   return elements;
 }
 
-function CollapsibleSection({ title, children, defaultOpen = true }: { 
-  title: string; 
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
-  
-  return (
-    <div className="border-l-2 border-muted pl-3 my-2">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {isOpen ? (
-          <ChevronDown className="h-3.5 w-3.5" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5" />
-        )}
-        <span className="font-medium">{title}</span>
-      </button>
-      {isOpen && <div className="mt-2">{children}</div>}
-    </div>
-  );
-}
-
 export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, onCheckConnection }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -171,14 +146,14 @@ export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, on
               >
                 {message.role === "user" ? (
                   <div className="flex gap-3 items-start">
-                    <div className="flex-shrink-0 w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
+                    <div className="flex-shrink-0 w-7 h-7 rounded-full bg-secondary flex items-center justify-center" data-testid={`avatar-user-${message.id}`}>
                       <User className="h-3.5 w-3.5" />
                     </div>
                     <div className="flex-1 pt-0.5">
-                      <p className="text-sm font-medium text-foreground leading-relaxed">
+                      <p className="text-sm font-medium text-foreground leading-relaxed" data-testid={`text-user-message-${message.id}`}>
                         {message.content}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1" data-testid={`text-timestamp-${message.id}`}>
                         {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -186,14 +161,14 @@ export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, on
                 ) : (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <div className="flex-shrink-0 w-7 h-7 rounded-md bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-md bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center" data-testid={`avatar-assistant-${message.id}`}>
                         <Sparkles className="h-3.5 w-3.5 text-primary" />
                       </div>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground" data-testid={`text-timestamp-${message.id}`}>
                         {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <div className="pl-9 space-y-2">
+                    <div className="pl-9 space-y-2" data-testid={`text-assistant-message-${message.id}`}>
                       {formatMessageContent(message.content)}
                     </div>
                   </div>
@@ -211,7 +186,7 @@ export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, on
                 <div className="pl-9">
                   <WorkingIndicator text="Working" />
                   <div className="mt-3 space-y-2">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="status-analyzing">
                       <div className="w-4 h-4 rounded border border-primary/30 flex items-center justify-center">
                         <div className="w-2 h-2 bg-primary/50 rounded-sm animate-pulse" />
                       </div>
@@ -236,7 +211,8 @@ export function ChatPanel({ messages, isLoading, onSendMessage, llmConnected, on
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Describe what you want to change..."
-                  className="min-h-[60px] max-h-[200px] resize-none pr-14 text-sm"
+                  className="resize-none pr-14 text-sm"
+                  rows={3}
                   disabled={isLoading}
                   data-testid="input-chat"
                 />
