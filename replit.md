@@ -72,6 +72,13 @@ LocalForge includes built-in version control for projects:
 - **Test Steps**: Auto-generated test scenarios based on code analysis
 - **Visual Feedback**: See test progress with animated cursor overlay
 
+### UX Design (Steve Jobs-Inspired)
+- **Quick Start Mode**: Click a template → describe your app → generate immediately (2 steps instead of 4)
+- **Progressive Disclosure**: Search and Console tabs hidden behind "Dev Tools" toggle
+- **Smart Connection**: Subtle green dot when connected, non-intrusive offline badge when disconnected
+- **Polished Animations**: Smooth transitions for loading states, tab changes, and preview updates
+- **Inline Connection Helper**: Friendly messaging when LM Studio is offline
+
 ### File Explorer (Replit-like Interface)
 - **Tree View**: Hierarchical folder/file display with expand/collapse
 - **Search Files**: Filter files by name in the search bar

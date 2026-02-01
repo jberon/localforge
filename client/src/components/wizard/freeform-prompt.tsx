@@ -83,25 +83,30 @@ export function FreeformPrompt({
         />
       </div>
 
-      <div className="flex items-center justify-center gap-3">
+      <div className="flex flex-col items-center gap-3">
         {llmConnected === false ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCheckConnection}
-            className="gap-2"
-            data-testid="button-freeform-retry"
-          >
-            <XCircle className="h-4 w-4 text-destructive" />
-            Reconnect to LLM
-          </Button>
+          <div className="flex flex-col items-center gap-3 p-4 rounded-lg bg-muted/50 border border-dashed animate-in fade-in duration-300">
+            <p className="text-sm text-muted-foreground text-center">
+              Start LM Studio on your Mac to begin creating
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCheckConnection}
+              className="gap-2"
+              data-testid="button-freeform-retry"
+            >
+              <Loader2 className="h-4 w-4" />
+              Check connection
+            </Button>
+          </div>
         ) : llmConnected === null ? (
-          <Button variant="outline" disabled className="gap-2">
+          <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Connecting...
-          </Button>
+            <span className="text-sm">Connecting to LM Studio...</span>
+          </div>
         ) : (
-          <>
+          <div className="flex items-center gap-3">
             {canEnhance && (
               <Button
                 type="button"
@@ -143,7 +148,7 @@ export function FreeformPrompt({
                 </>
               )}
             </Button>
-          </>
+          </div>
         )}
       </div>
 

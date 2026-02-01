@@ -762,28 +762,20 @@ export default function Home() {
                   Analytics
                 </Link>
               </Button>
-              <Badge 
-                variant={llmConnected ? "default" : "secondary"} 
-                className="gap-1.5 text-xs"
-                data-testid="badge-connection-status"
-              >
-                {llmConnected ? (
-                  <>
-                    <Wifi className="h-3 w-3" />
-                    Connected
-                  </>
-                ) : llmConnected === false ? (
-                  <>
-                    <WifiOff className="h-3 w-3" />
-                    Disconnected
-                  </>
-                ) : (
-                  <>
-                    <Wifi className="h-3 w-3 animate-pulse" />
-                    Checking...
-                  </>
-                )}
-              </Badge>
+              {llmConnected === false && (
+                <Badge 
+                  variant="outline" 
+                  className="gap-1.5 text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover-elevate"
+                  onClick={checkConnection}
+                  data-testid="badge-connection-status"
+                >
+                  <WifiOff className="h-3 w-3" />
+                  LM Studio offline
+                </Badge>
+              )}
+              {llmConnected === true && (
+                <div className="w-2 h-2 bg-green-500 rounded-full" title="LM Studio connected" data-testid="indicator-connected" />
+              )}
               <ThemeToggle />
             </div>
           </header>

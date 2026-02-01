@@ -5,7 +5,9 @@ import { FreeformPrompt } from "./freeform-prompt";
 import { trackEvent } from "@/lib/analytics";
 import type { LLMSettings, ProductionModules } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
-import { Zap, Rocket } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Zap, Rocket, Sparkles, X, ArrowRight, Settings2 } from "lucide-react";
 
 interface TemplateSelectorProps {
   onSelect: (template: TemplateConfig) => void;
@@ -27,6 +29,27 @@ export function TemplateSelector({
   settings,
 }: TemplateSelectorProps) {
   const [category, setCategory] = useState<TemplateCategory>("quick");
+  const [quickStartTemplate, setQuickStartTemplate] = useState<TemplateConfig | null>(null);
+  const [quickStartDescription, setQuickStartDescription] = useState("");
+
+  const handleQuickStart = (template: TemplateConfig) => {
+    setQuickStartTemplate(template);
+    setQuickStartDescription("");
+  };
+
+  const handleQuickGenerate = () => {
+    if (!quickStartTemplate || !llmConnected) return;
+    const description = quickStartDescription.trim() || quickStartTemplate.name;
+    const prompt = `Create a ${quickStartTemplate.name.toLowerCase()} app: ${description}. Make it modern, clean, and fully functional.`;
+    trackEvent("generation_started", undefined, { template: quickStartTemplate.id, mode: "quick_start" });
+    onGenerate(prompt);
+  };
+
+  const handleAdvancedConfig = () => {
+    if (quickStartTemplate) {
+      onSelect(quickStartTemplate);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -69,27 +92,115 @@ export function TemplateSelector({
 
       {category === "quick" ? (
         <div className="space-y-4">
-          <p className="text-center text-sm text-muted-foreground">
-            Simple apps for prototyping and quick projects
-          </p>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-6 justify-items-center">
-            {TEMPLATES.map((template) => (
-              <button
-                key={template.id}
-                className="group flex flex-col items-center gap-3 p-4 rounded-2xl hover-elevate focus:outline-none focus:ring-2 focus:ring-primary/20"
-                onClick={() => {
-                  trackEvent("template_selected", undefined, { template: template.id });
-                  onSelect(template);
-                }}
-                data-testid={`card-template-${template.id}`}
-              >
-                <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center transition-colors group-hover:bg-primary/10">
-                  <template.icon className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
+          {quickStartTemplate ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="max-w-md mx-auto p-6 rounded-2xl border bg-card">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <quickStartTemplate.icon className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">{quickStartTemplate.name}</h3>
+                      <p className="text-xs text-muted-foreground">{quickStartTemplate.description}</p>
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setQuickStartTemplate(null)}
+                    className="h-8 w-8"
+                    data-testid="button-close-quickstart"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                <span className="text-sm font-medium text-center">{template.name}</span>
-              </button>
-            ))}
-          </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <Input
+                      placeholder={`Describe your ${quickStartTemplate.name.toLowerCase()}...`}
+                      value={quickStartDescription}
+                      onChange={(e) => setQuickStartDescription(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !isGenerating && llmConnected) {
+                          handleQuickGenerate();
+                        }
+                      }}
+                      className="h-11"
+                      autoFocus
+                      data-testid="input-quickstart-description"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Press Enter to generate, or leave blank for a default {quickStartTemplate.name.toLowerCase()}
+                    </p>
+                  </div>
+                  
+                  {llmConnected === false ? (
+                    <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-muted/50 border border-dashed">
+                      <p className="text-sm text-muted-foreground text-center">
+                        Start LM Studio to generate
+                      </p>
+                      <Button
+                        variant="outline"
+                        onClick={onCheckConnection}
+                        className="gap-2"
+                        size="sm"
+                        data-testid="button-quickstart-check-connection"
+                      >
+                        Check connection
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleQuickGenerate}
+                        disabled={isGenerating || !llmConnected}
+                        className="flex-1 gap-2"
+                        data-testid="button-quickstart-generate"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {isGenerating ? "Creating..." : "Generate Now"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleAdvancedConfig}
+                        className="gap-2"
+                        data-testid="button-quickstart-advanced"
+                      >
+                        <Settings2 className="h-4 w-4" />
+                        Advanced
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-center text-sm text-muted-foreground">
+                Click a template to start building instantly
+              </p>
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-6 justify-items-center">
+                {TEMPLATES.map((template) => (
+                  <button
+                    key={template.id}
+                    className="group flex flex-col items-center gap-3 p-4 rounded-2xl hover-elevate focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    onClick={() => {
+                      trackEvent("template_selected", undefined, { template: template.id });
+                      handleQuickStart(template);
+                    }}
+                    data-testid={`card-template-${template.id}`}
+                  >
+                    <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center transition-colors group-hover:bg-primary/10">
+                      <template.icon className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </div>
+                    <span className="text-sm font-medium text-center">{template.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

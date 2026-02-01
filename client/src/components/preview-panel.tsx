@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package } from "lucide-react";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishingPanel } from "./publishing-panel";
@@ -78,6 +78,7 @@ export function PreviewPanel({
   const [codeSearchResults, setCodeSearchResults] = useState<Array<{ file: string; line: number; content: string; match: string }>>([]);
   const [isFileSaving, setIsFileSaving] = useState(false);
   const [hasFileChanges, setHasFileChanges] = useState(false);
+  const [devToolsExpanded, setDevToolsExpanded] = useState(false);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const fileEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -408,27 +409,54 @@ export function PreviewPanel({
                     Files
                     <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{generatedFiles.length}</Badge>
                   </TabsTrigger>
-                  <TabsTrigger value="search" className="text-xs gap-1.5" data-testid="tab-search">
-                    <Search className="h-3.5 w-3.5" />
-                    Search
-                  </TabsTrigger>
-                  <TabsTrigger value="console" className="text-xs gap-1.5" data-testid="tab-console">
-                    <Terminal className="h-3.5 w-3.5" />
-                    Console
-                  </TabsTrigger>
                   <TabsTrigger value="publish" className="text-xs gap-1.5" data-testid="tab-publish">
                     <Package className="h-3.5 w-3.5" />
                     Publish
                   </TabsTrigger>
+                  <div className="relative flex items-center">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDevToolsExpanded(!devToolsExpanded);
+                      }}
+                      className="text-xs gap-1 text-muted-foreground"
+                      data-testid="button-dev-tools-toggle"
+                    >
+                      <Wrench className="h-3.5 w-3.5" />
+                      Dev
+                      <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${devToolsExpanded ? 'rotate-180' : ''}`} />
+                    </Button>
+                    {devToolsExpanded && (
+                      <div className="flex items-center ml-1 animate-in fade-in slide-in-from-left-2 duration-200">
+                        <TabsTrigger value="search" className="text-xs gap-1.5" data-testid="tab-search">
+                          <Search className="h-3.5 w-3.5" />
+                          Search
+                        </TabsTrigger>
+                        <TabsTrigger value="console" className="text-xs gap-1.5" data-testid="tab-console">
+                          <Terminal className="h-3.5 w-3.5" />
+                          Console
+                          {consoleLogs.length > 0 && (
+                            <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{consoleLogs.length}</Badge>
+                          )}
+                        </TabsTrigger>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </TabsList>
           </Tabs>
-          {isGenerating && code && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-              Streaming...
-            </span>
+          {isGenerating && (
+            <div className="flex items-center gap-2 px-2 py-1 bg-primary/10 rounded-full animate-in fade-in duration-300">
+              <div className="flex gap-0.5">
+                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span className="text-xs font-medium text-primary">Building your app...</span>
+            </div>
           )}
         </div>
 
@@ -519,10 +547,10 @@ export function PreviewPanel({
         ) : (
           <>
             {activeTab === "preview" ? (
-              <div className="h-full flex flex-col bg-white dark:bg-background">
+              <div className="h-full flex flex-col bg-white dark:bg-background transition-opacity duration-300">
                 {code && !isGenerating ? (
                   <>
-                    <div className="flex-1 overflow-hidden">
+                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500">
                       <iframe
                         key={iframeKey}
                         src={createPreviewHTML()}
@@ -566,13 +594,22 @@ export function PreviewPanel({
                     )}
                   </>
                 ) : isGenerating ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-                    <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    <div className="text-center">
-                      <p className="font-medium">Building your app...</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {code ? "Code is being generated. Switch to Code tab to see progress." : "Waiting for response from LLM..."}
+                  <div className="flex flex-col items-center justify-center h-full gap-6 p-8 animate-in fade-in duration-500">
+                    <div className="relative">
+                      <div className="w-16 h-16 border-2 border-primary/20 rounded-full" />
+                      <div className="absolute inset-0 w-16 h-16 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      <div className="absolute inset-2 w-12 h-12 border-2 border-primary/30 border-b-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                    </div>
+                    <div className="text-center space-y-2">
+                      <p className="font-semibold text-lg">Creating your app</p>
+                      <p className="text-sm text-muted-foreground max-w-xs">
+                        {code ? "Code is streaming in. Preview will appear when complete." : "Connecting to your local AI..."}
                       </p>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '200ms' }} />
+                      <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '400ms' }} />
                     </div>
                   </div>
                 ) : hasFullStackProject ? (
