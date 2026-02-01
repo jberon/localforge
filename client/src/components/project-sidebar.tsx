@@ -240,20 +240,10 @@ export function ProjectSidebar({
                   data-testid="input-model"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="temperature">Temperature: {tempSettings.temperature}</Label>
-                <Input
-                  id="temperature"
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.1"
-                  value={tempSettings.temperature}
-                  onChange={(e) => setTempSettings({ ...tempSettings, temperature: parseFloat(e.target.value) })}
-                  data-testid="input-temperature"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Lower values produce more focused output, higher values more creative
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  Temperature is automatically optimized based on what you're building.
+                  Creative apps use higher values, utility apps use lower values for precision.
                 </p>
               </div>
             </div>

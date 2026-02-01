@@ -19,6 +19,7 @@ export interface TemplateConfig {
   icon: LucideIcon;
   fields: FieldConfig[];
   promptBuilder: (values: Record<string, string>) => string;
+  temperature: number; // Auto-optimized temperature for this template type
 }
 
 export type WizardStep = "template" | "configure" | "data-model" | "review";
@@ -31,7 +32,7 @@ export interface WizardState {
 }
 
 export interface GenerationWizardProps {
-  onGenerate: (prompt: string, dataModel?: DataModel) => void;
+  onGenerate: (prompt: string, dataModel?: DataModel, temperature?: number) => void;
   isGenerating: boolean;
   llmConnected: boolean | null;
   onCheckConnection: () => void;

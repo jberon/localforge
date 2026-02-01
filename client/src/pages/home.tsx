@@ -160,7 +160,7 @@ export default function Home() {
   };
 
   const handleSendMessage = useCallback(
-    async (content: string, dataModel?: DataModel) => {
+    async (content: string, dataModel?: DataModel, templateTemperature?: number) => {
       let projectId = activeProjectId;
       const projectName = generateProjectName(content);
       
@@ -228,10 +228,15 @@ export default function Home() {
           });
         } else {
           // Use regular LLM streaming for frontend-only apps
+          // Use template-optimized temperature if provided, otherwise use settings
+          const effectiveSettings = {
+            ...settings,
+            temperature: templateTemperature ?? settings.temperature,
+          };
           const response = await fetch(`/api/projects/${projectId}/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content, settings }),
+            body: JSON.stringify({ content, settings: effectiveSettings }),
           });
 
           const reader = response.body?.getReader();

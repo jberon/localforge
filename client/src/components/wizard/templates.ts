@@ -74,6 +74,7 @@ export const TEMPLATES: TemplateConfig[] = [
       ]},
     ],
     promptBuilder: (v) => `Create a ${v.style || "modern"} dashboard called "${v.title}". Include these key metrics displayed as stat cards: ${v.metrics || "Revenue, Users, Orders"}. Add a ${v.chartType || "bar"} chart showing sample data trends. Make it visually polished with proper spacing and a cohesive color scheme.`,
+    temperature: 0.4, // Lower for structured data visualization
   },
   {
     id: "todo",
@@ -94,6 +95,7 @@ export const TEMPLATES: TemplateConfig[] = [
       ]},
     ],
     promptBuilder: (v) => `Create a task management app called "${v.title}". Features: ${v.features === "basic" ? "add new tasks, mark as complete, delete tasks" : v.features === "categories" ? "add tasks with categories/tags, filter by category, complete and delete" : v.features === "priority" ? "add tasks with priority levels (high/medium/low), sort by priority, complete and delete" : "add tasks with categories AND priority levels, filter and sort, complete and delete"}. ${v.persistence === "local" ? "Save tasks to localStorage so they persist across page refreshes." : ""} Include a progress indicator showing completion percentage.`,
+    temperature: 0.3, // Lower for reliable utility functionality
   },
   {
     id: "data-tool",
@@ -115,6 +117,7 @@ export const TEMPLATES: TemplateConfig[] = [
       ]},
     ],
     promptBuilder: (v) => `Create a data analysis tool called "${v.title}". Allow users to ${v.inputType === "paste" ? "paste CSV or tabular data" : v.inputType === "manual" ? "manually enter data in rows" : "either paste CSV data or manually enter rows"}. Display the data in a clean table format. Calculate and display these statistics for numeric columns: ${v.stats || "sum, average, min, max, count"}. ${v.visualization === "simple" ? "Add a bar chart visualization." : v.visualization === "full" ? "Add both bar and pie chart visualizations." : ""} Make parsing robust and handle common CSV edge cases.`,
+    temperature: 0.2, // Very low for precise data handling
   },
   {
     id: "landing",
@@ -137,6 +140,7 @@ export const TEMPLATES: TemplateConfig[] = [
       ]},
     ],
     promptBuilder: (v) => `Create a ${v.style || "modern"} landing page for "${v.title}". Headline: "${v.tagline || "Welcome to " + v.title}". ${v.sections === "minimal" ? "Include a hero section with headline, subtext, and a call-to-action button." : v.sections === "standard" ? "Include a hero section, a features grid with 3-4 features (use icons), and a call-to-action section." : "Include a hero section, features grid, testimonials section with 2-3 quotes, and a final CTA section."} Make it fully responsive and visually polished.`,
+    temperature: 0.6, // Medium for creative marketing copy
   },
   {
     id: "calculator",
@@ -172,6 +176,7 @@ export const TEMPLATES: TemplateConfig[] = [
       };
       return `Create a ${v.style || "clean"} ${types[v.type] || types.basic}`;
     },
+    temperature: 0.3, // Lower for precise calculations
   },
   {
     id: "creative",
@@ -200,5 +205,6 @@ export const TEMPLATES: TemplateConfig[] = [
       };
       return `Create a ${types[v.type] || types.quote}`;
     },
+    temperature: 0.8, // Higher for creative and fun outputs
   },
 ];

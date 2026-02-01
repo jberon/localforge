@@ -102,15 +102,15 @@ export function GenerationWizard({
   const generatedPrompt = buildFullPrompt();
 
   const handleGenerate = () => {
-    if (generatedPrompt && llmConnected) {
-      onGenerate(generatedPrompt, dataModel);
+    if (generatedPrompt && llmConnected && selectedTemplate) {
+      onGenerate(generatedPrompt, dataModel, selectedTemplate.temperature);
     }
   };
 
   const handleQuickGenerate = () => {
     if (selectedTemplate && canProceed() && llmConnected) {
       const quickPrompt = selectedTemplate.promptBuilder(fieldValues);
-      onGenerate(quickPrompt);
+      onGenerate(quickPrompt, undefined, selectedTemplate.temperature);
     }
   };
 
