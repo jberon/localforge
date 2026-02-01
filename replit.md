@@ -34,7 +34,10 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - `client/src/components/project-sidebar.tsx` - Project list and LLM settings
 - `client/src/components/error-boundary.tsx` - Error handling for React components
 - `client/src/components/connection-helper.tsx` - LLM connection troubleshooting UI
-- `server/routes.ts` - API endpoints for projects, LLM chat, and connection status
+- `client/src/components/onboarding-modal.tsx` - First-run tutorial for new users
+- `client/src/components/refinement-panel.tsx` - Iterative refinement UI for modifying generated apps
+- `client/src/components/wizard/` - Modular wizard components (template-selector, configure-step, data-model-builder, review-step, freeform-prompt)
+- `server/routes.ts` - API endpoints for projects, LLM chat, prompt enhancement, refinement, and error recovery
 - `server/generators/` - Modular code generators (schema, routes, frontend, docker, validator)
 
 ### API Endpoints
@@ -42,13 +45,17 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - `POST /api/projects` - Create a new project
 - `DELETE /api/projects/:id` - Delete a project
 - `POST /api/projects/:id/chat` - Chat with LLM (streaming SSE response)
+- `POST /api/projects/:id/refine` - Iterative refinement (streaming SSE response)
 - `POST /api/llm/status` - Check LM Studio connection status
+- `POST /api/llm/enhance-prompt` - AI-powered prompt enhancement
+- `POST /api/llm/fix-code` - Smart error recovery for broken code
 
 ### Data Models (shared/schema.ts)
-- **Project**: id, name, description, messages, generatedCode, generatedFiles, dataModel, lastPrompt, validation, createdAt, updatedAt
+- **Project**: id, name, description, messages, generatedCode, generatedFiles, dataModel, lastPrompt, validation, generationMetrics, createdAt, updatedAt
 - **Message**: id, role (user/assistant), content, timestamp
 - **LLMSettings**: endpoint, model, temperature
 - **ValidationResult**: valid, errors[], warnings[]
+- **GenerationMetrics**: startTime, endTime, durationMs, promptLength, responseLength, status, errorMessage, retryCount, tokenCount
 
 ## User Preferences
 - Uses dark mode by default
@@ -56,6 +63,27 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Temperature slider for LLM creativity control
 
 ## Recent Changes
+
+### Feb 2026 - Major UX & LLM Features Update
+- **Modular Wizard Refactor** - Split 891-line generation-wizard.tsx into 8 focused components:
+  - `wizard/types.ts` - TypeScript interfaces and types
+  - `wizard/templates.ts` - Template configurations and defaults
+  - `wizard/template-selector.tsx` - Steve Jobs-inspired template selection
+  - `wizard/configure-step.tsx` - Field configuration with Quick Generate button
+  - `wizard/data-model-builder.tsx` - Visual entity/field editor
+  - `wizard/review-step.tsx` - Pre-generation review
+  - `wizard/freeform-prompt.tsx` - Freeform text input with AI enhancement
+- **First-Run Onboarding** - 4-step modal tutorial explaining LocalForge and LM Studio setup
+- **Quick Generate** - Generate directly from configure step without going through all wizard steps
+- **Prompt Enhancement** - AI-powered improvement of simple prompts before generation
+  - Adds detail, UI/UX suggestions, accessibility considerations
+  - Available for short prompts (<100 chars) via "Enhance" button
+- **Iterative Refinement** - Modify generated apps with follow-up requests
+  - Quick refinement buttons: Dark mode, Make bigger/smaller, Better fonts
+  - Custom refinement input for any changes
+  - Streams updated code like initial generation
+- **Smart Error Recovery** - API endpoint to fix broken generated code using LLM
+- **Generation Metrics** - Track duration, success/failure, prompt length in database
 - **Code Validation** - Generated code is validated for syntax errors before showing "Ready" state
   - Checks for mismatched braces, parentheses, brackets
   - Validates JSON files

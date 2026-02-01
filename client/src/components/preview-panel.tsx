@@ -10,7 +10,8 @@ import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { LaunchGuide } from "./launch-guide";
 import { PreviewErrorBoundary } from "./error-boundary";
-import type { GeneratedFile, DataModel, ValidationResult } from "@shared/schema";
+import { RefinementPanel } from "./refinement-panel";
+import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@shared/schema";
 
 interface PreviewPanelProps {
   code: string;
@@ -22,6 +23,9 @@ interface PreviewPanelProps {
   dataModel?: DataModel;
   validation?: ValidationResult;
   onRegenerate?: (prompt: string, dataModel?: DataModel) => void;
+  projectId?: string;
+  settings?: LLMSettings;
+  onCodeUpdate?: (code: string) => void;
 }
 
 export function PreviewPanel({ 
@@ -33,7 +37,10 @@ export function PreviewPanel({
   lastPrompt,
   dataModel,
   validation,
-  onRegenerate
+  onRegenerate,
+  projectId,
+  settings,
+  onCodeUpdate,
 }: PreviewPanelProps) {
   const [activeTab, setActiveTab] = useState<"preview" | "code" | "files" | "launch">("preview");
   const [copied, setCopied] = useState(false);
@@ -223,16 +230,41 @@ export function PreviewPanel({
         ) : (
           <>
             {activeTab === "preview" ? (
-              <div className="h-full bg-white dark:bg-background">
+              <div className="h-full flex flex-col bg-white dark:bg-background">
                 {code && !isGenerating ? (
-                  <iframe
-                    key={iframeKey}
-                    src={createPreviewHTML()}
-                    className="w-full h-full border-0"
-                    sandbox="allow-scripts"
-                    title="App Preview"
-                    data-testid="iframe-preview"
-                  />
+                  <>
+                    <div className="flex-1 overflow-hidden">
+                      <iframe
+                        key={iframeKey}
+                        src={createPreviewHTML()}
+                        className="w-full h-full border-0"
+                        sandbox="allow-scripts"
+                        title="App Preview"
+                        data-testid="iframe-preview"
+                      />
+                    </div>
+                    {projectId && settings && !hasFullStackProject && (
+                      <div className="p-3 border-t bg-background">
+                        <RefinementPanel
+                          projectId={projectId}
+                          hasCode={!!code}
+                          settings={settings}
+                          onRefineStart={() => {}}
+                          onRefineComplete={(newCode) => {
+                            if (onCodeUpdate) onCodeUpdate(newCode);
+                            setIframeKey((k) => k + 1);
+                          }}
+                          onRefineError={(error) => {
+                            toast({
+                              title: "Refinement Failed",
+                              description: error,
+                              variant: "destructive",
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+                  </>
                 ) : isGenerating ? (
                   <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
                     <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />

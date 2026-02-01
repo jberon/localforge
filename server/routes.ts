@@ -34,6 +34,45 @@ root.render(<App />);
 
 Remember: Output ONLY the code, starting with "function App()" - no other text.`;
 
+const PROMPT_ENHANCEMENT_SYSTEM = `You are a prompt enhancement specialist. Your job is to take simple, brief app descriptions and transform them into detailed, comprehensive prompts that will help an AI code generator create a better app.
+
+RULES:
+1. Keep the original intent but add helpful details
+2. Add specific UI/UX suggestions (colors, layout, interactions)
+3. Suggest useful features the user might want
+4. Specify responsive design considerations
+5. Include accessibility considerations
+6. Keep the enhanced prompt concise but comprehensive (2-3 paragraphs max)
+7. Output ONLY the enhanced prompt text - no explanations or labels
+
+Example:
+Input: "todo app"
+Output: "Create a modern task management app with a clean, minimalist design. Include the ability to add, complete, and delete tasks. Each task should show its title with an optional description. Add priority levels (high, medium, low) with color-coded badges. Include a progress bar showing completion percentage. Use a card-based layout with subtle shadows. Tasks should animate smoothly when added or removed. Save tasks to localStorage for persistence. Use a calm color palette with a white background and soft accent colors."`;
+
+const ERROR_FIX_SYSTEM = `You are a code debugging expert. You will receive broken React code and error messages. Fix the code so it works correctly.
+
+RULES:
+1. Output ONLY the fixed JavaScript/JSX code - no explanations
+2. Maintain the original functionality and design intent
+3. Fix syntax errors, missing brackets, incorrect imports
+4. Ensure proper React patterns are used
+5. Keep the same component structure if possible
+6. The code must include ReactDOM.createRoot at the end
+
+Output ONLY the corrected code, starting with "function App()".`;
+
+const REFINEMENT_SYSTEM = `You are a React code modifier. You have an existing React component and a user's request to modify it. Update the code according to their request.
+
+RULES:
+1. Output ONLY the modified JavaScript/JSX code - no explanations
+2. Keep all existing functionality unless explicitly asked to remove it
+3. Maintain the existing code style and patterns
+4. Make the requested changes cleanly and completely
+5. Ensure the code still works after modifications
+6. Keep the ReactDOM.createRoot at the end
+
+Output ONLY the modified code, starting with "function App()".`;
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -101,6 +140,8 @@ export async function registerRoutes(
 
   // Chat with LLM and generate code (streaming)
   app.post("/api/projects/:id/chat", async (req, res) => {
+    const startTime = Date.now();
+    
     try {
       const parsed = chatRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -113,6 +154,16 @@ export async function registerRoutes(
       if (!project) {
         return res.status(404).json({ error: "Project not found" });
       }
+
+      // Initialize generation metrics
+      await storage.updateProject(projectId, {
+        generationMetrics: {
+          startTime,
+          promptLength: content.length,
+          status: "streaming",
+          retryCount: 0,
+        },
+      });
 
       // Add user message
       await storage.addMessage(projectId, {
@@ -167,15 +218,26 @@ export async function registerRoutes(
           .replace(/```$/gm, "")
           .trim();
 
+        const endTime = Date.now();
+
         // Add assistant message
         await storage.addMessage(projectId, {
           role: "assistant",
           content: "I've generated the app for you. Check the preview panel to see it in action!",
         });
 
-        // Update project with generated code
+        // Update project with generated code and metrics
         await storage.updateProject(projectId, {
           generatedCode: cleanedCode,
+          generationMetrics: {
+            startTime,
+            endTime,
+            durationMs: endTime - startTime,
+            promptLength: content.length,
+            responseLength: fullContent.length,
+            status: "success",
+            retryCount: 0,
+          },
         });
 
         const finalProject = await storage.getProject(projectId);
@@ -184,9 +246,24 @@ export async function registerRoutes(
       } catch (llmError: any) {
         console.error("LLM Error:", llmError);
         
+        const errorEndTime = Date.now();
+        
         await storage.addMessage(projectId, {
           role: "assistant",
           content: `I couldn't connect to your local LLM. Make sure LM Studio is running and the local server is started. Error: ${llmError.message}`,
+        });
+        
+        // Update metrics with error
+        await storage.updateProject(projectId, {
+          generationMetrics: {
+            startTime,
+            endTime: errorEndTime,
+            durationMs: errorEndTime - startTime,
+            promptLength: content.length,
+            status: "error",
+            errorMessage: llmError.message,
+            retryCount: 0,
+          },
         });
         
         const finalProject = await storage.getProject(projectId);
@@ -219,6 +296,192 @@ export async function registerRoutes(
         connected: false, 
         error: error.message 
       });
+    }
+  });
+
+  // Prompt Enhancement - Use LLM to improve simple prompts
+  const enhancePromptSchema = z.object({
+    prompt: z.string().min(1),
+    settings: llmSettingsSchema,
+  });
+
+  app.post("/api/llm/enhance-prompt", async (req, res) => {
+    try {
+      const parsed = enhancePromptSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { prompt, settings } = parsed.data;
+
+      const openai = new OpenAI({
+        baseURL: settings.endpoint || "http://localhost:1234/v1",
+        apiKey: "lm-studio",
+      });
+
+      const response = await openai.chat.completions.create({
+        model: settings.model || "local-model",
+        messages: [
+          { role: "system", content: PROMPT_ENHANCEMENT_SYSTEM },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 500,
+      });
+
+      const enhancedPrompt = response.choices[0]?.message?.content?.trim() || prompt;
+      res.json({ 
+        original: prompt, 
+        enhanced: enhancedPrompt,
+        improvement: enhancedPrompt.length > prompt.length * 1.5 
+      });
+    } catch (error: any) {
+      console.error("Prompt enhancement error:", error);
+      res.status(500).json({ error: "Failed to enhance prompt", details: error.message });
+    }
+  });
+
+  // Iterative Refinement - Modify existing generated code
+  const refineRequestSchema = z.object({
+    refinement: z.string().min(1),
+    settings: llmSettingsSchema,
+  });
+
+  app.post("/api/projects/:id/refine", async (req, res) => {
+    try {
+      const parsed = refineRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { refinement, settings } = parsed.data;
+      const projectId = req.params.id;
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.generatedCode) {
+        return res.status(400).json({ error: "No generated code to refine" });
+      }
+
+      // Set up SSE headers
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      const openai = new OpenAI({
+        baseURL: settings.endpoint || "http://localhost:1234/v1",
+        apiKey: "lm-studio",
+      });
+
+      try {
+        const stream = await openai.chat.completions.create({
+          model: settings.model || "local-model",
+          messages: [
+            { role: "system", content: REFINEMENT_SYSTEM },
+            { role: "user", content: `EXISTING CODE:\n\`\`\`jsx\n${project.generatedCode}\n\`\`\`\n\nMODIFICATION REQUEST: ${refinement}` },
+          ],
+          temperature: settings.temperature || 0.7,
+          max_tokens: 4096,
+          stream: true,
+        });
+
+        let fullContent = "";
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content || "";
+          if (delta) {
+            fullContent += delta;
+            res.write(`data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`);
+          }
+        }
+
+        // Clean up the response
+        let cleanedCode = fullContent
+          .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+          .replace(/```$/gm, "")
+          .trim();
+
+        // Add refinement to messages
+        await storage.addMessage(projectId, {
+          role: "user",
+          content: `Refine: ${refinement}`,
+        });
+        await storage.addMessage(projectId, {
+          role: "assistant",
+          content: "I've updated the app based on your feedback. Check the preview!",
+        });
+
+        // Update project with refined code
+        await storage.updateProject(projectId, {
+          generatedCode: cleanedCode,
+        });
+
+        const finalProject = await storage.getProject(projectId);
+        res.write(`data: ${JSON.stringify({ type: "done", project: finalProject })}\n\n`);
+        res.end();
+      } catch (llmError: any) {
+        console.error("Refinement LLM Error:", llmError);
+        res.write(`data: ${JSON.stringify({ type: "error", error: llmError.message })}\n\n`);
+        res.end();
+      }
+    } catch (error: any) {
+      console.error("Refinement error:", error);
+      res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+      res.end();
+    }
+  });
+
+  // Smart Error Recovery - Fix broken generated code
+  const fixCodeSchema = z.object({
+    code: z.string().min(1),
+    errors: z.array(z.string()),
+    settings: llmSettingsSchema,
+  });
+
+  app.post("/api/llm/fix-code", async (req, res) => {
+    try {
+      const parsed = fixCodeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { code, errors, settings } = parsed.data;
+
+      const openai = new OpenAI({
+        baseURL: settings.endpoint || "http://localhost:1234/v1",
+        apiKey: "lm-studio",
+      });
+
+      const response = await openai.chat.completions.create({
+        model: settings.model || "local-model",
+        messages: [
+          { role: "system", content: ERROR_FIX_SYSTEM },
+          { role: "user", content: `BROKEN CODE:\n\`\`\`jsx\n${code}\n\`\`\`\n\nERRORS:\n${errors.join("\n")}` },
+        ],
+        temperature: 0.3,
+        max_tokens: 4096,
+      });
+
+      let fixedCode = response.choices[0]?.message?.content?.trim() || code;
+      
+      // Clean up the response
+      fixedCode = fixedCode
+        .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+        .replace(/```$/gm, "")
+        .trim();
+
+      res.json({ 
+        original: code,
+        fixed: fixedCode,
+        errorsFixed: errors.length 
+      });
+    } catch (error: any) {
+      console.error("Code fix error:", error);
+      res.status(500).json({ error: "Failed to fix code", details: error.message });
     }
   });
 

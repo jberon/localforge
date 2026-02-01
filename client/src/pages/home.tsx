@@ -9,6 +9,7 @@ import { GenerationWizard } from "@/components/generation-wizard";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { EmptyState } from "@/components/empty-state";
 import { SuccessCelebration } from "@/components/success-celebration";
+import { OnboardingModal } from "@/components/onboarding-modal";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -372,6 +373,7 @@ export default function Home() {
                 isGenerating={isGenerating}
                 llmConnected={llmConnected}
                 onCheckConnection={checkConnection}
+                settings={settings}
               />
             ) : (
               <ResizablePanelGroup direction="horizontal">
@@ -395,10 +397,16 @@ export default function Home() {
                     lastPrompt={activeProject?.lastPrompt}
                     dataModel={activeProject?.dataModel}
                     validation={activeProject?.validation}
+                    projectId={activeProjectId || undefined}
+                    settings={settings}
                     onRegenerate={(prompt, dataModel) => {
                       if (activeProject && dataModel) {
                         handleSendMessage(prompt, dataModel);
                       }
+                    }}
+                    onCodeUpdate={(newCode) => {
+                      setStreamingCode(newCode);
+                      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                     }}
                   />
                 </ResizablePanel>
@@ -408,6 +416,7 @@ export default function Home() {
         </div>
       </div>
       <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
+      <OnboardingModal />
     </SidebarProvider>
   );
 }

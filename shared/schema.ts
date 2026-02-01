@@ -39,6 +39,18 @@ export const validationResultSchema = z.object({
   warnings: z.array(z.string()),
 });
 
+export const generationMetricsSchema = z.object({
+  startTime: z.number(),
+  endTime: z.number().optional(),
+  durationMs: z.number().optional(),
+  promptLength: z.number(),
+  responseLength: z.number().optional(),
+  status: z.enum(["pending", "streaming", "success", "error", "retrying"]),
+  errorMessage: z.string().optional(),
+  retryCount: z.number().default(0),
+  tokenCount: z.number().optional(),
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -49,6 +61,7 @@ export const projectSchema = z.object({
   dataModel: dataModelSchema.optional(),
   lastPrompt: z.string().optional(),
   validation: validationResultSchema.optional(),
+  generationMetrics: generationMetricsSchema.optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -72,6 +85,7 @@ export type DataEntity = z.infer<typeof dataEntitySchema>;
 export type DataModel = z.infer<typeof dataModelSchema>;
 export type GeneratedFile = z.infer<typeof generatedFileSchema>;
 export type ValidationResult = z.infer<typeof validationResultSchema>;
+export type GenerationMetrics = z.infer<typeof generationMetricsSchema>;
 
 // Database table for persistent project storage
 export const projects = pgTable("projects", {
@@ -84,6 +98,7 @@ export const projects = pgTable("projects", {
   dataModel: jsonb("data_model"),
   lastPrompt: text("last_prompt"),
   validation: jsonb("validation"),
+  generationMetrics: jsonb("generation_metrics"),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });
