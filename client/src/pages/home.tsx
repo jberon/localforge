@@ -225,7 +225,25 @@ export default function Home() {
       action: () => createProjectMutation.mutate(),
       description: "New project",
     },
-  ], [createProjectMutation]);
+    {
+      key: "s",
+      cmdOrCtrl: true,
+      action: () => {
+        if (activeProject) {
+          toast({
+            title: "Project saved",
+            description: "All changes are automatically saved.",
+          });
+        } else {
+          toast({
+            title: "No project selected",
+            description: "Select or create a project first.",
+          });
+        }
+      },
+      description: "Save project",
+    },
+  ], [createProjectMutation, activeProject, toast]);
 
   useKeyboardShortcuts(shortcuts);
 
