@@ -96,7 +96,7 @@ export async function registerRoutes(
     settings: llmSettingsSchema,
   });
 
-  // Chat with LLM and generate code
+  // Chat with LLM and generate code (streaming)
   app.post("/api/projects/:id/chat", async (req, res) => {
     try {
       const parsed = chatRequestSchema.safeParse(req.body);
@@ -127,11 +127,17 @@ export async function registerRoutes(
       // Create OpenAI client pointing to LM Studio
       const openai = new OpenAI({
         baseURL: settings.endpoint || "http://localhost:1234/v1",
-        apiKey: "lm-studio", // LM Studio doesn't require a real key
+        apiKey: "lm-studio",
       });
 
+      // Set up SSE headers
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
       try {
-        const completion = await openai.chat.completions.create({
+        const stream = await openai.chat.completions.create({
           model: settings.model || "local-model",
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
@@ -139,12 +145,21 @@ export async function registerRoutes(
           ],
           temperature: settings.temperature || 0.7,
           max_tokens: 4096,
+          stream: true,
         });
 
-        const assistantContent = completion.choices[0]?.message?.content || "";
-        
-        // Clean up the response - remove markdown code blocks if present
-        let cleanedCode = assistantContent
+        let fullContent = "";
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content || "";
+          if (delta) {
+            fullContent += delta;
+            res.write(`data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`);
+          }
+        }
+
+        // Clean up the response
+        let cleanedCode = fullContent
           .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
           .replace(/```$/gm, "")
           .trim();
@@ -161,26 +176,46 @@ export async function registerRoutes(
         });
 
         const finalProject = await storage.getProject(projectId);
-        res.json(finalProject);
+        res.write(`data: ${JSON.stringify({ type: "done", project: finalProject })}\n\n`);
+        res.end();
       } catch (llmError: any) {
         console.error("LLM Error:", llmError);
         
-        // Add error message to conversation
         await storage.addMessage(projectId, {
           role: "assistant",
           content: `I couldn't connect to your local LLM. Make sure LM Studio is running and the local server is started. Error: ${llmError.message}`,
         });
         
         const finalProject = await storage.getProject(projectId);
-        res.status(503).json({ 
-          error: "Could not connect to LM Studio",
-          message: llmError.message,
-          project: finalProject,
-        });
+        res.write(`data: ${JSON.stringify({ type: "error", error: llmError.message, project: finalProject })}\n\n`);
+        res.end();
       }
     } catch (error: any) {
       console.error("Chat error:", error);
-      res.status(500).json({ error: "Failed to process chat", message: error.message });
+      res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+      res.end();
+    }
+  });
+
+  // Check LLM connection status
+  app.post("/api/llm/status", async (req, res) => {
+    try {
+      const { endpoint } = req.body;
+      const openai = new OpenAI({
+        baseURL: endpoint || "http://localhost:1234/v1",
+        apiKey: "lm-studio",
+      });
+      
+      const models = await openai.models.list();
+      res.json({ 
+        connected: true, 
+        models: models.data.map(m => m.id) 
+      });
+    } catch (error: any) {
+      res.json({ 
+        connected: false, 
+        error: error.message 
+      });
     }
   });
 

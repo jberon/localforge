@@ -5,6 +5,8 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 
 ## Current State
 - Fully functional MVP with chat interface, live preview, and project management
+- Streaming responses - see code being generated in real-time
+- Connection status indicator shows if LM Studio is reachable
 - Connects to LM Studio's OpenAI-compatible API (default: http://localhost:1234/v1)
 - In-memory storage for projects (data persists during session)
 
@@ -20,6 +22,7 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 ### Backend (server/)
 - **Express.js** API server
 - **OpenAI SDK** configured for LM Studio compatibility
+- **Server-Sent Events (SSE)** for streaming LLM responses
 - In-memory storage for projects and messages
 
 ### Key Components
@@ -27,7 +30,14 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - `client/src/components/chat-panel.tsx` - Chat interface with example prompts
 - `client/src/components/preview-panel.tsx` - Live app preview and code viewer
 - `client/src/components/project-sidebar.tsx` - Project list and LLM settings
-- `server/routes.ts` - API endpoints for projects and LLM chat
+- `server/routes.ts` - API endpoints for projects, LLM chat, and connection status
+
+### API Endpoints
+- `GET /api/projects` - List all projects
+- `POST /api/projects` - Create a new project
+- `DELETE /api/projects/:id` - Delete a project
+- `POST /api/projects/:id/chat` - Chat with LLM (streaming SSE response)
+- `POST /api/llm/status` - Check LM Studio connection status
 
 ### Data Models (shared/schema.ts)
 - **Project**: id, name, description, messages, generatedCode, createdAt, updatedAt
@@ -40,10 +50,11 @@ LocalForge is an AI-powered application builder that connects to your local LLM 
 - Temperature slider for LLM creativity control
 
 ## Recent Changes
-- Initial implementation of LocalForge AI App Builder
-- Added Zod validation for API endpoints
-- Fixed scroll handling in chat panel
-- Fixed delete project mutation logic
+- Added streaming responses with real-time code preview
+- Added LLM connection status indicator
+- Fixed UI layout issues with example prompts and chat input
+- Improved SSE parsing with proper buffering
+- Preview panel now waits for generation to complete before rendering
 
 ## Running Locally
 To run this app on your MacBook:

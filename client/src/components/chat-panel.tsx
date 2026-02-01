@@ -94,36 +94,33 @@ export function ChatPanel({ messages, isLoading, onSendMessage }: ChatPanelProps
       )}
 
       <div className="border-t p-4 bg-background">
-        <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
-          <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <Textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Describe the app you want to build..."
-                className="min-h-[56px] max-h-[200px] resize-none pr-12"
-                disabled={isLoading}
-                data-testid="input-chat"
-              />
-              <Button
-                type="submit"
-                size="icon"
-                disabled={!input.trim() || isLoading}
-                className="absolute right-2 bottom-2"
-                data-testid="button-send"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
+        <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
+          <div className="relative">
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Describe the app you want to build..."
+              className="min-h-[80px] max-h-[200px] resize-none pr-14"
+              disabled={isLoading}
+              data-testid="input-chat"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!input.trim() || isLoading}
+              className="absolute right-3 bottom-3"
+              data-testid="button-send"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            <Sparkles className="inline h-3 w-3 mr-1" />
             Press Enter to send, Shift+Enter for new line
           </p>
         </form>

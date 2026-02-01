@@ -69,18 +69,26 @@ export function PreviewPanel({ code, isGenerating, onDownload }: PreviewPanelPro
   return (
     <div className={`flex flex-col h-full bg-card border-l ${isFullscreen ? "fixed inset-0 z-50" : ""}`}>
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code")}>
-          <TabsList className="h-8">
-            <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
-              <Eye className="h-3.5 w-3.5" />
-              Preview
-            </TabsTrigger>
-            <TabsTrigger value="code" className="text-xs gap-1.5" data-testid="tab-code">
-              <Code className="h-3.5 w-3.5" />
-              Code
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-3">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code")}>
+            <TabsList className="h-8">
+              <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
+                <Eye className="h-3.5 w-3.5" />
+                Preview
+              </TabsTrigger>
+              <TabsTrigger value="code" className="text-xs gap-1.5" data-testid="tab-code">
+                <Code className="h-3.5 w-3.5" />
+                Code
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {isGenerating && code && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+              Streaming...
+            </span>
+          )}
+        </div>
 
         <div className="flex items-center gap-1">
           {activeTab === "preview" && code && (
@@ -144,14 +152,7 @@ export function PreviewPanel({ code, isGenerating, onDownload }: PreviewPanelPro
           <>
             {activeTab === "preview" ? (
               <div className="h-full bg-white">
-                {isGenerating ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                      <p className="text-sm text-muted-foreground">Generating your app...</p>
-                    </div>
-                  </div>
-                ) : (
+                {code && !isGenerating ? (
                   <iframe
                     key={iframeKey}
                     src={createPreviewHTML()}
@@ -160,7 +161,17 @@ export function PreviewPanel({ code, isGenerating, onDownload }: PreviewPanelPro
                     title="App Preview"
                     data-testid="iframe-preview"
                   />
-                )}
+                ) : isGenerating ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
+                    <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <div className="text-center">
+                      <p className="font-medium">Building your app...</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {code ? "Code is being generated. Switch to Code tab to see progress." : "Waiting for response from LLM..."}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <Editor
