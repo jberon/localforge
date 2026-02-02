@@ -1,11 +1,150 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { createLLMClient, LLM_DEFAULTS } from "../llm-client";
-import { llmSettingsSchema, dataModelSchema } from "@shared/schema";
+import { llmSettingsSchema, dataModelSchema, LLMSettings } from "@shared/schema";
 import { generateFullStackProject } from "../code-generator";
 import { validateGeneratedCode } from "../generators/validator";
 import { z } from "zod";
 import { SYSTEM_PROMPT, REFINEMENT_SYSTEM } from "./llm";
+
+// Maximum auto-retry attempts for code generation
+const MAX_AUTO_RETRY = 2;
+
+// System prompt for fixing code errors
+const ERROR_FIX_SYSTEM_PROMPT = `You are a code fixer. The user will provide code that has errors. Your job is to fix the errors and return the corrected code.
+
+CRITICAL RULES:
+1. Output ONLY the complete fixed code - no explanations, no markdown code blocks
+2. Keep the same structure and functionality as the original
+3. Fix all syntax errors, missing imports, and logic issues
+4. Make sure the code is complete and runnable
+
+Common issues to fix:
+- Missing closing braces, parentheses, or brackets
+- Incomplete JSX elements
+- Missing React imports or component exports
+- Undefined variables or functions
+- Incorrect function signatures`;
+
+// Validate code and return detailed errors
+function validateCodeSyntax(code: string): { valid: boolean; errors: string[]; suggestions: string[] } {
+  const errors: string[] = [];
+  const suggestions: string[] = [];
+  
+  // Check for basic syntax issues
+  const openBraces = (code.match(/\{/g) || []).length;
+  const closeBraces = (code.match(/\}/g) || []).length;
+  if (openBraces !== closeBraces) {
+    errors.push(`Mismatched braces: ${openBraces} opening, ${closeBraces} closing`);
+    suggestions.push("Check for missing closing braces '}'");
+  }
+  
+  const openParens = (code.match(/\(/g) || []).length;
+  const closeParens = (code.match(/\)/g) || []).length;
+  if (openParens !== closeParens) {
+    errors.push(`Mismatched parentheses: ${openParens} opening, ${closeParens} closing`);
+    suggestions.push("Check for missing closing parentheses ')'");
+  }
+  
+  const openBrackets = (code.match(/\[/g) || []).length;
+  const closeBrackets = (code.match(/\]/g) || []).length;
+  if (openBrackets !== closeBrackets) {
+    errors.push(`Mismatched brackets: ${openBrackets} opening, ${closeBrackets} closing`);
+    suggestions.push("Check for missing closing brackets ']'");
+  }
+  
+  // Check for React-specific issues
+  if (code.includes('React') || code.includes('useState') || code.includes('useEffect')) {
+    if (!code.includes('ReactDOM.render') && !code.includes('createRoot') && !code.includes('ReactDOM.createRoot')) {
+      errors.push("Missing React render call");
+      suggestions.push("Add ReactDOM.createRoot(document.getElementById('root')).render(<App />)");
+    }
+  }
+  
+  // Check for incomplete JSX
+  const jsxOpenTags = code.match(/<([A-Z][a-zA-Z0-9]*)[^>]*(?<!\/)>/g) || [];
+  const jsxSelfClosing = code.match(/<([A-Z][a-zA-Z0-9]*)[^>]*\/>/g) || [];
+  const jsxCloseTags = code.match(/<\/([A-Z][a-zA-Z0-9]*)>/g) || [];
+  
+  // Simple heuristic: more open than close might indicate incomplete JSX
+  if (jsxOpenTags.length - jsxSelfClosing.length > jsxCloseTags.length + 2) {
+    errors.push("Possible incomplete JSX - missing closing tags");
+    suggestions.push("Check that all JSX components have matching closing tags");
+  }
+  
+  // Check for truncated code
+  const lastLine = code.trim().split('\n').pop() || '';
+  if (lastLine.match(/^\s*\/\//)) {
+    errors.push("Code appears truncated (ends with comment)");
+    suggestions.push("The code may be incomplete - try regenerating");
+  }
+  
+  if (code.trim().endsWith(',') || code.trim().endsWith('(') || code.trim().endsWith('{')) {
+    errors.push("Code appears truncated (ends with incomplete statement)");
+    suggestions.push("The code is incomplete - try regenerating");
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    suggestions
+  };
+}
+
+// Attempt to fix code using LLM
+async function attemptCodeFix(
+  code: string,
+  errors: string[],
+  settings: LLMSettings,
+  phase: "planner" | "builder"
+): Promise<{ fixed: boolean; code: string; message: string }> {
+  try {
+    const modelConfig = getModelForPhase(settings, phase);
+    const openai = createLLMClient({
+      endpoint: settings.endpoint || "http://localhost:1234/v1",
+      model: modelConfig.model,
+      temperature: 0.2, // Lower temperature for fixing
+    });
+    
+    const errorContext = errors.join('\n- ');
+    const fixPrompt = `The following code has errors that need to be fixed:
+
+ERRORS:
+- ${errorContext}
+
+CODE TO FIX:
+${code}
+
+Please provide the complete fixed code with all errors resolved.`;
+    
+    const response = await openai.chat.completions.create({
+      model: modelConfig.model || "local-model",
+      messages: [
+        { role: "system", content: ERROR_FIX_SYSTEM_PROMPT },
+        { role: "user", content: fixPrompt }
+      ],
+      temperature: 0.2,
+      max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
+    });
+    
+    const fixedCode = response.choices[0]?.message?.content || "";
+    const cleanedFixed = fixedCode
+      .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+      .replace(/```$/gm, "")
+      .trim();
+    
+    if (cleanedFixed && cleanedFixed.length > 50) {
+      const revalidation = validateCodeSyntax(cleanedFixed);
+      if (revalidation.valid) {
+        return { fixed: true, code: cleanedFixed, message: "Code was automatically fixed" };
+      }
+    }
+    
+    return { fixed: false, code: code, message: "Could not automatically fix the code" };
+  } catch (error: any) {
+    return { fixed: false, code: code, message: `Fix attempt failed: ${error.message}` };
+  }
+}
 
 const router = Router();
 
@@ -187,17 +326,56 @@ router.post("/:id/chat", async (req, res) => {
         .trim();
 
       // Extract LLM limitations and clean the code
-      const { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
+      let { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
 
       const endTime = Date.now();
 
       // Only show success message if we actually generated code
       if (cleanedCode && cleanedCode.length > 50) {
-        // Build response message with any limitations surfaced
+        // Validate the generated code
+        const validation = validateCodeSyntax(cleanedCode);
+        let retryCount = 0;
+        let wasAutoFixed = false;
+        
+        // Attempt auto-fix if validation fails
+        if (!validation.valid && validation.errors.length > 0) {
+          res.write(`data: ${JSON.stringify({ type: "status", message: "Validating code..." })}\n\n`);
+          
+          // Try to fix the code
+          res.write(`data: ${JSON.stringify({ type: "status", message: "Found issues, attempting auto-fix..." })}\n\n`);
+          
+          const fixResult = await attemptCodeFix(cleanedCode, validation.errors, settings, "builder");
+          retryCount = 1;
+          
+          if (fixResult.fixed) {
+            cleanedCode = fixResult.code;
+            wasAutoFixed = true;
+            res.write(`data: ${JSON.stringify({ type: "status", message: "Code fixed successfully!" })}\n\n`);
+          } else {
+            // Send validation errors to client
+            res.write(`data: ${JSON.stringify({ 
+              type: "validation_errors", 
+              errors: validation.errors,
+              suggestions: validation.suggestions 
+            })}\n\n`);
+          }
+        }
+        
+        // Build response message with any limitations and fix status surfaced
         let responseMessage = "I've generated the app for you. Check the preview panel to see it in action!";
+        
+        if (wasAutoFixed) {
+          responseMessage = "I generated the app and automatically fixed some issues. Check the preview!";
+        }
         
         if (limitations.length > 0) {
           responseMessage += "\n\n**Note:** " + limitations.join(" ");
+        }
+        
+        // Add validation warnings if any remain
+        const finalValidation = validateCodeSyntax(cleanedCode);
+        if (!finalValidation.valid) {
+          responseMessage += "\n\n**Warning:** The code may have some issues. " + finalValidation.suggestions.join(" ");
         }
 
         await storage.addMessage(projectId, {
@@ -209,12 +387,12 @@ router.post("/:id/chat", async (req, res) => {
           generatedCode: cleanedCode,
           generationMetrics: {
             startTime,
-            endTime,
-            durationMs: endTime - startTime,
+            endTime: Date.now(),
+            durationMs: Date.now() - startTime,
             promptLength: content.length,
             responseLength: fullContent.length,
-            status: "success",
-            retryCount: 0,
+            status: wasAutoFixed ? "fixed" : "success",
+            retryCount,
           },
         });
       } else {
@@ -345,7 +523,7 @@ router.post("/:id/refine", async (req, res) => {
         .trim();
 
       // Extract LLM limitations and clean the code
-      const { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
+      let { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
 
       await storage.addMessage(projectId, {
         role: "user",
@@ -354,11 +532,36 @@ router.post("/:id/refine", async (req, res) => {
 
       // Only show success if we actually got refined code
       if (cleanedCode && cleanedCode.length > 50) {
+        // Validate the refined code
+        const validation = validateCodeSyntax(cleanedCode);
+        let wasAutoFixed = false;
+        
+        // Attempt auto-fix if validation fails
+        if (!validation.valid && validation.errors.length > 0) {
+          res.write(`data: ${JSON.stringify({ type: "status", message: "Validating refined code..." })}\n\n`);
+          
+          const fixResult = await attemptCodeFix(cleanedCode, validation.errors, settings, "builder");
+          
+          if (fixResult.fixed) {
+            cleanedCode = fixResult.code;
+            wasAutoFixed = true;
+            res.write(`data: ${JSON.stringify({ type: "status", message: "Code fixed successfully!" })}\n\n`);
+          }
+        }
+        
         // Build response message with any limitations surfaced
-        let responseMessage = "I've updated the app based on your feedback. Check the preview!";
+        let responseMessage = wasAutoFixed 
+          ? "I've updated the app and fixed some issues. Check the preview!"
+          : "I've updated the app based on your feedback. Check the preview!";
         
         if (limitations.length > 0) {
           responseMessage += "\n\n**Note:** " + limitations.join(" ");
+        }
+        
+        // Add validation warnings if any remain
+        const finalValidation = validateCodeSyntax(cleanedCode);
+        if (!finalValidation.valid) {
+          responseMessage += "\n\n**Warning:** " + finalValidation.suggestions.join(" ");
         }
 
         await storage.addMessage(projectId, {
