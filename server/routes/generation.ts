@@ -835,7 +835,7 @@ router.post("/:id/plan", async (req, res) => {
       endpoint: rawSettings?.endpoint || "http://localhost:1234/v1",
       model: rawSettings?.model || "",
       temperature: rawSettings?.temperature ?? LLM_DEFAULTS.temperature.planner,
-      useDualModels: false,
+      useDualModels: true,
       plannerModel: "",
       plannerTemperature: LLM_DEFAULTS.temperature.planner,
       builderModel: "",

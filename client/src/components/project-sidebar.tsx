@@ -541,28 +541,24 @@ export function ProjectSidebar({
 
                 <div className="space-y-2">
                   <Label htmlFor="serper-api-key">Serper.dev API Key</Label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Input
-                        id="serper-api-key"
-                        type={showApiKey ? "text" : "password"}
-                        value={tempSettings.serperApiKey ?? ""}
-                        onChange={(e) => setTempSettings({ ...tempSettings, serperApiKey: e.target.value })}
-                        placeholder="Enter your Serper.dev API key"
-                        data-testid="input-serper-api-key"
-                        className="font-mono text-sm pr-10"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        data-testid="button-toggle-api-key-visibility"
-                      >
-                        {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
+                  <div className="relative">
+                    <Input
+                      id="serper-api-key"
+                      type={showApiKey ? "text" : "password"}
+                      value={tempSettings.serperApiKey ?? ""}
+                      onChange={(e) => setTempSettings({ ...tempSettings, serperApiKey: e.target.value })}
+                      placeholder="Enter your Serper.dev API key"
+                      data-testid="input-serper-api-key"
+                      className="font-mono text-sm pr-10"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      data-testid="button-toggle-api-key-visibility"
+                    >
+                      {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Get your free API key at{" "}

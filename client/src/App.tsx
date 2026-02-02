@@ -17,7 +17,7 @@ function AnalyticsWrapper() {
     endpoint: "http://localhost:1234/v1",
     model: "",
     temperature: 0.7,
-    useDualModels: false,
+    useDualModels: true,
     plannerModel: "",
     plannerTemperature: 0.3,
     builderModel: "",
