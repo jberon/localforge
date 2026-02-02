@@ -114,7 +114,7 @@ function createMenu() {
           shell.openExternal('https://lmstudio.ai');
         }},
         { label: 'LocalForge Documentation', click: () => {
-          shell.openExternal('https://github.com/joshberon/localforge');
+          shell.openExternal('https://github.com/jberon/localforge');
         }}
       ]
     }
@@ -281,8 +281,8 @@ app.on('before-quit', () => {
 
 app.setAboutPanelOptions({
   applicationName: 'LocalForge',
-  applicationVersion: '1.1.0',
-  version: '1.1.0',
-  copyright: '© 2024 Josh Beron',
+  applicationVersion: app.getVersion(),
+  version: app.getVersion(),
+  copyright: '© 2025 Josh Beron',
   credits: 'Built with Electron, React, and LM Studio integration'
 });
