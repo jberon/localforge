@@ -7,3 +7,6 @@ vite.config.ts.*
 
 # Replit internal files
 .local/
+
+# Development assets (screenshots, attachments)
+attached_assets/

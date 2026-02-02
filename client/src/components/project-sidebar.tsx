@@ -42,6 +42,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp, Globe, Eye, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import type { Project, LLMSettings } from "@shared/schema";
+import { APP_VERSION, APP_NAME } from "@shared/version";
 
 interface ProjectSidebarProps {
   projects: Project[];
@@ -631,7 +632,7 @@ export function ProjectSidebar({
             Built by Josh Beron
           </p>
           <p className="text-[10px] text-muted-foreground/60" data-testid="version-number">
-            v1.1.0
+            v{APP_VERSION}
           </p>
         </div>
       </SidebarFooter>
