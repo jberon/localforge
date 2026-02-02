@@ -38,17 +38,12 @@ const chatRequestSchema = z.object({
 });
 
 // Common LLM limitation patterns to detect and extract from generated code
+// These are more targeted to avoid false positives on legitimate comments
 const LLM_LIMITATION_PATTERNS = [
-  // Direct inability statements
-  /(?:\/\/|\/\*|{\/\*)\s*(?:Note:|NOTE:|Warning:|WARNING:|Important:|IMPORTANT:)?\s*(?:I\s+)?(?:can(?:not|'t)|cannot|am\s+(?:not\s+)?able\s+to|don'?t\s+have\s+(?:access|the\s+ability))\s+(?:to\s+)?(?:access|fetch|retrieve|get|browse|connect\s+to|make\s+(?:API|http|network)\s+(?:calls?|requests?)|use)\s+(?:live|real(?:-time)?|external|actual|current)\s+(?:data|APIs?|services?|internet|web|information|the\s+(?:internet|web)).*?(?:\*\/|}?\s*$)/gim,
-  // Placeholder data notices
-  /(?:\/\/|\/\*|{\/\*)\s*(?:Note:|NOTE:|Using|This\s+(?:uses?|is)|Placeholder|Mock|Sample|Demo|Example)[\s:]+(?:placeholder|mock|sample|demo|fake|simulated|static|hardcoded)\s+data.*?(?:\*\/|$)/gim,
-  // API key requirements
-  /(?:\/\/|\/\*|{\/\*)\s*(?:TODO:|FIXME:|Note:|Replace|You\s+(?:need|will\s+need|must)|Requires?)[\s:]+(?:add|replace|provide|insert|your)\s+(?:your\s+)?(?:own\s+)?(?:API\s+key|credentials|authentication|token).*?(?:\*\/|$)/gim,
-  // Cannot make HTTP requests
-  /(?:\/\/|\/\*|{\/\*)\s*(?:Note:|NOTE:)?\s*(?:Cannot|Can't|Unable\s+to)\s+(?:make|perform|execute)\s+(?:HTTP|network|API|fetch)\s+(?:requests?|calls?).*?(?:\*\/|$)/gim,
-  // Inline limitation messages in JSX comments
-  /{\/\*\s*(?:Note:|NOTE:)?\s*(?:I\s+)?(?:can(?:not|'t)|don'?t\s+have)\s+.*?\s*\*\/}/gim,
+  // Direct inability statements - must start with "Note:" or similar prefix
+  /(?:\/\/|\/\*)\s*(?:Note:|NOTE:|Warning:|WARNING:|Important:|IMPORTANT:)\s*(?:I\s+)?(?:can(?:not|'t)|cannot|am\s+(?:not\s+)?able\s+to|don'?t\s+have\s+(?:access|the\s+ability))\s+(?:to\s+)?(?:access|fetch|retrieve|browse|connect\s+to)\s+(?:live|real(?:-time)?|external|actual)\s+(?:data|APIs?|internet|web)[^*\n]{0,100}(?:\*\/|$)/gim,
+  // JSX limitation comments
+  /{\/\*\s*(?:Note:|NOTE:)\s*(?:I\s+)?(?:can(?:not|'t)|don'?t\s+have)\s+[^*]{0,100}\s*\*\/}/gim,
 ];
 
 // Extract and clean LLM limitation messages from generated code
@@ -450,19 +445,21 @@ router.post("/:id/generate-fullstack", async (req, res) => {
 router.post("/:id/plan", async (req, res) => {
   try {
     const { id } = req.params;
-    const { prompt, settings: baseSettings } = req.body;
+    // Support both 'settings' (new) and 'plannerSettings' (legacy) for backward compatibility
+    const { prompt, settings: baseSettings, plannerSettings } = req.body;
 
     const project = await storage.getProject(id);
     if (!project) {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    // Parse settings with defaults
-    const parsedSettings = llmSettingsSchema.safeParse(baseSettings);
+    // Parse settings with defaults - prefer 'settings' over legacy 'plannerSettings'
+    const rawSettings = baseSettings || plannerSettings;
+    const parsedSettings = llmSettingsSchema.safeParse(rawSettings);
     const settings = parsedSettings.success ? parsedSettings.data : {
-      endpoint: "http://localhost:1234/v1",
-      model: "",
-      temperature: LLM_DEFAULTS.temperature.planner,
+      endpoint: rawSettings?.endpoint || "http://localhost:1234/v1",
+      model: rawSettings?.model || "",
+      temperature: rawSettings?.temperature ?? LLM_DEFAULTS.temperature.planner,
       useDualModels: false,
       plannerModel: "",
       plannerTemperature: LLM_DEFAULTS.temperature.planner,
@@ -686,11 +683,18 @@ Generate complete, working code that implements this plan. Follow the file struc
         plan: { ...project.plan, status: "completed" as const },
       });
 
+      // Add chat message with any limitations surfaced
+      let buildMessage = "Build completed! Your app is ready in the preview.";
+      if (limitations.length > 0) {
+        buildMessage += "\n\n**Note:** " + limitations.join(" ");
+      }
+      await storage.addMessage(id, {
+        role: "assistant",
+        content: buildMessage,
+      });
+
       res.write(`data: ${JSON.stringify({ type: "code", code: cleanedCode })}\n\n`);
       res.write(`data: ${JSON.stringify({ type: "validation", validation })}\n\n`);
-      if (limitations.length > 0) {
-        res.write(`data: ${JSON.stringify({ type: "limitations", limitations })}\n\n`);
-      }
       res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
       res.end();
 

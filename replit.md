@@ -7,6 +7,7 @@ LocalForge is an AI-powered application builder that leverages local Large Langu
 - Uses dark mode by default
 - LM Studio endpoint configurable via settings dialog
 - Temperature slider for LLM creativity control
+- Dual model support: Configure separate models for planning vs building phases
 
 ## System Architecture
 
@@ -33,10 +34,12 @@ Uses the **OpenAI SDK** configured for LM Studio compatibility and implements **
 ### Key Features
 - **Project Management**: Create, delete, rename, and update projects with persistent storage.
 - **LLM Integration**: Connects to LM Studio's OpenAI-compatible API, with configurable endpoint and model temperature.
+- **Dual Model Support**: Configure separate models for planning (lower temperature for structured thinking) vs building (balanced temperature for code generation) phases.
 - **Code Generation**: Generates full-stack applications including database schemas, API routes, and React components.
 - **Real-time Interaction**: Streaming responses, live code preview, and instant preview updates on code changes.
 - **Intelligent Workflows**: Automatic intent detection and routing, AI-powered prompt enhancement, and iterative refinement.
 - **Code Quality**: Built-in code validation and AI-powered error recovery and code assistance (explain, fix, improve).
+- **LLM Limitation Surfacing**: Automatically detects and extracts LLM limitation messages (e.g., "cannot access live data") from generated code and surfaces them in chat instead of cluttering the code.
 - **User Onboarding**: First-run tutorial modal for new users.
 - **Data Model Builder**: Visual tool for defining data structures without coding.
 - **Analytics & Learning System**: Tracks user actions, collects feedback, and uses LLM-powered analysis to generate insights and optimize template defaults. Includes a portfolio view of generated projects.
