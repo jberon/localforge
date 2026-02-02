@@ -16,8 +16,9 @@ permissions:
 
 jobs:
   build-macos:
-    # Use macos-15 for ARM64 (Apple Silicon) builds only
-    runs-on: macos-15
+    # Use macos-latest for ARM64 (Apple Silicon) builds
+    # This auto-routes to available macOS runners, avoiding availability issues
+    runs-on: macos-latest
     timeout-minutes: 30
     
     steps:
