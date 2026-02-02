@@ -11,7 +11,6 @@ import { EmptyState } from "@/components/empty-state";
 import { SuccessCelebration } from "@/components/success-celebration";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { PlanReviewPanel } from "@/components/plan-review-panel";
-import { DualModelSettings } from "@/components/dual-model-settings";
 import { DreamTeamSettings } from "@/components/dream-team-settings";
 import { DreamTeamPanel } from "@/components/dream-team-panel";
 import { VersionHistory } from "@/components/version-history";
@@ -883,6 +882,19 @@ export default function Home() {
           onRenameProject={(id, name) => renameProjectMutation.mutate({ id, name })}
           onUpdateSettings={(newSettings) => {
             setSettings(newSettings);
+            setDualModelSettings(prev => ({
+              ...prev,
+              planner: {
+                ...prev.planner,
+                endpoint: newSettings.endpoint,
+                model: newSettings.model,
+              },
+              builder: {
+                ...prev.builder,
+                endpoint: newSettings.endpoint,
+                model: newSettings.model,
+              },
+            }));
             checkConnection();
           }}
         />
@@ -911,10 +923,6 @@ export default function Home() {
                   {detectedIntent}
                 </Badge>
               )}
-              <DualModelSettings
-                settings={dualModelSettings}
-                onSettingsChange={setDualModelSettings}
-              />
               <DreamTeamSettings
                 settings={dreamTeamSettings}
                 onSettingsChange={setDreamTeamSettings}

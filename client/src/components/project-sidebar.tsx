@@ -28,8 +28,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2 } from "lucide-react";
 import type { Project, LLMSettings } from "@shared/schema";
 
 interface ProjectSidebarProps {
@@ -58,6 +67,10 @@ export function ProjectSidebar({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "checking">("checking");
 
   useEffect(() => {
     if (editingId && inputRef.current) {
@@ -65,6 +78,45 @@ export function ProjectSidebar({
       inputRef.current.select();
     }
   }, [editingId]);
+
+  useEffect(() => {
+    setTempSettings(settings);
+  }, [settings]);
+
+  const fetchModels = async (endpoint: string) => {
+    setIsLoadingModels(true);
+    setConnectionStatus("checking");
+    try {
+      const response = await fetch(`/api/llm/models?endpoint=${encodeURIComponent(endpoint)}`);
+      const data = await response.json();
+      if (data.success && data.models) {
+        setAvailableModels(data.models);
+        setConnectionStatus("connected");
+      } else {
+        setAvailableModels([]);
+        setConnectionStatus("disconnected");
+      }
+    } catch {
+      setAvailableModels([]);
+      setConnectionStatus("disconnected");
+    } finally {
+      setIsLoadingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    if (settingsOpen) {
+      fetchModels(tempSettings.endpoint);
+    }
+  }, [settingsOpen]);
+
+  const handleEndpointChange = (endpoint: string) => {
+    setTempSettings({ ...tempSettings, endpoint });
+  };
+
+  const handleRefreshConnection = () => {
+    fetchModels(tempSettings.endpoint);
+  };
 
   const handleSaveSettings = () => {
     onUpdateSettings(tempSettings);
@@ -126,65 +178,56 @@ export function ProjectSidebar({
               <SidebarMenu className="px-2">
                 {projects.length === 0 ? (
                   <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                    No projects yet
+                    No projects yet.
+                    <br />
+                    Click + to create one.
                   </div>
                 ) : (
                   projects.map((project) => (
-                    <SidebarMenuItem key={project.id} className="mb-0.5">
+                    <SidebarMenuItem key={project.id}>
                       {editingId === project.id ? (
-                        <div className="flex items-center gap-1 px-3 py-2 rounded-lg bg-accent">
+                        <div className="flex items-center gap-1 px-2 py-1">
                           <Input
                             ref={inputRef}
                             value={editingName}
                             onChange={(e) => setEditingName(e.target.value)}
                             onKeyDown={handleKeyDown}
                             onBlur={saveEdit}
-                            className="h-7 text-sm border-0 bg-transparent focus-visible:ring-0 px-1"
-                            data-testid={`input-rename-project-${project.id}`}
+                            className="h-7 text-sm"
+                            data-testid="input-project-name"
                           />
                         </div>
                       ) : (
-                        <div className="flex items-center group/item">
+                        <div className="flex items-center group">
                           <SidebarMenuButton
                             isActive={project.id === activeProjectId}
                             onClick={() => onSelectProject(project.id)}
-                            className="flex-1 py-2.5"
+                            className="flex-1"
                             data-testid={`button-project-${project.id}`}
                           >
-                            <span className="truncate flex-1 text-sm">{project.name}</span>
+                            <span className="truncate">{project.name}</span>
                           </SidebarMenuButton>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
-                                size="icon"
                                 variant="ghost"
-                                className="h-7 w-7 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0"
-                                onClick={(e) => e.stopPropagation()}
-                                data-testid={`button-menu-project-${project.id}`}
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                data-testid={`button-project-menu-${project.id}`}
                               >
-                                <MoreHorizontal className="h-4 w-4" />
+                                <MoreHorizontal className="h-3 w-3" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startEditing(project);
-                                }}
-                                data-testid={`button-edit-project-${project.id}`}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => startEditing(project)}>
+                                <Pencil className="h-3 w-3 mr-2" />
                                 Rename
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDeleteProject(project.id);
-                                }}
-                                className="text-destructive focus:text-destructive"
-                                data-testid={`button-delete-project-${project.id}`}
+                                onClick={() => onDeleteProject(project.id)}
+                                className="text-destructive"
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
+                                <Trash2 className="h-3 w-3 mr-2" />
                                 Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -212,41 +255,117 @@ export function ProjectSidebar({
               <span className="text-sm">Settings</span>
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>LLM Settings</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                LM Studio Settings
+              </DialogTitle>
               <DialogDescription>
-                Configure your local LLM connection. Make sure LM Studio is running with the local server started.
+                Configure your connection to LM Studio. Make sure LM Studio is running with the local server started.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-5 py-4">
               <div className="space-y-2">
-                <Label htmlFor="endpoint">API Endpoint</Label>
-                <Input
-                  id="endpoint"
-                  value={tempSettings.endpoint}
-                  onChange={(e) => setTempSettings({ ...tempSettings, endpoint: e.target.value })}
-                  placeholder="http://localhost:1234/v1"
-                  data-testid="input-endpoint"
-                />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="endpoint">API Endpoint</Label>
+                  <div className="flex items-center gap-2">
+                    {connectionStatus === "checking" && (
+                      <Badge variant="outline" className="gap-1 text-xs">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Checking...
+                      </Badge>
+                    )}
+                    {connectionStatus === "connected" && (
+                      <Badge variant="outline" className="gap-1 text-xs text-green-600 border-green-500/50">
+                        <Check className="h-3 w-3" />
+                        Connected
+                      </Badge>
+                    )}
+                    {connectionStatus === "disconnected" && (
+                      <Badge variant="outline" className="gap-1 text-xs text-red-600 border-red-500/50">
+                        <X className="h-3 w-3" />
+                        Disconnected
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    id="endpoint"
+                    value={tempSettings.endpoint}
+                    onChange={(e) => handleEndpointChange(e.target.value)}
+                    placeholder="http://localhost:1234/v1"
+                    data-testid="input-endpoint"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRefreshConnection}
+                    disabled={isLoadingModels}
+                    data-testid="button-refresh-connection"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isLoadingModels ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Default LM Studio endpoint is http://localhost:1234/v1
                 </p>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="model">Model Name (optional)</Label>
-                <Input
-                  id="model"
-                  value={tempSettings.model}
-                  onChange={(e) => setTempSettings({ ...tempSettings, model: e.target.value })}
-                  placeholder="Leave empty to use default loaded model"
-                  data-testid="input-model"
-                />
+                <Label htmlFor="model">Model</Label>
+                {availableModels.length > 0 ? (
+                  <Select
+                    value={tempSettings.model || "auto"}
+                    onValueChange={(value) => setTempSettings({ ...tempSettings, model: value === "auto" ? "" : value })}
+                  >
+                    <SelectTrigger data-testid="select-model">
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto (use loaded model)</SelectItem>
+                      {availableModels.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="model"
+                    value={tempSettings.model}
+                    onChange={(e) => setTempSettings({ ...tempSettings, model: e.target.value })}
+                    placeholder="Leave empty to use loaded model"
+                    data-testid="input-model"
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {availableModels.length > 0 
+                    ? `${availableModels.length} model${availableModels.length === 1 ? '' : 's'} available`
+                    : "Connect to LM Studio to see available models"}
+                </p>
               </div>
-              <div className="p-3 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">
-                  Temperature is automatically optimized based on what you're building.
-                  Creative apps use higher values, utility apps use lower values for precision.
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Temperature</Label>
+                  <span className="text-sm text-muted-foreground font-mono">
+                    {tempSettings.temperature.toFixed(2)}
+                  </span>
+                </div>
+                <Slider
+                  value={[tempSettings.temperature]}
+                  onValueChange={([value]) => setTempSettings({ ...tempSettings, temperature: value })}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  data-testid="slider-temperature"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Lower values produce more focused, deterministic outputs. Higher values are more creative.
                 </p>
               </div>
             </div>
