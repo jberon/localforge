@@ -181,12 +181,52 @@ export class AIOrchestrator {
     this.projectId = projectId;
     this.state = this.createInitialState();
     
+    // Dream Team fallback: Try dual models first, fall back to single model if planner unavailable
     if (projectId && settings.useDualModels && settings.plannerModel) {
       this.dreamTeam = createDreamTeamService({
         endpoint: settings.endpoint || "http://localhost:1234/v1",
         reasoningModel: settings.plannerModel,
         temperature: settings.plannerTemperature,
       });
+    } else if (projectId && settings.model) {
+      // Fallback: Use single model for Dream Team features if dual models not configured
+      console.log("[Orchestrator] Falling back to single-model mode for Dream Team");
+      this.dreamTeam = createDreamTeamService({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        reasoningModel: settings.model,
+        temperature: LLM_DEFAULTS.temperature.planner,
+      });
+    }
+  }
+  
+  // Check if reasoning model is available, fallback to builder if not
+  private async checkModelAvailability(): Promise<boolean> {
+    try {
+      const plannerConfig = this.getPlannerConfig();
+      if (!plannerConfig.model) return false;
+      
+      const client = createLLMClient(plannerConfig);
+      const models = await client.models.list();
+      const availableModels = models.data?.map(m => m.id) || [];
+      
+      // Check if configured planner model is available
+      const isAvailable = availableModels.some(m => 
+        m.toLowerCase().includes(plannerConfig.model.toLowerCase())
+      );
+      
+      if (!isAvailable && this.settings.useDualModels) {
+        // Fallback: reconfigure to use builder model for planning too
+        console.log("[Orchestrator] Planner model unavailable, falling back to builder model");
+        this.emit({ 
+          type: "status", 
+          message: "Reasoning model unavailable, using builder model for all tasks" 
+        });
+      }
+      
+      return isAvailable;
+    } catch (error) {
+      console.warn("[Orchestrator] Model availability check failed:", error);
+      return false;
     }
   }
 
@@ -247,6 +287,28 @@ export class AIOrchestrator {
     const scout = CORE_DREAM_TEAM.find(m => m.id === "scout")!;
 
     try {
+      // Check model availability and handle fallback if needed
+      if (this.settings.useDualModels) {
+        const plannerAvailable = await this.checkModelAvailability();
+        if (!plannerAvailable && this.settings.builderModel) {
+          // Fallback: Use builder model for planning if planner unavailable
+          console.log("[Orchestrator] Activating fallback: using builder model for planning");
+          this.settings = {
+            ...this.settings,
+            plannerModel: this.settings.builderModel,
+            plannerTemperature: LLM_DEFAULTS.temperature.planner,
+          };
+          // Re-initialize Dream Team with fallback config
+          if (this.projectId) {
+            this.dreamTeam = createDreamTeamService({
+              endpoint: this.settings.endpoint || "http://localhost:1234/v1",
+              reasoningModel: this.settings.builderModel,
+              temperature: LLM_DEFAULTS.temperature.planner,
+            });
+          }
+        }
+      }
+      
       this.emit({ type: "phase_change", phase: "planning", message: `${aria.name} is analyzing your request...` });
       
       if (this.dreamTeam && this.projectId) {

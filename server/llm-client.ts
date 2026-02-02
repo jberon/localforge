@@ -164,6 +164,7 @@ export async function streamCompletion(
   // Queue the request to enforce concurrency limits (M4 Pro optimization)
   return llmRequestQueue.enqueue(async () => {
     const client = createLLMClient(config);
+    const startTime = Date.now();
     
     // Use provided maxTokens or default to fullStack limit (optimized for 48GB M4 Pro)
     const maxTokens = options.maxTokens || LLM_DEFAULTS.maxTokens.fullStack;
@@ -180,6 +181,7 @@ export async function streamCompletion(
     });
 
     let fullContent = "";
+    let tokenCount = 0;
     
     // Use throttled callback if provided to prevent UI flooding
     const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
@@ -198,12 +200,19 @@ export async function streamCompletion(
         const delta = chunk.choices[0]?.delta?.content || "";
         if (delta) {
           fullContent += delta;
+          tokenCount++; // Approximate: each chunk ~= 1 token
           throttler?.add(delta);
         }
       }
     } finally {
       // Ensure remaining buffer is flushed
       throttler?.destroy();
+      
+      // Update performance telemetry
+      const durationMs = Date.now() - startTime;
+      // Better token estimate: ~4 chars per token average
+      const estimatedTokens = Math.ceil(fullContent.length / 4);
+      updateTelemetry(durationMs, estimatedTokens);
     }
 
     return fullContent;
@@ -219,6 +228,7 @@ export async function generateCompletion(
   // Queue the request to enforce concurrency limits (M4 Pro optimization)
   return llmRequestQueue.enqueue(async () => {
     const client = createLLMClient(config);
+    const startTime = Date.now();
 
     const response = await client.chat.completions.create({
       model: config.model || "local-model",
@@ -230,7 +240,15 @@ export async function generateCompletion(
       max_tokens: maxTokens,
     });
 
-    return response.choices[0]?.message?.content || "";
+    const content = response.choices[0]?.message?.content || "";
+    
+    // Update performance telemetry
+    const durationMs = Date.now() - startTime;
+    // Use API-provided token count if available, otherwise estimate
+    const tokenCount = response.usage?.completion_tokens || Math.ceil(content.length / 4);
+    updateTelemetry(durationMs, tokenCount);
+    
+    return content;
   });
 }
 

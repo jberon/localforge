@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -46,6 +46,13 @@ import JSZip from "jszip";
 import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion, GeneratedFile } from "@shared/schema";
 import { defaultDreamTeamPersonas } from "@shared/schema";
 import type { Attachment } from "@/hooks/use-file-attachments";
+
+// Memoized panel components to prevent unnecessary re-renders
+const MemoizedChatPanel = memo(ChatPanel);
+const MemoizedPreviewPanel = memo(PreviewPanel);
+const MemoizedFileExplorer = memo(FileExplorer);
+const MemoizedProjectTeamPanel = memo(ProjectTeamPanel);
+const MemoizedAIThinkingPanel = memo(AIThinkingPanel);
 
 export default function Home() {
   const { toast } = useToast();
@@ -1300,7 +1307,7 @@ export default function Home() {
                     {/* AI Thinking Panel - Shows real-time LLM reasoning */}
                     {(isGenerating || isPlanning) && (
                       <div className="px-2 py-2 shrink-0">
-                        <AIThinkingPanel
+                        <MemoizedAIThinkingPanel
                           phase={orchestratorPhase}
                           thinking={orchestratorThinking}
                           generationPhase={generationPhase}
@@ -1311,7 +1318,7 @@ export default function Home() {
                     )}
                     
                     <div className="flex-1 overflow-hidden">
-                      <ChatPanel
+                      <MemoizedChatPanel
                         messages={activeProject?.messages || []}
                         isLoading={isGenerating || isPlanning}
                         loadingPhase={generationPhase}
@@ -1326,7 +1333,7 @@ export default function Home() {
                 
                 {/* Center Panel: Preview/App */}
                 <ResizablePanel defaultSize={showFileExplorer ? 50 : 70} minSize={30}>
-                  <PreviewPanel
+                  <MemoizedPreviewPanel
                     code={displayCode}
                     isGenerating={isGenerating}
                     onDownload={handleDownload}
@@ -1377,7 +1384,7 @@ export default function Home() {
                           {/* Dream Team Panel - Shows team and activity log */}
                           {settings.useDualModels && (
                             <div className="p-2 border-b">
-                              <ProjectTeamPanel
+                              <MemoizedProjectTeamPanel
                                 projectId={activeProjectId}
                                 llmSettings={{
                                   endpoint: settings.endpoint,
@@ -1390,7 +1397,7 @@ export default function Home() {
                           
                           {/* File Explorer */}
                           {activeProject?.generatedFiles && activeProject.generatedFiles.length > 0 ? (
-                            <FileExplorer
+                            <MemoizedFileExplorer
                               files={activeProject.generatedFiles}
                               selectedFile={selectedFile}
                               onSelectFile={setSelectedFile}
