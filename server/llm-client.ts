@@ -19,6 +19,76 @@ const LOCAL_API_KEY = "lm-studio";
 
 const clientCache = new Map<string, OpenAI>();
 
+// Request queue for enforcing concurrency limits (M4 Pro optimization)
+interface QueuedRequest<T> {
+  execute: () => Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: Error) => void;
+}
+
+class RequestQueue {
+  private queue: QueuedRequest<unknown>[] = [];
+  private activeRequests = 0;
+  private readonly maxConcurrent: number;
+  private readonly maxQueueSize: number;
+
+  constructor(maxConcurrent = 1, maxQueueSize = 10) {
+    this.maxConcurrent = maxConcurrent;
+    this.maxQueueSize = maxQueueSize;
+  }
+
+  async enqueue<T>(execute: () => Promise<T>): Promise<T> {
+    // Check if queue is full
+    if (this.queue.length >= this.maxQueueSize) {
+      throw new Error(`LLM request queue full (${this.maxQueueSize} pending). Please wait.`);
+    }
+
+    return new Promise<T>((resolve, reject) => {
+      this.queue.push({
+        execute: execute as () => Promise<unknown>,
+        resolve: resolve as (value: unknown) => void,
+        reject,
+      });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.activeRequests >= this.maxConcurrent || this.queue.length === 0) {
+      return;
+    }
+
+    const request = this.queue.shift();
+    if (!request) return;
+
+    this.activeRequests++;
+
+    try {
+      const result = await request.execute();
+      request.resolve(result);
+    } catch (error) {
+      request.reject(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      this.activeRequests--;
+      this.processQueue();
+    }
+  }
+
+  get pendingCount(): number {
+    return this.queue.length;
+  }
+
+  get activeCount(): number {
+    return this.activeRequests;
+  }
+}
+
+// Singleton request queue for LLM requests (enforces single concurrent request for LM Studio)
+const llmRequestQueue = new RequestQueue(
+  1,  // maxConcurrent: LM Studio handles one request at a time
+  10  // maxQueueSize: Queue up to 10 requests
+);
+
 export function createLLMClient(config: LLMClientConfig): OpenAI {
   const endpoint = config.endpoint || DEFAULT_ENDPOINT;
   
@@ -41,39 +111,42 @@ export async function streamCompletion(
   config: LLMClientConfig,
   options: StreamOptions
 ): Promise<string> {
-  const client = createLLMClient(config);
-  
-  // Use provided maxTokens or default to fullStack limit (optimized for 48GB M4 Pro)
-  const maxTokens = options.maxTokens || LLM_DEFAULTS.maxTokens.fullStack;
-  
-  const stream = await client.chat.completions.create({
-    model: config.model || "local-model",
-    messages: [
-      { role: "system", content: options.systemPrompt },
-      ...options.messages,
-    ],
-    temperature: config.temperature ?? 0.7,
-    max_tokens: maxTokens,
-    stream: true,
-  });
-
-  let fullContent = "";
-
-  for await (const chunk of stream) {
-    // Check for cancellation
-    if (options.signal?.aborted) {
-      stream.controller?.abort();
-      throw new Error("Request cancelled");
-    }
+  // Queue the request to enforce concurrency limits (M4 Pro optimization)
+  return llmRequestQueue.enqueue(async () => {
+    const client = createLLMClient(config);
     
-    const delta = chunk.choices[0]?.delta?.content || "";
-    if (delta) {
-      fullContent += delta;
-      options.onChunk?.(delta);
-    }
-  }
+    // Use provided maxTokens or default to fullStack limit (optimized for 48GB M4 Pro)
+    const maxTokens = options.maxTokens || LLM_DEFAULTS.maxTokens.fullStack;
+    
+    const stream = await client.chat.completions.create({
+      model: config.model || "local-model",
+      messages: [
+        { role: "system", content: options.systemPrompt },
+        ...options.messages,
+      ],
+      temperature: config.temperature ?? 0.7,
+      max_tokens: maxTokens,
+      stream: true,
+    });
 
-  return fullContent;
+    let fullContent = "";
+
+    for await (const chunk of stream) {
+      // Check for cancellation
+      if (options.signal?.aborted) {
+        stream.controller?.abort();
+        throw new Error("Request cancelled");
+      }
+      
+      const delta = chunk.choices[0]?.delta?.content || "";
+      if (delta) {
+        fullContent += delta;
+        options.onChunk?.(delta);
+      }
+    }
+
+    return fullContent;
+  });
 }
 
 export async function generateCompletion(
@@ -82,19 +155,30 @@ export async function generateCompletion(
   userPrompt: string,
   maxTokens: number = LLM_DEFAULTS.maxTokens.quickApp
 ): Promise<string> {
-  const client = createLLMClient(config);
+  // Queue the request to enforce concurrency limits (M4 Pro optimization)
+  return llmRequestQueue.enqueue(async () => {
+    const client = createLLMClient(config);
 
-  const response = await client.chat.completions.create({
-    model: config.model || "local-model",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: config.temperature ?? 0.7,
-    max_tokens: maxTokens,
+    const response = await client.chat.completions.create({
+      model: config.model || "local-model",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: config.temperature ?? 0.7,
+      max_tokens: maxTokens,
+    });
+
+    return response.choices[0]?.message?.content || "";
   });
+}
 
-  return response.choices[0]?.message?.content || "";
+// Export queue status for monitoring
+export function getLLMQueueStatus(): { pending: number; active: number } {
+  return {
+    pending: llmRequestQueue.pendingCount,
+    active: llmRequestQueue.activeCount,
+  };
 }
 
 export async function checkConnection(endpoint: string): Promise<{

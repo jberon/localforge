@@ -4,6 +4,60 @@ import { createDreamTeamService, type DreamTeamService } from "./dreamTeam";
 import { llmSettingsSchema, CORE_DREAM_TEAM } from "@shared/schema";
 import { z } from "zod";
 
+// Safe JSON parsing with validation and extraction
+function safeParseJSON<T>(
+  text: string,
+  schema?: z.ZodType<T>,
+  fallback?: T
+): { success: true; data: T } | { success: false; error: string } {
+  try {
+    // Try to find JSON in the response (handles markdown code blocks)
+    const jsonPatterns = [
+      /```json\s*([\s\S]*?)```/,  // ```json ... ```
+      /```\s*([\s\S]*?)```/,       // ``` ... ```
+      /(\{[\s\S]*\})/,             // Raw JSON object
+      /(\[[\s\S]*\])/,             // Raw JSON array
+    ];
+
+    let jsonStr = text;
+    for (const pattern of jsonPatterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        jsonStr = match[1].trim();
+        break;
+      }
+    }
+
+    const parsed = JSON.parse(jsonStr);
+    
+    // Validate against schema if provided
+    if (schema) {
+      const result = schema.safeParse(parsed);
+      if (!result.success) {
+        return { 
+          success: false, 
+          error: `Schema validation failed: ${result.error.message}` 
+        };
+      }
+      return { success: true, data: result.data };
+    }
+
+    return { success: true, data: parsed as T };
+  } catch (error) {
+    // Try to provide helpful error message
+    const errorMsg = error instanceof SyntaxError 
+      ? `JSON parse error: ${error.message}` 
+      : `Unexpected error: ${String(error)}`;
+    
+    if (fallback !== undefined) {
+      console.warn(`JSON parse failed, using fallback: ${errorMsg}`);
+      return { success: true, data: fallback };
+    }
+    
+    return { success: false, error: errorMsg };
+  }
+}
+
 export interface OrchestratorTask {
   id: string;
   title: string;
@@ -313,6 +367,7 @@ export class AIOrchestrator {
 
   private async planningPhase(userRequest: string, existingCode?: string): Promise<OrchestratorPlan> {
     const config = this.getPlannerConfig();
+    const maxRetries = 2;
     
     let context = "";
     if (existingCode) {
@@ -328,38 +383,60 @@ export class AIOrchestrator {
       }
     }, 2000);
 
-    const response = await generateCompletion(
-      config,
-      PLANNING_PROMPT,
-      userRequest + context,
-      LLM_DEFAULTS.maxTokens.plan
-    );
+    // Retry loop for JSON parsing with exponential backoff
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const promptSuffix = attempt > 0 
+        ? "\n\nIMPORTANT: Your previous response was not valid JSON. Respond with ONLY valid JSON, no markdown or explanations."
+        : "";
 
-    try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        return this.createSimplePlan(userRequest);
+      const response = await generateCompletion(
+        config,
+        PLANNING_PROMPT + promptSuffix,
+        userRequest + context,
+        LLM_DEFAULTS.maxTokens.plan
+      );
+
+      // Use safe JSON parsing with fallback to simple plan
+      const parseResult = safeParseJSON<{
+        summary?: string;
+        architecture?: string;
+        searchNeeded?: boolean;
+        searchQueries?: string[];
+        tasks?: Array<{ id?: string; title?: string; description?: string; type?: string }>;
+      }>(response);
+
+      if (parseResult.success) {
+        const parsed = parseResult.data;
+        
+        const tasks: OrchestratorTask[] = (parsed.tasks || []).map((t, i: number) => ({
+          id: t.id || String(i + 1),
+          title: t.title || `Task ${i + 1}`,
+          description: t.description || "",
+          type: (t.type as OrchestratorTask["type"]) || "build",
+          status: "pending" as const,
+        }));
+
+        return {
+          summary: parsed.summary || "Building your application",
+          architecture: parsed.architecture || "",
+          searchQueries: parsed.searchNeeded ? (parsed.searchQueries || []) : [],
+          tasks,
+        };
       }
-      
-      const parsed = JSON.parse(jsonMatch[0]);
-      
-      const tasks: OrchestratorTask[] = (parsed.tasks || []).map((t: any, i: number) => ({
-        id: t.id || String(i + 1),
-        title: t.title || `Task ${i + 1}`,
-        description: t.description || "",
-        type: t.type || "build",
-        status: "pending" as const,
-      }));
 
-      return {
-        summary: parsed.summary || "Building your application",
-        architecture: parsed.architecture || "",
-        searchQueries: parsed.searchNeeded ? (parsed.searchQueries || []) : [],
-        tasks,
-      };
-    } catch {
-      return this.createSimplePlan(userRequest);
+      // Log failure and retry if attempts remain
+      console.warn(`Plan JSON parse attempt ${attempt + 1}/${maxRetries + 1} failed: ${parseResult.error}`);
+      
+      if (attempt < maxRetries) {
+        this.emit({ type: "thinking", model: "planner", content: "Refining the plan structure..." });
+        // Exponential backoff: 500ms, 1000ms
+        await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, attempt)));
+      }
     }
+
+    // All retries exhausted, fall back to simple plan
+    console.warn("All planning retries exhausted, using simple plan");
+    return this.createSimplePlan(userRequest);
   }
 
   private createSimplePlan(userRequest: string): OrchestratorPlan {
