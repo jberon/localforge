@@ -16,15 +16,9 @@ permissions:
 
 jobs:
   build-macos:
-    # Use macos-14 (M1) for arm64, macos-13 (Intel) for x64
-    # More reliable than macos-latest which can have availability issues
-    runs-on: ${{ matrix.arch == 'arm64' && 'macos-14' || 'macos-13' }}
+    # Use macos-15 for ARM64 (Apple Silicon) builds only
+    runs-on: macos-15
     timeout-minutes: 30
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [arm64, x64]
     
     steps:
       - name: Checkout code
@@ -80,7 +74,7 @@ jobs:
           cp electron/assets/icon.png dist/icon.png
       
       - name: Build Electron app
-        run: npx electron-builder --mac --${{ matrix.arch }} --config electron-builder.json
+        run: npx electron-builder --mac --arm64 --config electron-builder.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
@@ -90,7 +84,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: LocalForge-macOS-${{ matrix.arch }}
+          name: LocalForge-macOS-arm64
           path: |
             release/*.dmg
             release/*.zip
