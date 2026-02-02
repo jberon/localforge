@@ -259,9 +259,14 @@ export function ProjectSidebar({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <p className="text-xs text-muted-foreground text-center mt-2">
-          Built by Josh Beron
-        </p>
+        <div className="text-center mt-2">
+          <p className="text-xs text-muted-foreground">
+            Built by Josh Beron
+          </p>
+          <p className="text-[10px] text-muted-foreground/60" data-testid="version-number">
+            v1.1.0
+          </p>
+        </div>
       </SidebarFooter>
     </Sidebar>
   );
