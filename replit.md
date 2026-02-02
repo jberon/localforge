@@ -53,6 +53,37 @@ Users can download complete projects as ZIP files, with configurable options to 
 ### Local LLM Optimization
 Optimized for Mac M4 Pro, LocalForge integrates with LM Studio for local LLM inference, featuring client connection caching, extended timeouts, automatic retry logic, and array-based streaming for efficiency. It supports configurable temperature presets and token limits optimized for different generation phases and hardware capabilities.
 
+### M4 Pro Performance Configuration
+LocalForge is specifically optimized for MacBook Pro M4 Pro (14-core CPU, 20-core GPU, 16-core Neural Engine, 48GB unified memory):
+
+**Electron Desktop App (electron/main.cjs):**
+- GPU acceleration: Metal, zero-copy, GPU rasterization enabled for macOS
+- V8 heap: 8GB (--max-old-space-size=8192) for handling large code generation
+- Traffic light positioning optimized for macOS titlebar
+
+**LLM Client Configuration (server/llm-client.ts):**
+- Memory allocation: 16GB for context, 24GB for model weights, 8GB system reserved
+- Concurrency: Single request at a time (LM Studio limitation) with 10-request queue
+- Streaming chunk size: 1024 bytes optimal for local inference
+- Timeouts: 120s per request, 30s warning threshold
+
+**Recommended LM Studio Settings:**
+- GPU Layers: -1 (all layers on GPU for Metal acceleration)
+- Context Length: 32768 (32K context for large applications)
+- Batch Size: 512 (optimal for M4 Pro)
+- Threads: 10 (leave 4 cores for system)
+
+**Token Limits by Generation Type:**
+- Quick App: 8,192 tokens
+- Full Stack: 16,384 tokens
+- Production: 32,768 tokens
+- Planning: 4,096 tokens
+
+**Recommended Models for 48GB Memory:**
+- Coding: qwen2.5-coder-32b-instruct, deepseek-coder-v2-lite-instruct
+- General: qwen2.5-32b-instruct, llama-3.1-70b-instruct-q4
+- Fast: qwen2.5-coder-7b-instruct, codellama-7b-instruct
+
 ## External Dependencies
 - **LM Studio**: For local LLM inference via its OpenAI-compatible API.
 - **PostgreSQL**: Primary database for persistent project storage.

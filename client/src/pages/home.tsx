@@ -372,6 +372,11 @@ export default function Home() {
                   }
                 } else if (data.type === "fix_attempt") {
                   setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}...`);
+                } else if (data.type === "search") {
+                  setGenerationPhase(`Web search: ${data.query}`);
+                  setOrchestratorThinking({ model: "web_search", content: `Searching: ${data.query}` });
+                } else if (data.type === "search_result") {
+                  setGenerationPhase(`Found ${data.results?.length || 0} results for: ${data.query}`);
                 } else if (data.type === "done") {
                   await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                   if (data.success) {
@@ -452,6 +457,15 @@ export default function Home() {
                   setGenerationPhase(`Test ${data.passed ? '✓' : '✗'} ${data.file}`);
                 } else if (data.type === "fix_attempt") {
                   setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}: ${data.reason}`);
+                } else if (data.type === "file_chunk") {
+                  // Streaming file content - update progress indicator
+                  setGenerationPhase(`Writing ${data.file}... (${Math.round((data.progress || 0) * 100)}%)`);
+                } else if (data.type === "quality_issue") {
+                  // Log quality issues for debugging
+                  console.log(`Quality issue in ${data.file}: ${data.issue} (severity: ${data.severity})`);
+                } else if (data.type === "search") {
+                  setGenerationPhase(`Web search: ${data.query}`);
+                  setOrchestratorThinking({ model: "web_search", content: `Searching: ${data.query}` });
                 } else if (data.type === "done") {
                   await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                   if (data.success) {

@@ -124,6 +124,36 @@ export function clearClientCache(): void {
   clientCache.clear();
 }
 
+// M4 Pro Performance Configuration
+// MacBook Pro M4 Pro: 14-core CPU, 20-core GPU, 16-core Neural Engine, 48GB unified memory
+export const M4_PRO_CONFIG = {
+  // Memory allocation for LLM processing
+  memory: {
+    maxContextMB: 16384,           // ~16GB for model context
+    reservedSystemMB: 8192,        // 8GB for system + app overhead
+    availableForModelsMB: 24576,   // 24GB for model weights
+  },
+  // Concurrency limits to prevent memory pressure
+  concurrency: {
+    maxParallelRequests: 1,        // LM Studio handles one request at a time
+    requestQueueSize: 10,          // Queue up to 10 requests
+    streamingChunkSize: 1024,      // Optimal chunk size for streaming
+  },
+  // Recommended LM Studio settings for best performance
+  lmStudioSettings: {
+    gpuLayers: -1,                 // Use all GPU layers (Metal acceleration)
+    contextLength: 32768,          // 32K context for large apps
+    batchSize: 512,                // Optimal batch size for M4 Pro
+    threads: 10,                   // Leave 4 cores for system
+  },
+  // Performance monitoring thresholds
+  thresholds: {
+    warningLatencyMs: 30000,       // Warn if request takes > 30s
+    errorLatencyMs: 120000,        // Error if request takes > 2min
+    minTokensPerSecond: 10,        // Minimum acceptable speed
+  },
+} as const;
+
 // Optimized for Mac M4 Pro with 48GB unified memory
 // These higher limits take advantage of larger local models (32B+ params)
 export const LLM_DEFAULTS = {
