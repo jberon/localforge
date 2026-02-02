@@ -72,6 +72,7 @@ export default function Home() {
     builderTemperature: 0.5,
     webSearchEnabled: false,
     serperApiKey: "",
+    productionMode: false,
   });
   
   // Web search permission state
@@ -397,6 +398,86 @@ export default function Home() {
     [settings, toast]
   );
 
+  // Production Mode - Multi-file TypeScript projects with tests
+  const handleProductionGeneration = useCallback(
+    async (projectId: string, content: string) => {
+      setOrchestratorPhase("planning");
+      setOrchestratorThinking(null);
+      setGenerationPhase("Production Mode: Designing architecture...");
+      
+      const response = await fetch(`/api/projects/${projectId}/production`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, settings }),
+      });
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      let buffer = "";
+      let qualityScore = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const event of events) {
+          const lines = event.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.type === "phase") {
+                  setOrchestratorPhase(data.phase);
+                  setGenerationPhase(data.message);
+                } else if (data.type === "thinking") {
+                  setOrchestratorThinking({ model: data.model, content: data.content });
+                } else if (data.type === "file_start") {
+                  setGenerationPhase(`Generating ${data.file}...`);
+                } else if (data.type === "file_complete") {
+                  setGenerationPhase(`Completed ${data.file} (${Math.round(data.size / 1024)}KB)`);
+                } else if (data.type === "quality_score") {
+                  qualityScore = data.score;
+                  setGenerationPhase(`Quality Score: ${data.score}/100`);
+                } else if (data.type === "test_result") {
+                  setGenerationPhase(`Test ${data.passed ? '✓' : '✗'} ${data.file}`);
+                } else if (data.type === "fix_attempt") {
+                  setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}: ${data.reason}`);
+                } else if (data.type === "done") {
+                  await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                  if (data.success) {
+                    setShowCelebration(true);
+                    setShowQuickUndo(true);
+                    toast({
+                      title: "Production Build Complete!",
+                      description: `Quality Score: ${qualityScore}/100. ${data.files?.length || 0} files generated with tests.`,
+                    });
+                  }
+                  return data.project;
+                } else if (data.type === "error") {
+                  throw new Error(data.message || data.error);
+                }
+              } catch (e) {
+                if (e instanceof SyntaxError) continue;
+                throw e;
+              }
+            }
+          }
+        }
+      }
+    },
+    [settings, toast]
+  );
+
   const handleSendMessage = useCallback(
     async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings) => {
       // Request deduplication - prevent duplicate calls using in-flight lock
@@ -483,6 +564,21 @@ export default function Home() {
             description: "Check the Files tab to view and download your project.",
           });
         } else {
+          // Production Mode - Multi-file TypeScript projects with tests
+          if (settings.productionMode && settings.useDualModels && settings.plannerModel && settings.builderModel && projectId) {
+            setGenerationPhase("Production Mode initializing...");
+            try {
+              await handleProductionGeneration(projectId, content);
+            } finally {
+              setIsGenerating(false);
+              setGenerationPhase(null);
+              setOrchestratorPhase(null);
+              setOrchestratorThinking(null);
+              generationRequestRef.current = null;
+            }
+            return;
+          }
+          
           // Use AI Dream Team (orchestrator) when dual models are enabled
           if (settings.useDualModels && settings.plannerModel && settings.builderModel && projectId) {
             setGenerationPhase("AI Dream Team initializing...");

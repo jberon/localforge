@@ -119,6 +119,8 @@ export const llmSettingsSchema = z.object({
   // Web search settings (Serper.dev integration)
   webSearchEnabled: z.boolean().default(false),
   serperApiKey: z.string().default(""),
+  // Production mode - generates multi-file TypeScript projects with tests
+  productionMode: z.boolean().default(false),
 });
 
 // Model settings for Plan/Build mode

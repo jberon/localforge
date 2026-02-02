@@ -9,6 +9,7 @@ import { SYSTEM_PROMPT, REFINEMENT_SYSTEM } from "./llm";
 import { searchWeb, formatSearchResultsForContext } from "../services/webSearch";
 import { shouldUseWebSearch, decideWebSearchAction } from "../services/webSearchClassifier";
 import { createOrchestrator, OrchestratorEvent } from "../services/orchestrator";
+import { createProductionOrchestrator, ProductionEvent } from "../services/productionOrchestrator";
 
 // Maximum auto-retry attempts for code generation
 const MAX_AUTO_RETRY = 2;
@@ -841,6 +842,7 @@ router.post("/:id/plan", async (req, res) => {
       builderTemperature: LLM_DEFAULTS.temperature.builder,
       webSearchEnabled: false,
       serperApiKey: "",
+      productionMode: false,
     };
 
     // Use planner model when dual models are enabled
@@ -1228,6 +1230,139 @@ router.post("/:id/dream-team", async (req, res) => {
     
   } catch (error: any) {
     console.error("Dream Team error:", error);
+    res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+    res.end();
+  }
+});
+
+// Production Mode - Multi-file TypeScript projects with tests
+const productionRequestSchema = z.object({
+  content: z.string().min(1, "Request is required"),
+  settings: llmSettingsSchema,
+});
+
+router.post("/:id/production", async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const parsed = productionRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    
+    const { content, settings } = parsed.data;
+    const projectId = req.params.id;
+    
+    const project = await storage.getProject(projectId);
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    await storage.addMessage(projectId, {
+      role: "user",
+      content: `[Production Mode] ${content}`,
+    });
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    let isClientConnected = true;
+    let orchestrator: ReturnType<typeof createProductionOrchestrator> | null = null;
+    
+    req.on("close", () => {
+      isClientConnected = false;
+      orchestrator?.abort();
+    });
+
+    orchestrator = createProductionOrchestrator(settings, (event: ProductionEvent) => {
+      if (!isClientConnected) return;
+      
+      switch (event.type) {
+        case "phase_change":
+          res.write(`data: ${JSON.stringify({ type: "phase", phase: event.phase, message: event.message })}\n\n`);
+          break;
+        case "thinking":
+          res.write(`data: ${JSON.stringify({ type: "thinking", model: event.model, content: event.content })}\n\n`);
+          break;
+        case "file_start":
+          res.write(`data: ${JSON.stringify({ type: "file_start", file: event.file, purpose: event.purpose })}\n\n`);
+          break;
+        case "file_complete":
+          res.write(`data: ${JSON.stringify({ type: "file_complete", file: event.file, size: event.size })}\n\n`);
+          break;
+        case "file_chunk":
+          res.write(`data: ${JSON.stringify({ type: "file_chunk", file: event.file, content: event.content })}\n\n`);
+          break;
+        case "test_result":
+          res.write(`data: ${JSON.stringify({ type: "test_result", file: event.file, passed: event.passed, error: event.error })}\n\n`);
+          break;
+        case "quality_issue":
+          res.write(`data: ${JSON.stringify({ type: "quality_issue", issue: event.issue })}\n\n`);
+          break;
+        case "quality_score":
+          res.write(`data: ${JSON.stringify({ type: "quality_score", score: event.score, passed: event.passed })}\n\n`);
+          break;
+        case "search_result":
+          res.write(`data: ${JSON.stringify({ type: "search", query: event.query, count: event.resultCount })}\n\n`);
+          break;
+        case "fix_attempt":
+          res.write(`data: ${JSON.stringify({ type: "fix_attempt", attempt: event.attempt, max: event.maxAttempts, reason: event.reason })}\n\n`);
+          break;
+        case "complete":
+          break;
+        case "error":
+          res.write(`data: ${JSON.stringify({ type: "error", message: event.message })}\n\n`);
+          break;
+      }
+    });
+
+    const result = await orchestrator.run(content);
+
+    if (result.success && result.files.length > 0) {
+      const generatedFiles = result.files.map(f => ({
+        path: f.path,
+        content: f.content,
+        language: f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.ts') ? 'typescript' : f.path.endsWith('.md') ? 'markdown' : 'text',
+      }));
+
+      await storage.updateProject(projectId, {
+        generatedFiles,
+        generationMetrics: {
+          startTime,
+          endTime: Date.now(),
+          durationMs: Date.now() - startTime,
+          promptLength: content.length,
+          responseLength: result.files.reduce((acc, f) => acc + f.content.length, 0),
+          status: "success",
+          retryCount: 0,
+        },
+      });
+
+      await storage.addMessage(projectId, {
+        role: "assistant",
+        content: `**Production Build Complete!**\n\n${result.summary}\n\n**Quality Score:** ${result.qualityScore}/100\n\n**Files Generated:** ${result.files.length}\n- ${result.files.map(f => f.path).join('\n- ')}\n\nCheck the Files tab to view and download your project!`,
+      });
+    } else {
+      await storage.addMessage(projectId, {
+        role: "assistant",
+        content: `Production build encountered an issue: ${result.summary}. Please try again.`,
+      });
+    }
+
+    const finalProject = await storage.getProject(projectId);
+    res.write(`data: ${JSON.stringify({ 
+      type: "done", 
+      project: finalProject, 
+      success: result.success,
+      files: result.files,
+      qualityScore: result.qualityScore
+    })}\n\n`);
+    res.end();
+    
+  } catch (error: any) {
+    console.error("Production mode error:", error);
     res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
     res.end();
   }

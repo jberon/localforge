@@ -24,6 +24,17 @@ When dual models are configured (planner + builder), LocalForge activates the AI
 
 The orchestrator is implemented in `server/services/orchestrator.ts` and exposed via the `/api/projects/:id/dream-team` endpoint.
 
+### Production Mode (Multi-File TypeScript Projects)
+When production mode is enabled alongside dual models, LocalForge generates sellable, enterprise-grade applications:
+- **Multi-File Architecture**: Proper project structure (components/, hooks/, services/, __tests__/)
+- **TypeScript by Default**: Strict typing with proper interfaces and generics
+- **Automated Test Generation**: Vitest/React Testing Library tests for each component
+- **Quality Analysis**: Code quality scoring (0-100) with auto-fix for issues
+- **Documentation**: Auto-generated README.md with project overview and usage
+- **File-by-File Progress**: Real-time streaming of each file being generated
+
+The production orchestrator is in `server/services/productionOrchestrator.ts` and uses `/api/projects/:id/production`.
+
 ### Frontend
 The frontend is built with React + TypeScript using Vite, styled with Tailwind CSS and Shadcn UI components. It integrates the Monaco Editor for code interaction and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, and a modular generation wizard. UX design principles focus on quick start, progressive disclosure, polished animations, and contextual error recovery. Features include a command palette, voice input, and keyboard shortcuts. The file explorer provides a Replit-like tree view, file operations, and real-time synchronization.
 

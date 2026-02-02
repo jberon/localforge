@@ -577,6 +577,34 @@ export function ProjectSidebar({
                   </p>
                 </div>
               </div>
+
+              {/* Production Mode */}
+              <div className="space-y-2 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="production-mode">Production Mode</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Generate multi-file TypeScript projects with automated tests
+                    </p>
+                  </div>
+                  <Switch
+                    checked={tempSettings.productionMode ?? false}
+                    onCheckedChange={(checked) => setTempSettings({ ...tempSettings, productionMode: checked })}
+                    disabled={!tempSettings.useDualModels}
+                    data-testid="switch-production-mode"
+                  />
+                </div>
+                {tempSettings.productionMode && !tempSettings.useDualModels && (
+                  <p className="text-xs text-amber-500">
+                    Production Mode requires Dual Models to be enabled
+                  </p>
+                )}
+                {tempSettings.productionMode && tempSettings.useDualModels && (
+                  <p className="text-xs text-green-500">
+                    Generating sellable apps with proper structure, tests, and documentation
+                  </p>
+                )}
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setSettingsOpen(false)}>
