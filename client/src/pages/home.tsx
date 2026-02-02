@@ -1131,9 +1131,12 @@ export default function Home() {
             <AlertDialogDescription className="space-y-3">
               <p>{webSearchPermissionPending?.message}</p>
               {webSearchPermissionPending?.needsApiKey && (
-                <p className="text-amber-600 dark:text-amber-400">
-                  You'll need to add your Serper.dev API key in Settings first.
-                </p>
+                <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md p-3">
+                  <p className="text-amber-700 dark:text-amber-300 font-medium">API Key Required</p>
+                  <p className="text-amber-600 dark:text-amber-400 text-sm mt-1">
+                    Click the Settings button in the left sidebar, scroll to "Web Search" section, and add your Serper.dev API key. Get a free key at serper.dev
+                  </p>
+                </div>
               )}
               <p className="text-xs text-muted-foreground">
                 Web search uses Serper.dev to fetch current information from the internet.
@@ -1182,10 +1185,7 @@ export default function Home() {
               data-testid="button-enable-web-search"
             >
               {webSearchPermissionPending?.needsApiKey ? (
-                <>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Open Settings
-                </>
+                "Got it"
               ) : (
                 <>
                   <Globe className="h-4 w-4 mr-2" />
