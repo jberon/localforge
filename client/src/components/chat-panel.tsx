@@ -1,17 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, User, Sparkles, FileCode, Loader2, Mic, MicOff } from "lucide-react";
-import type { Message, DataModel } from "@shared/schema";
+import { Send, User, Sparkles, FileCode, Loader2, Mic, MicOff, Paperclip, Image } from "lucide-react";
+import type { Message, DataModel, MessageAttachment } from "@shared/schema";
 import { GenerationWizard } from "./generation-wizard";
 import { WorkingIndicator } from "./working-indicator";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
+import { useFileAttachments, type Attachment } from "@/hooks/use-file-attachments";
+import { AttachmentPreview, DropZoneOverlay } from "./attachment-preview";
 
 interface ChatPanelProps {
   messages: Message[];
   isLoading: boolean;
   loadingPhase?: string | null;
-  onSendMessage: (content: string, dataModel?: DataModel) => void;
+  onSendMessage: (content: string, dataModel?: DataModel, attachments?: Attachment[], temperature?: number) => void;
   llmConnected: boolean | null;
   onCheckConnection: () => void;
 }
@@ -111,6 +113,20 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
   }, []);
 
   const { isListening, isSupported, toggleListening, error: speechError } = useSpeechRecognition(handleTranscript);
+  
+  const {
+    attachments,
+    error: attachmentError,
+    isDragging,
+    fileInputRef,
+    removeAttachment,
+    clearAttachments,
+    openFilePicker,
+    handleFileInputChange,
+    dragHandlers,
+    acceptString,
+    hasAttachments,
+  } = useFileAttachments();
 
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -120,9 +136,10 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
-      onSendMessage(input.trim());
+    if ((input.trim() || hasAttachments) && !isLoading) {
+      onSendMessage(input.trim(), undefined, attachments.length > 0 ? attachments : undefined);
       setInput("");
+      clearAttachments();
     }
   };
 
@@ -168,6 +185,28 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
                       <p className="text-sm font-medium text-foreground leading-relaxed" data-testid={`text-user-message-${message.id}`}>
                         {message.content}
                       </p>
+                      {message.attachments && message.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2" data-testid={`attachments-${message.id}`}>
+                          {message.attachments.map((attachment) => (
+                            <div key={attachment.id} className="flex items-center gap-2 p-2 rounded-md border bg-muted/30">
+                              {attachment.type.startsWith("image/") && attachment.preview ? (
+                                <img 
+                                  src={attachment.preview} 
+                                  alt={attachment.name}
+                                  className="w-12 h-12 rounded object-cover"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded bg-muted flex items-center justify-center">
+                                  <FileCode className="h-5 w-5 text-muted-foreground" />
+                                </div>
+                              )}
+                              <span className="text-xs text-muted-foreground truncate max-w-[100px]" title={attachment.name}>
+                                {attachment.name}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground mt-1" data-testid={`text-timestamp-${message.id}`}>
                         {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
@@ -219,19 +258,48 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
         <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="max-w-3xl mx-auto p-4">
             <form onSubmit={handleSubmit}>
-              <div className="relative">
+              {hasAttachments && (
+                <div className="mb-3">
+                  <AttachmentPreview 
+                    attachments={attachments} 
+                    onRemove={removeAttachment}
+                    compact
+                  />
+                </div>
+              )}
+              <div className="relative" {...dragHandlers}>
+                <DropZoneOverlay isDragging={isDragging} />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept={acceptString}
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                  data-testid="input-file-attachment"
+                />
                 <Textarea
                   ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Describe what you want to change..."
-                  className="resize-none pr-24 text-sm"
+                  placeholder="Describe what you want to change... (drop files here)"
+                  className="resize-none pr-32 text-sm"
                   rows={3}
                   disabled={isLoading}
                   data-testid="input-chat"
                 />
                 <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={openFilePicker}
+                    disabled={isLoading}
+                    data-testid="button-attach-file"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
                   {isSupported && (
                     <Button
                       type="button"
@@ -252,7 +320,7 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={!input.trim() || isLoading}
+                    disabled={(!input.trim() && !hasAttachments) || isLoading}
                     data-testid="button-send"
                   >
                     {isLoading ? (
@@ -267,11 +335,14 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
                 {isListening ? (
                   <span className="text-red-500">Listening... Click mic to stop</span>
                 ) : (
-                  "Enter to send • Shift+Enter for new line • Esc to clear"
+                  "Enter to send • Shift+Enter for new line • Drop files to attach"
                 )}
               </p>
               {speechError && (
                 <p className="text-xs text-destructive mt-1 text-center">{speechError}</p>
+              )}
+              {attachmentError && (
+                <p className="text-xs text-destructive mt-1 text-center">{attachmentError}</p>
               )}
             </form>
           </div>

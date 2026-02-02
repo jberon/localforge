@@ -7,13 +7,15 @@ import type { LLMSettings, ProductionModules } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Zap, Rocket, Sparkles, X, ArrowRight, Settings2, Mic, MicOff } from "lucide-react";
+import { Zap, Rocket, Sparkles, X, ArrowRight, Settings2, Mic, MicOff, Paperclip } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
+import { useFileAttachments, type Attachment } from "@/hooks/use-file-attachments";
+import { AttachmentPreview, DropZoneOverlay } from "../attachment-preview";
 
 interface TemplateSelectorProps {
   onSelect: (template: TemplateConfig) => void;
   onSelectProduction: (template: ProductionTemplateConfig, modules: ProductionModules) => void;
-  onGenerate: (prompt: string) => void;
+  onGenerate: (prompt: string, dataModel?: undefined, attachments?: Attachment[], temperature?: number) => void;
   isGenerating: boolean;
   llmConnected: boolean | null;
   onCheckConnection: () => void;
@@ -39,17 +41,45 @@ export function TemplateSelector({
 
   const { isListening, isSupported, toggleListening, error: speechError } = useSpeechRecognition(handleTranscript);
 
+  const {
+    attachments,
+    error: attachmentError,
+    isDragging,
+    fileInputRef,
+    removeAttachment,
+    clearAttachments,
+    openFilePicker,
+    handleFileInputChange,
+    dragHandlers,
+    acceptString,
+    hasAttachments,
+  } = useFileAttachments();
+
   const handleQuickStart = (template: TemplateConfig) => {
     setQuickStartTemplate(template);
     setQuickStartDescription("");
+    clearAttachments();
   };
 
   const handleQuickGenerate = () => {
     if (!quickStartTemplate || !llmConnected) return;
     const description = quickStartDescription.trim() || quickStartTemplate.name;
-    const prompt = `Create a ${quickStartTemplate.name.toLowerCase()} app: ${description}. Make it modern, clean, and fully functional.`;
-    trackEvent("generation_started", undefined, { template: quickStartTemplate.id, mode: "quick_start" });
-    onGenerate(prompt);
+    let prompt = `Create a ${quickStartTemplate.name.toLowerCase()} app: ${description}. Make it modern, clean, and fully functional.`;
+    
+    if (hasAttachments) {
+      prompt += `\n\nUser has attached ${attachments.length} file(s) for reference:`;
+      attachments.forEach((a) => {
+        if (a.type.startsWith("image/")) {
+          prompt += `\n- Image: ${a.name} (use this as visual reference for the design)`;
+        } else if (a.content) {
+          prompt += `\n- File: ${a.name}\n\`\`\`\n${a.content.slice(0, 2000)}${a.content.length > 2000 ? "\n... (truncated)" : ""}\n\`\`\``;
+        }
+      });
+    }
+    
+    trackEvent("generation_started", undefined, { template: quickStartTemplate.id, mode: "quick_start", hasAttachments });
+    onGenerate(prompt, undefined, attachments.length > 0 ? attachments : undefined);
+    clearAttachments();
   };
 
   const handleAdvancedConfig = () => {
@@ -116,7 +146,6 @@ export function TemplateSelector({
                     size="icon"
                     variant="ghost"
                     onClick={() => setQuickStartTemplate(null)}
-                    className="h-8 w-8"
                     data-testid="button-close-quickstart"
                   >
                     <X className="h-4 w-4" />
@@ -124,8 +153,25 @@ export function TemplateSelector({
                 </div>
                 
                 <div className="space-y-4">
+                  {hasAttachments && (
+                    <AttachmentPreview 
+                      attachments={attachments} 
+                      onRemove={removeAttachment}
+                      compact
+                    />
+                  )}
                   <div>
-                    <div className="relative">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept={acceptString}
+                      onChange={handleFileInputChange}
+                      className="hidden"
+                      data-testid="input-quickstart-file"
+                    />
+                    <div className="relative" {...dragHandlers}>
+                      <DropZoneOverlay isDragging={isDragging} />
                       <Input
                         placeholder={`Describe your ${quickStartTemplate.name.toLowerCase()}...`}
                         value={quickStartDescription}
@@ -139,37 +185,53 @@ export function TemplateSelector({
                             setQuickStartDescription("");
                           }
                         }}
-                        className="h-11 pr-10"
+                        className="h-11 pr-20"
                         autoFocus
                         data-testid="input-quickstart-description"
                       />
-                      {isSupported && (
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
                         <Button
                           type="button"
-                          size="icon"
-                          variant={isListening ? "default" : "ghost"}
-                          onClick={toggleListening}
+                          size="sm"
+                          variant="ghost"
+                          onClick={openFilePicker}
                           disabled={isGenerating}
-                          className={`absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 ${isListening ? "bg-red-500 hover:bg-red-600 animate-pulse" : ""}`}
-                          data-testid="button-quickstart-voice"
+                          className="px-2"
+                          data-testid="button-quickstart-attach"
                         >
-                          {isListening ? (
-                            <MicOff className="h-4 w-4" />
-                          ) : (
-                            <Mic className="h-4 w-4" />
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
+                        {isSupported && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isListening ? "default" : "ghost"}
+                            onClick={toggleListening}
+                            disabled={isGenerating}
+                            className={`px-2 ${isListening ? "bg-red-500 hover:bg-red-600 animate-pulse" : ""}`}
+                            data-testid="button-quickstart-voice"
+                          >
+                            {isListening ? (
+                              <MicOff className="h-4 w-4" />
+                            ) : (
+                              <Mic className="h-4 w-4" />
                           )}
                         </Button>
                       )}
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
                       {isListening ? (
                         <span className="text-red-500">Listening... Click mic to stop</span>
                       ) : (
-                        `Enter to generate • Esc to clear${isSupported ? " • Click mic to speak" : ""}`
+                        `Enter to generate • Drop files to attach${isSupported ? " • Click mic to speak" : ""}`
                       )}
                     </p>
                     {speechError && (
                       <p className="text-xs text-destructive mt-1">{speechError}</p>
+                    )}
+                    {attachmentError && (
+                      <p className="text-xs text-destructive mt-1">{attachmentError}</p>
                     )}
                   </div>
                   

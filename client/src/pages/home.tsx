@@ -31,6 +31,7 @@ import { Link } from "wouter";
 import JSZip from "jszip";
 import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion } from "@shared/schema";
 import { defaultDreamTeamPersonas } from "@shared/schema";
+import type { Attachment } from "@/hooks/use-file-attachments";
 
 export default function Home() {
   const { toast } = useToast();
@@ -274,7 +275,7 @@ export default function Home() {
   };
 
   const handleSendMessage = useCallback(
-    async (content: string, dataModel?: DataModel, templateTemperature?: number, overrideSettings?: LLMSettings) => {
+    async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings) => {
       let projectId = activeProjectId;
       const projectName = generateProjectName(content);
       
@@ -549,7 +550,7 @@ export default function Home() {
       if (usePlanner) {
         await handleCreatePlan(content, dataModel);
       } else {
-        await handleSendMessage(content, dataModel, undefined, builderSettings);
+        await handleSendMessage(content, dataModel, undefined, undefined, builderSettings);
       }
     } else if (pendingGeneration) {
       // User chose to explore alternatives or cancel - clear pending
@@ -674,10 +675,10 @@ export default function Home() {
 
   // Intelligent routing handler - automatically routes to plan or build based on request analysis
   const handleIntelligentGenerate = useCallback(
-    async (content: string, dataModel?: DataModel, templateTemperature?: number) => {
+    async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number) => {
       if (!planBuildMode || !autoRouting) {
         // Use standard generation when Plan & Build mode is off
-        return handleSendMessage(content, dataModel, templateTemperature);
+        return handleSendMessage(content, dataModel, attachments, templateTemperature);
       }
 
       // Classify the request to determine intent
@@ -724,10 +725,10 @@ export default function Home() {
         await handleCreatePlan(content, dataModel);
       } else if (classification.intent === "refine" && hasExistingCode) {
         // Use builder settings for refinements
-        await handleSendMessage(content, dataModel, undefined, builderSettings);
+        await handleSendMessage(content, dataModel, attachments, undefined, builderSettings);
       } else {
         // Use builder model directly for direct build requests
-        await handleSendMessage(content, dataModel, undefined, builderSettings);
+        await handleSendMessage(content, dataModel, attachments, undefined, builderSettings);
       }
     },
     [planBuildMode, autoRouting, activeProject, streamingCode, handleSendMessage, handleCreatePlan, toast, dualModelSettings.builder, dreamTeamSettings, startDreamTeamDiscussion, setPendingGeneration]

@@ -152,7 +152,7 @@ export function GenerationWizard({
 
   const handleGenerate = () => {
     if (generatedPrompt && llmConnected && currentTemplate) {
-      onGenerate(generatedPrompt, dataModel, currentTemperature);
+      onGenerate(generatedPrompt, dataModel, undefined, currentTemperature);
     }
   };
 
@@ -166,7 +166,7 @@ export function GenerationWizard({
       } else {
         return;
       }
-      onGenerate(quickPrompt, undefined, currentTemperature);
+      onGenerate(quickPrompt, undefined, undefined, currentTemperature);
     }
   };
 

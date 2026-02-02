@@ -2,11 +2,20 @@ import { z } from "zod";
 import { pgTable, text, varchar, bigint, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
+export const messageAttachmentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+  size: z.number(),
+  preview: z.string().optional(),
+});
+
 export const messageSchema = z.object({
   id: z.string(),
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   timestamp: z.number(),
+  attachments: z.array(messageAttachmentSchema).optional(),
 });
 
 export const dataFieldSchema = z.object({
@@ -158,6 +167,7 @@ export const productionTemplateSchema = z.object({
   }),
 });
 
+export type MessageAttachment = z.infer<typeof messageAttachmentSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type InsertProject = z.infer<typeof insertProjectSchema>;

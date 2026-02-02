@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { DataModel, ProductionModules } from "@shared/schema";
+import type { Attachment } from "@/hooks/use-file-attachments";
 
 export type TemplateType = "dashboard" | "todo" | "data-tool" | "landing" | "calculator" | "creative";
 export type ProductionTemplateType = "saas-starter" | "marketplace" | "admin-dashboard" | "api-service" | "ecommerce" | "content-platform";
@@ -54,7 +55,7 @@ export interface WizardState {
 }
 
 export interface GenerationWizardProps {
-  onGenerate: (prompt: string, dataModel?: DataModel, temperature?: number) => void;
+  onGenerate: (prompt: string, dataModel?: DataModel, attachments?: Attachment[], temperature?: number) => void;
   isGenerating: boolean;
   llmConnected: boolean | null;
   onCheckConnection: () => void;
