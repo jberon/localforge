@@ -95,16 +95,9 @@ app.use((req, res, next) => {
   // In development, bind to 0.0.0.0 for external access
   const host = process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0";
   
-  httpServer.listen(
-    {
-      port,
-      host,
-      reusePort: true,
-    },
-    () => {
-      log(`serving on ${host}:${port}`);
-    },
-  );
+  httpServer.listen(port, host, () => {
+    log(`serving on ${host}:${port}`);
+  });
 
   // Graceful shutdown handling
   const shutdown = () => {
