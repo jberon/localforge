@@ -1070,7 +1070,8 @@ export default function Home() {
                 />
               </div>
             ) : (
-              <ResizablePanelGroup direction="horizontal">
+              <div className="relative h-full">
+                <ResizablePanelGroup key={`layout-${showFileExplorer}`} direction="horizontal">
                 {/* Left Panel: Chat */}
                 <ResizablePanel defaultSize={30} minSize={20} maxSize={45}>
                   <div className="flex flex-col h-full border-r">
@@ -1174,6 +1175,19 @@ export default function Home() {
                   </>
                 )}
               </ResizablePanelGroup>
+              
+              {/* Right Edge Toggle - shows when file explorer is collapsed */}
+              {!showFileExplorer && (
+                <button
+                  onClick={() => setShowFileExplorer(true)}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center w-6 h-20 bg-muted/80 hover:bg-muted border-l border-y rounded-l-md transition-colors"
+                  title="Show Files"
+                  data-testid="button-edge-show-files"
+                >
+                  <PanelRight className="h-4 w-4 text-muted-foreground" />
+                </button>
+              )}
+              </div>
             )}
           </main>
         </div>
