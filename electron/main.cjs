@@ -10,50 +10,106 @@ const isDev = process.env.NODE_ENV === 'development';
 const PORT = process.env.PORT || 5000;
 
 // Common paths where node might be installed on macOS
-const NODE_PATHS = [
-  '/opt/homebrew/bin/node',      // Apple Silicon Homebrew
-  '/usr/local/bin/node',         // Intel Homebrew / manual install
-  '/usr/bin/node',               // System install
-  path.join(process.env.HOME || '', '.nvm/versions/node'),  // NVM (check subdirs)
-  path.join(process.env.HOME || '', '.volta/bin/node'),     // Volta
-  path.join(process.env.HOME || '', '.asdf/shims/node'),    // asdf
+const NODE_DIRECT_PATHS = [
+  '/opt/homebrew/bin/node',           // Apple Silicon Homebrew
+  '/opt/homebrew/opt/node/bin/node',  // Homebrew versioned
+  '/usr/local/bin/node',              // Intel Homebrew / manual install
+  '/usr/local/opt/node/bin/node',     // Intel Homebrew versioned
+  '/usr/bin/node',                    // System install
 ];
 
 function findNodePath() {
-  // First check if node is in PATH (works in dev mode)
+  const home = process.env.HOME || '';
+  
+  // Try to get node from login shell (works for GUI launches)
   try {
-    const nodePath = execSync('which node', { encoding: 'utf8' }).trim();
+    const shell = process.env.SHELL || '/bin/zsh';
+    const nodePath = execSync(`${shell} -lc 'which node'`, { 
+      encoding: 'utf8',
+      timeout: 5000
+    }).trim();
     if (nodePath && fs.existsSync(nodePath)) {
+      console.log('Found node via shell:', nodePath);
       return nodePath;
     }
   } catch (e) {
-    // which failed, continue checking known paths
+    // Shell lookup failed, continue checking known paths
   }
 
-  // Check known installation paths
-  for (const nodePath of NODE_PATHS) {
+  // Check direct paths
+  for (const nodePath of NODE_DIRECT_PATHS) {
     if (fs.existsSync(nodePath)) {
-      // Handle NVM which has version subdirectories
-      if (nodePath.includes('.nvm/versions/node')) {
-        try {
-          const versions = fs.readdirSync(nodePath);
-          if (versions.length > 0) {
-            // Use the most recent version (sorted)
-            const latestVersion = versions.sort().reverse()[0];
-            const nvmNodePath = path.join(nodePath, latestVersion, 'bin', 'node');
-            if (fs.existsSync(nvmNodePath)) {
-              return nvmNodePath;
-            }
-          }
-        } catch (e) {
-          continue;
-        }
-      } else {
-        return nodePath;
-      }
+      console.log('Found node at:', nodePath);
+      return nodePath;
     }
   }
 
+  // Check NVM - find highest version with semver-like sorting
+  const nvmDir = path.join(home, '.nvm/versions/node');
+  try {
+    if (fs.existsSync(nvmDir)) {
+      const versions = fs.readdirSync(nvmDir)
+        .filter(v => v.startsWith('v'))
+        .sort((a, b) => {
+          // Parse semver: v20.10.0 -> [20, 10, 0]
+          const parseVersion = (v) => v.slice(1).split('.').map(n => parseInt(n, 10) || 0);
+          const [aMajor, aMinor, aPatch] = parseVersion(a);
+          const [bMajor, bMinor, bPatch] = parseVersion(b);
+          return bMajor - aMajor || bMinor - aMinor || bPatch - aPatch;
+        });
+      
+      for (const version of versions) {
+        const nvmNodePath = path.join(nvmDir, version, 'bin', 'node');
+        if (fs.existsSync(nvmNodePath)) {
+          console.log('Found node via NVM:', nvmNodePath);
+          return nvmNodePath;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('NVM search error:', e.message);
+  }
+
+  // Check Volta
+  const voltaPath = path.join(home, '.volta/bin/node');
+  if (fs.existsSync(voltaPath)) {
+    console.log('Found node via Volta:', voltaPath);
+    return voltaPath;
+  }
+
+  // Check asdf
+  const asdfPath = path.join(home, '.asdf/shims/node');
+  if (fs.existsSync(asdfPath)) {
+    console.log('Found node via asdf:', asdfPath);
+    return asdfPath;
+  }
+
+  // Check fnm (Fast Node Manager)
+  const fnmDir = path.join(home, '.fnm/node-versions');
+  try {
+    if (fs.existsSync(fnmDir)) {
+      const versions = fs.readdirSync(fnmDir)
+        .filter(v => v.startsWith('v'))
+        .sort((a, b) => {
+          const parseVersion = (v) => v.slice(1).split('.').map(n => parseInt(n, 10) || 0);
+          const [aMajor, aMinor, aPatch] = parseVersion(a);
+          const [bMajor, bMinor, bPatch] = parseVersion(b);
+          return bMajor - aMajor || bMinor - aMinor || bPatch - aPatch;
+        });
+      
+      for (const version of versions) {
+        const fnmNodePath = path.join(fnmDir, version, 'installation', 'bin', 'node');
+        if (fs.existsSync(fnmNodePath)) {
+          console.log('Found node via fnm:', fnmNodePath);
+          return fnmNodePath;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('fnm search error:', e.message);
+  }
+
+  console.error('Node.js not found in any known location');
   return null;
 }
 
