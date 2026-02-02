@@ -358,6 +358,19 @@ export function PreviewPanel({
     })();
     `;
     
+    // Wrap the user code to catch errors and display them clearly
+    const wrappedCode = `
+try {
+${localCode}
+} catch (err) {
+  console.error('App Error:', err.message || err);
+  const root = document.getElementById('root');
+  if (root) {
+    root.innerHTML = '<div style="padding: 20px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b;"><h3 style="margin: 0 0 8px 0;">Error in Generated Code</h3><pre style="margin: 0; white-space: pre-wrap; font-size: 14px;">' + (err.message || err) + '</pre></div>';
+  }
+}
+`;
+    
     const htmlDoc = `
 <!DOCTYPE html>
 <html lang="en">
@@ -374,12 +387,26 @@ export function PreviewPanel({
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 16px; background: white; }
     * { box-sizing: border-box; }
+    .error-display { padding: 20px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; }
+    .error-display h3 { margin: 0 0 8px 0; }
+    .error-display pre { margin: 0; white-space: pre-wrap; font-size: 14px; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-  <script type="text/babel">
-    ${localCode}
+  <script type="text/babel" data-type="module">
+    ${wrappedCode}
+  </script>
+  <script>
+    // Catch Babel transformation errors
+    window.addEventListener('error', function(e) {
+      if (e.message && e.message.includes('Babel')) {
+        const root = document.getElementById('root');
+        if (root) {
+          root.innerHTML = '<div class="error-display"><h3>Syntax Error in Generated Code</h3><pre>' + e.message + '</pre></div>';
+        }
+      }
+    });
   </script>
 </body>
 </html>`;
