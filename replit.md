@@ -48,8 +48,8 @@ When dual models are configured (planner + builder), LocalForge activates the AI
 
 The orchestrator is implemented in `server/services/orchestrator.ts` and the Dream Team service in `server/services/dreamTeam.ts`. Exposed via `/api/projects/:id/dream-team` and `/api/dream-team/*` endpoints.
 
-### Production Mode (Multi-File TypeScript Projects)
-When production mode is enabled alongside dual models, LocalForge generates sellable, enterprise-grade applications:
+### Production-Grade Output (Default)
+All generated applications are production-grade by default - no toggle required. LocalForge generates sellable, enterprise-grade applications:
 - **Multi-File Architecture**: Proper project structure (components/, hooks/, services/, __tests__/)
 - **TypeScript by Default**: Strict typing with proper interfaces and generics
 - **Automated Test Generation**: Vitest/React Testing Library tests for each component
