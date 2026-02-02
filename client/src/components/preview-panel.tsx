@@ -577,6 +577,18 @@ ${localCode}
                 <Download className="h-4 w-4" />
                 Download
               </Button>
+              {projectId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(`/preview/${projectId}`, "_blank")}
+                  className="gap-1.5"
+                  data-testid="button-open-browser"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View in Browser
+                </Button>
+              )}
             </>
           )}
         </div>

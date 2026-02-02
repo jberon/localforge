@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { ThemeProvider } from "@/hooks/use-theme";
 import Home from "@/pages/home";
 import AnalyticsPage from "@/pages/analytics";
+import Preview from "@/pages/preview";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import type { LLMSettings } from "@shared/schema";
@@ -16,6 +17,14 @@ function AnalyticsWrapper() {
     endpoint: "http://localhost:1234/v1",
     model: "",
     temperature: 0.7,
+    useDualModels: false,
+    plannerModel: "",
+    plannerTemperature: 0.3,
+    builderModel: "",
+    builderTemperature: 0.7,
+    webSearchEnabled: false,
+    serperApiKey: "",
+    productionMode: false,
   });
 
   useEffect(() => {
@@ -37,6 +46,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/analytics" component={AnalyticsWrapper} />
+      <Route path="/preview/:id" component={Preview} />
       <Route component={NotFound} />
     </Switch>
   );
