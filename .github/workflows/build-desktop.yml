@@ -16,9 +16,13 @@ permissions:
 
 jobs:
   build-macos:
-    runs-on: macos-latest
+    # Use macos-14 (M1) for arm64, macos-13 (Intel) for x64
+    # More reliable than macos-latest which can have availability issues
+    runs-on: ${{ matrix.arch == 'arm64' && 'macos-14' || 'macos-13' }}
+    timeout-minutes: 30
     
     strategy:
+      fail-fast: false
       matrix:
         arch: [arm64, x64]
     
