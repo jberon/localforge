@@ -39,7 +39,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp, Globe, Eye, EyeOff } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import type { Project, LLMSettings } from "@shared/schema";
 
 interface ProjectSidebarProps {
@@ -76,6 +77,7 @@ export function ProjectSidebar({
   const [editingName, setEditingName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const [debouncedEndpoint, setDebouncedEndpoint] = useState(tempSettings.endpoint);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     if (editingId && inputRef.current) {
@@ -515,6 +517,70 @@ export function ProjectSidebar({
                   </div>
                 </>
               )}
+
+              {/* Web Search Section */}
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-emerald-500" />
+                  <Label className="text-sm font-medium">Web Search (Serper.dev)</Label>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Enable web search to get up-to-date information for questions about current events, prices, or live data.
+                </p>
+
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
+                  <div>
+                    <Label className="text-sm font-medium">Enable Web Search</Label>
+                    <p className="text-xs text-muted-foreground">
+                      When enabled, the AI will search the web when it needs current information
+                    </p>
+                  </div>
+                  <Switch
+                    checked={tempSettings.webSearchEnabled ?? false}
+                    onCheckedChange={(checked) => setTempSettings({ ...tempSettings, webSearchEnabled: checked })}
+                    data-testid="switch-web-search"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="serper-api-key">Serper.dev API Key</Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        id="serper-api-key"
+                        type={showApiKey ? "text" : "password"}
+                        value={tempSettings.serperApiKey ?? ""}
+                        onChange={(e) => setTempSettings({ ...tempSettings, serperApiKey: e.target.value })}
+                        placeholder="Enter your Serper.dev API key"
+                        data-testid="input-serper-api-key"
+                        className="font-mono text-sm pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        data-testid="button-toggle-api-key-visibility"
+                      >
+                        {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Get your free API key at{" "}
+                    <a
+                      href="https://serper.dev"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      serper.dev
+                    </a>
+                    . Stored locally on this machine.
+                  </p>
+                </div>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setSettingsOpen(false)}>
