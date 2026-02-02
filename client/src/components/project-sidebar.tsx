@@ -29,7 +29,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal } from "lucide-react";
+import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download } from "lucide-react";
 import type { Project, LLMSettings } from "@shared/schema";
 
 interface ProjectSidebarProps {
@@ -259,6 +259,16 @@ export function ProjectSidebar({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full mt-2"
+          onClick={() => window.open('https://github.com/jberon/localforge/releases/latest', '_blank')}
+          data-testid="button-download-desktop"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Download Desktop App
+        </Button>
         <div className="text-center mt-2">
           <p className="text-xs text-muted-foreground">
             Built by Josh Beron

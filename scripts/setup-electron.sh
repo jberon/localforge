@@ -2,6 +2,10 @@
 
 # LocalForge Electron Setup Script
 # This script prepares the project for Electron desktop building
+# 
+# Environment variables:
+#   LOCALFORGE_VERSION - Override version (default: 1.1.0)
+#   SKIP_BACKUP - Skip package.json backup if set to "true"
 
 set -e
 
@@ -14,8 +18,16 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
-echo "Step 1: Backing up package.json..."
-cp package.json package.json.backup
+# Get version from environment or use default
+VERSION="${LOCALFORGE_VERSION:-1.1.0}"
+echo "Using version: $VERSION"
+
+if [ "$SKIP_BACKUP" != "true" ]; then
+    echo "Step 1: Backing up package.json..."
+    cp package.json package.json.backup
+else
+    echo "Step 1: Skipping backup (SKIP_BACKUP=true)"
+fi
 
 echo "Step 2: Adding Electron configuration to package.json..."
 
@@ -26,7 +38,7 @@ const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
 // Update package info
 pkg.name = 'localforge';
-pkg.version = '1.1.0';
+pkg.version = '$VERSION';
 pkg.productName = 'LocalForge';
 pkg.description = 'AI-powered local app builder using LM Studio';
 pkg.author = 'Josh Beron';
@@ -40,7 +52,7 @@ pkg.scripts['electron:build:arm64'] = 'npm run build && electron-builder --mac -
 pkg.scripts['electron:build:x64'] = 'npm run build && electron-builder --mac --x64';
 
 fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-console.log('package.json updated successfully');
+console.log('package.json updated successfully with version $VERSION');
 "
 
 echo ""
