@@ -11,7 +11,6 @@ import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishingPanel } from "./publishing-panel";
 import { PreviewErrorBoundary } from "./error-boundary";
-import { RefinementPanel } from "./refinement-panel";
 import { ConsolePanel, type ConsoleLog } from "./console-panel";
 import { CodeAssistant } from "./code-assistant";
 import { FeedbackPanel } from "./feedback-panel";
@@ -608,28 +607,7 @@ ${localCode}
                         />
                       </div>
                     )}
-                    {projectId && settings && !hasFullStackProject && (
-                      <div className="p-3 border-t bg-background">
-                        <RefinementPanel
-                          projectId={projectId}
-                          hasCode={!!code}
-                          settings={settings}
-                          onRefineStart={() => {}}
-                          onRefineComplete={(newCode) => {
-                            if (onCodeUpdate) onCodeUpdate(newCode);
-                            setIframeKey((k) => k + 1);
-                          }}
-                          onRefineError={(error) => {
-                            toast({
-                              title: "Refinement Failed",
-                              description: error,
-                              variant: "destructive",
-                            });
-                          }}
-                        />
-                      </div>
-                    )}
-                  </>
+                                      </>
                 ) : isGenerating ? (
                   <div className="flex flex-col items-center justify-center h-full gap-6 p-8 animate-in fade-in duration-500">
                     <div className="relative">
