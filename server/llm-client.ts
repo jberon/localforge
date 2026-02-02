@@ -12,7 +12,57 @@ interface StreamOptions {
   maxTokens?: number;
   onChunk?: (chunk: string) => void;
   signal?: AbortSignal; // Support request cancellation
+  throttleMs?: number; // Optional chunk throttling interval (prevents UI flooding)
 }
+
+// SSE Chunk Throttler - prevents UI flooding on large outputs
+class ChunkThrottler {
+  private buffer: string = "";
+  private lastFlush: number = 0;
+  private readonly intervalMs: number;
+  private readonly onFlush: (chunk: string) => void;
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(intervalMs: number, onFlush: (chunk: string) => void) {
+    this.intervalMs = intervalMs;
+    this.onFlush = onFlush;
+  }
+
+  add(chunk: string): void {
+    this.buffer += chunk;
+    const now = Date.now();
+    
+    if (now - this.lastFlush >= this.intervalMs) {
+      this.flush();
+    } else if (!this.flushTimer) {
+      // Schedule a flush for remaining buffer
+      this.flushTimer = setTimeout(() => this.flush(), this.intervalMs);
+    }
+  }
+
+  flush(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    if (this.buffer) {
+      this.onFlush(this.buffer);
+      this.buffer = "";
+      this.lastFlush = Date.now();
+    }
+  }
+
+  destroy(): void {
+    this.flush();
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+  }
+}
+
+// Default throttle interval for SSE (50ms = 20 updates/sec max)
+const DEFAULT_THROTTLE_MS = 50;
 
 const DEFAULT_ENDPOINT = "http://localhost:1234/v1";
 const LOCAL_API_KEY = "lm-studio";
@@ -130,19 +180,30 @@ export async function streamCompletion(
     });
 
     let fullContent = "";
+    
+    // Use throttled callback if provided to prevent UI flooding
+    const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
+    const throttler = options.onChunk 
+      ? new ChunkThrottler(throttleMs, options.onChunk)
+      : null;
 
-    for await (const chunk of stream) {
-      // Check for cancellation
-      if (options.signal?.aborted) {
-        stream.controller?.abort();
-        throw new Error("Request cancelled");
+    try {
+      for await (const chunk of stream) {
+        // Check for cancellation
+        if (options.signal?.aborted) {
+          stream.controller?.abort();
+          throw new Error("Request cancelled");
+        }
+        
+        const delta = chunk.choices[0]?.delta?.content || "";
+        if (delta) {
+          fullContent += delta;
+          throttler?.add(delta);
+        }
       }
-      
-      const delta = chunk.choices[0]?.delta?.content || "";
-      if (delta) {
-        fullContent += delta;
-        options.onChunk?.(delta);
-      }
+    } finally {
+      // Ensure remaining buffer is flushed
+      throttler?.destroy();
     }
 
     return fullContent;
@@ -181,10 +242,69 @@ export function getLLMQueueStatus(): { pending: number; active: number } {
   };
 }
 
+// Runtime performance telemetry
+interface PerformanceTelemetry {
+  requestCount: number;
+  totalTokens: number;
+  totalDurationMs: number;
+  avgTokensPerSecond: number;
+  lastRequestMs: number;
+  lastTokensPerSecond: number;
+  warnings: string[];
+}
+
+const telemetry: PerformanceTelemetry = {
+  requestCount: 0,
+  totalTokens: 0,
+  totalDurationMs: 0,
+  avgTokensPerSecond: 0,
+  lastRequestMs: 0,
+  lastTokensPerSecond: 0,
+  warnings: [],
+};
+
+export function updateTelemetry(durationMs: number, tokenCount: number): void {
+  telemetry.requestCount++;
+  telemetry.totalTokens += tokenCount;
+  telemetry.totalDurationMs += durationMs;
+  telemetry.lastRequestMs = durationMs;
+  
+  // Calculate tokens per second
+  const tokensPerSecond = durationMs > 0 ? (tokenCount / durationMs) * 1000 : 0;
+  telemetry.lastTokensPerSecond = tokensPerSecond;
+  telemetry.avgTokensPerSecond = telemetry.totalDurationMs > 0 
+    ? (telemetry.totalTokens / telemetry.totalDurationMs) * 1000 
+    : 0;
+  
+  // Check performance thresholds
+  telemetry.warnings = [];
+  if (durationMs > M4_PRO_CONFIG.thresholds.warningLatencyMs) {
+    telemetry.warnings.push(`Request took ${(durationMs / 1000).toFixed(1)}s (threshold: ${M4_PRO_CONFIG.thresholds.warningLatencyMs / 1000}s)`);
+  }
+  if (tokensPerSecond < M4_PRO_CONFIG.thresholds.minTokensPerSecond && tokenCount > 100) {
+    telemetry.warnings.push(`Token rate ${tokensPerSecond.toFixed(1)}/s below minimum ${M4_PRO_CONFIG.thresholds.minTokensPerSecond}/s`);
+  }
+}
+
+export function getTelemetry(): PerformanceTelemetry {
+  return { ...telemetry };
+}
+
+export function resetTelemetry(): void {
+  telemetry.requestCount = 0;
+  telemetry.totalTokens = 0;
+  telemetry.totalDurationMs = 0;
+  telemetry.avgTokensPerSecond = 0;
+  telemetry.lastRequestMs = 0;
+  telemetry.lastTokensPerSecond = 0;
+  telemetry.warnings = [];
+}
+
 export async function checkConnection(endpoint: string): Promise<{
   connected: boolean;
   models?: string[];
   error?: string;
+  telemetry?: PerformanceTelemetry;
 }> {
   try {
     const client = createLLMClient({ endpoint });
@@ -194,6 +314,7 @@ export async function checkConnection(endpoint: string): Promise<{
     return {
       connected: true,
       models: modelIds,
+      telemetry: getTelemetry(),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
