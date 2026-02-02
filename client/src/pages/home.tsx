@@ -19,6 +19,7 @@ import { ErrorRecovery } from "@/components/error-recovery";
 import { QuickUndo } from "@/components/quick-undo";
 import { AIThinkingPanel } from "@/components/ai-thinking-panel";
 import { ProjectTeamPanel } from "@/components/project-team-panel";
+import { TaskProgressPanel, type TaskItem } from "@/components/task-progress-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -101,6 +102,7 @@ export default function Home() {
   const [autoRouting, setAutoRouting] = useState(true);
   const [orchestratorPhase, setOrchestratorPhase] = useState<string | null>(null);
   const [orchestratorThinking, setOrchestratorThinking] = useState<{model: string; content: string} | null>(null);
+  const [orchestratorTasks, setOrchestratorTasks] = useState<{ tasks: TaskItem[]; completedCount: number; totalCount: number }>({ tasks: [], completedCount: 0, totalCount: 0 });
   const [dualModelSettings, setDualModelSettings] = useState<DualModelSettingsType>({
     mode: "auto",
     planner: {
@@ -381,6 +383,17 @@ export default function Home() {
                   }
                 } else if (data.type === "fix_attempt") {
                   setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}...`);
+                } else if (data.type === "tasks_updated") {
+                  setOrchestratorTasks({
+                    tasks: data.tasks.map((t: any) => ({
+                      id: t.id,
+                      title: t.title,
+                      description: t.description,
+                      status: t.status,
+                    })),
+                    completedCount: data.completedCount,
+                    totalCount: data.totalCount,
+                  });
                 } else if (data.type === "search") {
                   setGenerationPhase(`Web search: ${data.query}`);
                   setOrchestratorThinking({ model: "web_search", content: `Searching: ${data.query}` });
@@ -539,6 +552,7 @@ export default function Home() {
       setIsGenerating(true);
       setStreamingCode("");
       setGenerationPhase("Analyzing request...");
+      setOrchestratorTasks({ tasks: [], completedCount: 0, totalCount: 0 });
 
       // Track generation started
       trackEvent("generation_started", projectId || undefined, {
@@ -1313,6 +1327,18 @@ export default function Home() {
                           generationPhase={generationPhase}
                           isActive={isGenerating || isPlanning}
                           streamingCode={streamingCode}
+                        />
+                      </div>
+                    )}
+                    
+                    {/* Task Progress Panel - Shows tasks from planner */}
+                    {orchestratorTasks.tasks.length > 0 && (
+                      <div className="px-2 pb-2 shrink-0">
+                        <TaskProgressPanel
+                          tasks={orchestratorTasks.tasks}
+                          completedCount={orchestratorTasks.completedCount}
+                          totalCount={orchestratorTasks.totalCount}
+                          isVisible={true}
                         />
                       </div>
                     )}
