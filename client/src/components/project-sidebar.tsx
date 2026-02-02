@@ -99,7 +99,7 @@ export function ProjectSidebar({
 
   return (
     <Sidebar className="border-r">
-      <SidebarHeader className="p-4">
+      <SidebarHeader className="p-4 pt-8 pl-20 electron-drag-region">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
@@ -112,6 +112,7 @@ export function ProjectSidebar({
             variant="ghost"
             onClick={onNewProject}
             data-testid="button-new-project"
+            className="electron-no-drag"
           >
             <Plus className="h-4 w-4" />
           </Button>

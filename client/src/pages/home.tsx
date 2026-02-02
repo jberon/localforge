@@ -888,9 +888,9 @@ export default function Home() {
         />
         
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-2 px-4 py-2 border-b bg-background">
+          <header className="flex items-center justify-between gap-2 px-4 py-2 pt-4 border-b bg-background electron-drag-region min-h-[52px]">
             <div className="flex items-center gap-3">
-              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <SidebarTrigger data-testid="button-sidebar-toggle" className="electron-no-drag" />
               {activeProject && (
                 <span className="text-sm font-medium truncate max-w-xs">
                   {activeProject.name}
@@ -962,7 +962,7 @@ export default function Home() {
               {llmConnected === false && (
                 <Badge 
                   variant="outline" 
-                  className="gap-1.5 text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover-elevate"
+                  className="gap-1.5 text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover-elevate electron-no-drag"
                   onClick={checkConnection}
                   data-testid="badge-connection-status"
                 >

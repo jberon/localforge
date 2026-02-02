@@ -433,3 +433,23 @@
     animation: none;
   }
 }
+
+/* macOS Electron drag region for titlebar */
+.electron-drag-region {
+  -webkit-app-region: drag;
+}
+
+/* Prevent buttons and interactive elements from being draggable */
+.electron-drag-region button,
+.electron-drag-region input,
+.electron-drag-region a,
+.electron-drag-region [role="button"],
+.electron-drag-region select,
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Traffic light padding for macOS */
+.electron-titlebar-padding {
+  padding-left: 80px;
+}
