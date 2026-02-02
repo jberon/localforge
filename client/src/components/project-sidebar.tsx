@@ -266,16 +266,28 @@ export function ProjectSidebar({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Settings className="h-5 w-5" />
-                LM Studio Settings
+                LM Studio Connection
               </DialogTitle>
               <DialogDescription>
-                Configure your connection to LM Studio. Make sure LM Studio is running with the local server started.
+                Connect to your local LM Studio server to generate apps.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-5 py-4">
+              {connectionStatus === "disconnected" && (
+                <div className="p-3 rounded-lg bg-muted/50 border text-sm space-y-2">
+                  <p className="font-medium">Quick Setup:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-xs">
+                    <li>Open LM Studio and go to the <strong>Developer</strong> tab</li>
+                    <li>Make sure <strong>Status: Running</strong> is enabled</li>
+                    <li>Copy the URL shown under "Reachable at:" (usually http://127.0.0.1:1234)</li>
+                    <li>Paste it below and add <strong>/v1</strong> at the end</li>
+                  </ol>
+                </div>
+              )}
+              
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <Label htmlFor="endpoint">API Endpoint</Label>
+                  <Label htmlFor="endpoint">Server URL</Label>
                   <div className="flex items-center gap-2">
                     {connectionStatus === "checking" && (
                       <Badge variant="outline" className="gap-1 text-xs">
@@ -292,7 +304,7 @@ export function ProjectSidebar({
                     {connectionStatus === "disconnected" && (
                       <Badge variant="outline" className="gap-1 text-xs text-red-600 border-red-500/50">
                         <X className="h-3 w-3" />
-                        Disconnected
+                        Not Connected
                       </Badge>
                     )}
                   </div>
@@ -302,9 +314,9 @@ export function ProjectSidebar({
                     id="endpoint"
                     value={tempSettings.endpoint}
                     onChange={(e) => handleEndpointChange(e.target.value)}
-                    placeholder="http://localhost:1234/v1"
+                    placeholder="http://127.0.0.1:1234/v1"
                     data-testid="input-endpoint"
-                    className="flex-1"
+                    className="flex-1 font-mono text-sm"
                   />
                   <Button
                     variant="outline"
@@ -312,17 +324,18 @@ export function ProjectSidebar({
                     onClick={handleRefreshConnection}
                     disabled={isLoadingModels}
                     data-testid="button-refresh-connection"
+                    title="Test connection"
                   >
                     <RefreshCw className={`h-4 w-4 ${isLoadingModels ? 'animate-spin' : ''}`} />
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Default LM Studio endpoint is http://localhost:1234/v1
+                  Copy from LM Studio's "Reachable at:" and add <strong>/v1</strong>
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="model">Model</Label>
+                <Label htmlFor="model">Model (API Identifier)</Label>
                 {availableModels.length > 0 ? (
                   <Select
                     value={tempSettings.model || "auto"}
@@ -332,7 +345,7 @@ export function ProjectSidebar({
                       <SelectValue placeholder="Select a model" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="auto">Auto (use loaded model)</SelectItem>
+                      <SelectItem value="auto">Auto (use first loaded model)</SelectItem>
                       {availableModels.map((model) => (
                         <SelectItem key={model} value={model}>
                           {model}
@@ -345,14 +358,15 @@ export function ProjectSidebar({
                     id="model"
                     value={tempSettings.model}
                     onChange={(e) => setTempSettings({ ...tempSettings, model: e.target.value })}
-                    placeholder="Leave empty to use loaded model"
+                    placeholder="e.g. openai/gpt-oss-20b"
                     data-testid="input-model"
+                    className="font-mono text-sm"
                   />
                 )}
                 <p className="text-xs text-muted-foreground">
                   {availableModels.length > 0 
-                    ? `${availableModels.length} model${availableModels.length === 1 ? '' : 's'} available`
-                    : "Connect to LM Studio to see available models"}
+                    ? `${availableModels.length} model${availableModels.length === 1 ? '' : 's'} loaded in LM Studio`
+                    : "Find the API Model Identifier in LM Studio's model info panel"}
                 </p>
               </div>
 
