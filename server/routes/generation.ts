@@ -6,6 +6,8 @@ import { generateFullStackProject } from "../code-generator";
 import { validateGeneratedCode } from "../generators/validator";
 import { z } from "zod";
 import { SYSTEM_PROMPT, REFINEMENT_SYSTEM } from "./llm";
+import { searchWeb, formatSearchResultsForContext } from "../services/webSearch";
+import { shouldUseWebSearch, decideWebSearchAction } from "../services/webSearchClassifier";
 
 // Maximum auto-retry attempts for code generation
 const MAX_AUTO_RETRY = 2;
@@ -257,7 +259,7 @@ function extractLLMLimitations(code: string): { cleanedCode: string; limitations
   let cleanedCode = code;
 
   for (const pattern of LLM_LIMITATION_PATTERNS) {
-    const matches = code.matchAll(pattern);
+    const matches = Array.from(code.matchAll(pattern));
     for (const match of matches) {
       let limitation = match[0]
         // Remove comment markers
@@ -360,11 +362,61 @@ router.post("/:id/chat", async (req, res) => {
       isClientConnected = false;
     });
 
+    // Web Search Integration
+    let webSearchContext = "";
+    let webSearchUsed = false;
+    let webSearchAction: "search" | "skip" | "ask_permission" = "skip";
+    
+    try {
+      // Check if web search might be helpful for this query
+      const classificationResult = await shouldUseWebSearch(content, settings);
+      console.log(`[webSearch] Classification: ${classificationResult.needsWeb ? "USE_WEB" : "NO_WEB"}`);
+      
+      const decision = decideWebSearchAction(
+        classificationResult.needsWeb,
+        settings.webSearchEnabled ?? false,
+        !!settings.serperApiKey
+      );
+      webSearchAction = decision.action;
+      console.log(`[webSearch] Decision: ${decision.action} - ${decision.reason}`);
+      
+      if (decision.action === "search" && settings.serperApiKey) {
+        res.write(`data: ${JSON.stringify({ type: "status", message: "Searching the web..." })}\n\n`);
+        
+        const searchResult = await searchWeb(content, settings.serperApiKey);
+        
+        if (searchResult.success && searchResult.results.length > 0) {
+          webSearchContext = formatSearchResultsForContext(searchResult.results);
+          webSearchUsed = true;
+          console.log(`[webSearch] Found ${searchResult.results.length} results`);
+          res.write(`data: ${JSON.stringify({ type: "status", message: `Found ${searchResult.results.length} web results` })}\n\n`);
+        } else if (!searchResult.success) {
+          console.log(`[webSearch] Failed: ${searchResult.error}`);
+          res.write(`data: ${JSON.stringify({ type: "status", message: "Web search unavailable, using local knowledge" })}\n\n`);
+        }
+      } else if (decision.action === "ask_permission") {
+        // Send a special event asking for permission
+        res.write(`data: ${JSON.stringify({ 
+          type: "web_search_permission", 
+          message: "This request may benefit from web search. Would you like to enable it?",
+          needsApiKey: !settings.serperApiKey
+        })}\n\n`);
+      }
+    } catch (classifyError: any) {
+      console.error(`[webSearch] Classification error: ${classifyError.message}`);
+      // Continue without web search
+    }
+
+    // Build the messages with optional web search context
+    const systemMessage = webSearchUsed && webSearchContext
+      ? `${SYSTEM_PROMPT}\n\n${webSearchContext}`
+      : SYSTEM_PROMPT;
+
     try {
       const stream = await openai.chat.completions.create({
         model: builderConfig.model || "local-model",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: systemMessage },
           ...conversationHistory,
         ],
         temperature: builderConfig.temperature,
@@ -786,6 +838,8 @@ router.post("/:id/plan", async (req, res) => {
       plannerTemperature: LLM_DEFAULTS.temperature.planner,
       builderModel: "",
       builderTemperature: LLM_DEFAULTS.temperature.builder,
+      webSearchEnabled: false,
+      serperApiKey: "",
     };
 
     // Use planner model when dual models are enabled

@@ -54,7 +54,7 @@ export const generationMetricsSchema = z.object({
   durationMs: z.number().optional(),
   promptLength: z.number(),
   responseLength: z.number().optional(),
-  status: z.enum(["pending", "streaming", "success", "error", "retrying"]),
+  status: z.enum(["pending", "streaming", "success", "error", "retrying", "fixed", "validation_failed"]),
   errorMessage: z.string().optional(),
   retryCount: z.number().default(0),
   tokenCount: z.number().optional(),
