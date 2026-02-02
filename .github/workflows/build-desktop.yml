@@ -102,16 +102,30 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: false
       
       - name: List artifacts
-        run: find artifacts -type f
+        run: |
+          echo "=== Artifact Structure ==="
+          find artifacts -type f -name "*.dmg" -o -name "*.zip" | head -50
+          echo "=== Full Tree ==="
+          ls -laR artifacts/
+      
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" \) -exec cp {} release-files/ \;
+          echo "=== Files to upload ==="
+          ls -la release-files/
       
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          tag_name: ${{ github.ref_name }}
+          name: LocalForge ${{ github.ref_name }}
+          files: release-files/*
           draft: false
           prerelease: false
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_unmatched_files: true
+          token: ${{ secrets.GITHUB_TOKEN }}
