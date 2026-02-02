@@ -91,6 +91,7 @@ export type OrchestratorEvent =
   | { type: "phase_change"; phase: OrchestratorState["phase"]; message: string }
   | { type: "task_start"; task: OrchestratorTask }
   | { type: "task_complete"; task: OrchestratorTask }
+  | { type: "tasks_updated"; tasks: OrchestratorTask[]; completedCount: number; totalCount: number }
   | { type: "thinking"; model: "planner" | "builder" | "web_search"; content: string }
   | { type: "code_chunk"; content: string }
   | { type: "search"; query: string }
@@ -98,6 +99,7 @@ export type OrchestratorEvent =
   | { type: "validation"; valid: boolean; errors: string[] }
   | { type: "fix_attempt"; attempt: number; maxAttempts: number }
   | { type: "complete"; code: string; summary: string }
+  | { type: "status"; message: string }
   | { type: "error"; message: string };
 
 type LLMSettings = z.infer<typeof llmSettingsSchema>;
@@ -277,6 +279,18 @@ export class AIOrchestrator {
     };
   }
 
+  private emitTasksUpdated() {
+    if (!this.state.plan?.tasks) return;
+    const tasks = this.state.plan.tasks;
+    const completedCount = tasks.filter(t => t.status === "completed").length;
+    this.emit({
+      type: "tasks_updated",
+      tasks,
+      completedCount,
+      totalCount: tasks.length,
+    });
+  }
+
   async run(userRequest: string, existingCode?: string): Promise<{ success: boolean; code: string; summary: string }> {
     this.state = this.createInitialState();
     this.aborted = false;
@@ -342,6 +356,7 @@ export class AIOrchestrator {
       
       if (this.aborted) throw new Error("Aborted");
       this.state.plan = plan;
+      this.emitTasksUpdated();
 
       if (plan.searchQueries && plan.searchQueries.length > 0 && this.settings.webSearchEnabled && this.settings.serperApiKey) {
         this.emit({ type: "phase_change", phase: "searching", message: `${scout.name} is searching for relevant information...` });
@@ -574,6 +589,7 @@ export class AIOrchestrator {
       task.status = "in_progress";
       this.emit({ type: "task_start", task });
     }
+    this.emitTasksUpdated();
 
     const stream = await client.chat.completions.create({
       model: config.model || "local-model",
@@ -606,6 +622,7 @@ export class AIOrchestrator {
       task.status = "completed";
       this.emit({ type: "task_complete", task });
     }
+    this.emitTasksUpdated();
 
     return cleanedCode;
   }
