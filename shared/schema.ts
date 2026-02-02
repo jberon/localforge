@@ -110,6 +110,12 @@ export const llmSettingsSchema = z.object({
   endpoint: z.string().default("http://localhost:1234/v1"),
   model: z.string().default(""),
   temperature: z.number().min(0).max(2).default(0.7),
+  // Dual model support - optional separate models for planning and building
+  useDualModels: z.boolean().default(false),
+  plannerModel: z.string().default(""),
+  plannerTemperature: z.number().min(0).max(2).default(0.3),
+  builderModel: z.string().default(""),
+  builderTemperature: z.number().min(0).max(2).default(0.5),
 });
 
 // Model settings for Plan/Build mode

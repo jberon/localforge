@@ -37,6 +37,27 @@ const chatRequestSchema = z.object({
   settings: llmSettingsSchema,
 });
 
+// Helper to get model settings based on phase (planning vs building)
+function getModelForPhase(settings: z.infer<typeof llmSettingsSchema>, phase: "planner" | "builder") {
+  if (settings.useDualModels) {
+    if (phase === "planner") {
+      return {
+        model: settings.plannerModel || settings.model || "",
+        temperature: settings.plannerTemperature ?? LLM_DEFAULTS.temperature.planner,
+      };
+    } else {
+      return {
+        model: settings.builderModel || settings.model || "",
+        temperature: settings.builderTemperature ?? LLM_DEFAULTS.temperature.builder,
+      };
+    }
+  }
+  return {
+    model: settings.model || "",
+    temperature: settings.temperature ?? 0.7,
+  };
+}
+
 router.post("/:id/chat", async (req, res) => {
   const startTime = Date.now();
   
@@ -73,10 +94,13 @@ router.post("/:id/chat", async (req, res) => {
       content: m.content,
     })) || [];
 
+    // Use builder model when dual models are enabled
+    const builderConfig = getModelForPhase(settings, "builder");
+    
     const openai = createLLMClient({
       endpoint: settings.endpoint || "http://localhost:1234/v1",
-      model: settings.model,
-      temperature: settings.temperature,
+      model: builderConfig.model,
+      temperature: builderConfig.temperature,
     });
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -91,12 +115,12 @@ router.post("/:id/chat", async (req, res) => {
 
     try {
       const stream = await openai.chat.completions.create({
-        model: settings.model || "local-model",
+        model: builderConfig.model || "local-model",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           ...conversationHistory,
         ],
-        temperature: settings.temperature || 0.7,
+        temperature: builderConfig.temperature,
         max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
         stream: true,
       });
@@ -359,23 +383,33 @@ router.post("/:id/generate-fullstack", async (req, res) => {
 router.post("/:id/plan", async (req, res) => {
   try {
     const { id } = req.params;
-    const { prompt, plannerSettings } = req.body;
+    const { prompt, settings: baseSettings } = req.body;
 
     const project = await storage.getProject(id);
     if (!project) {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    const settings = plannerSettings || {
+    // Parse settings with defaults
+    const parsedSettings = llmSettingsSchema.safeParse(baseSettings);
+    const settings = parsedSettings.success ? parsedSettings.data : {
       endpoint: "http://localhost:1234/v1",
       model: "",
       temperature: LLM_DEFAULTS.temperature.planner,
+      useDualModels: false,
+      plannerModel: "",
+      plannerTemperature: LLM_DEFAULTS.temperature.planner,
+      builderModel: "",
+      builderTemperature: LLM_DEFAULTS.temperature.builder,
     };
+
+    // Use planner model when dual models are enabled
+    const plannerConfig = getModelForPhase(settings, "planner");
 
     const openai = createLLMClient({
       endpoint: settings.endpoint,
-      model: settings.model,
-      temperature: settings.temperature,
+      model: plannerConfig.model,
+      temperature: plannerConfig.temperature,
     });
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -389,12 +423,12 @@ router.post("/:id/plan", async (req, res) => {
 
     try {
       const stream = await openai.chat.completions.create({
-        model: settings.model || "local-model",
+        model: plannerConfig.model || "local-model",
         messages: [
           { role: "system", content: PLANNING_SYSTEM_PROMPT },
           { role: "user", content: `Create an implementation plan for: ${prompt}` },
         ],
-        temperature: settings.temperature || LLM_DEFAULTS.temperature.planner,
+        temperature: plannerConfig.temperature,
         max_tokens: LLM_DEFAULTS.maxTokens.plan,
         stream: true,
       });

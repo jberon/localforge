@@ -39,7 +39,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2 } from "lucide-react";
+import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp } from "lucide-react";
 import type { Project, LLMSettings } from "@shared/schema";
 
 interface ProjectSidebarProps {
@@ -262,7 +262,7 @@ export function ProjectSidebar({
               <span className="text-sm">Settings</span>
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Settings className="h-5 w-5" />
@@ -334,61 +334,187 @@ export function ProjectSidebar({
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="model">Model (API Identifier)</Label>
-                {availableModels.length > 0 ? (
-                  <Select
-                    value={tempSettings.model || "auto"}
-                    onValueChange={(value) => setTempSettings({ ...tempSettings, model: value === "auto" ? "" : value })}
-                  >
-                    <SelectTrigger data-testid="select-model">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto">Auto (use first loaded model)</SelectItem>
-                      {availableModels.map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    id="model"
-                    value={tempSettings.model}
-                    onChange={(e) => setTempSettings({ ...tempSettings, model: e.target.value })}
-                    placeholder="e.g. openai/gpt-oss-20b"
-                    data-testid="input-model"
-                    className="font-mono text-sm"
-                  />
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {availableModels.length > 0 
-                    ? `${availableModels.length} model${availableModels.length === 1 ? '' : 's'} loaded in LM Studio`
-                    : "Find the API Model Identifier in LM Studio's model info panel"}
-                </p>
+              {/* Dual Model Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <Brain className="h-4 w-4 text-violet-500" />
+                    <Code className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Dual Model Mode</Label>
+                    <p className="text-xs text-muted-foreground">Use separate models for planning and building</p>
+                  </div>
+                </div>
+                <Button
+                  variant={tempSettings.useDualModels ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTempSettings({ 
+                    ...tempSettings, 
+                    useDualModels: !tempSettings.useDualModels,
+                    plannerModel: tempSettings.plannerModel || tempSettings.model,
+                    builderModel: tempSettings.builderModel || tempSettings.model,
+                  })}
+                  data-testid="button-toggle-dual-models"
+                >
+                  {tempSettings.useDualModels ? "On" : "Off"}
+                </Button>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <Label>Temperature</Label>
-                  <span className="text-sm text-muted-foreground font-mono">
-                    {tempSettings.temperature.toFixed(2)}
-                  </span>
-                </div>
-                <Slider
-                  value={[tempSettings.temperature]}
-                  onValueChange={([value]) => setTempSettings({ ...tempSettings, temperature: value })}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  data-testid="slider-temperature"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Lower values produce more focused, deterministic outputs. Higher values are more creative.
-                </p>
-              </div>
+              {!tempSettings.useDualModels ? (
+                <>
+                  {/* Single Model Mode */}
+                  <div className="space-y-2">
+                    <Label htmlFor="model">Model (API Identifier)</Label>
+                    {availableModels.length > 0 ? (
+                      <Select
+                        value={tempSettings.model || "auto"}
+                        onValueChange={(value) => setTempSettings({ ...tempSettings, model: value === "auto" ? "" : value })}
+                      >
+                        <SelectTrigger data-testid="select-model">
+                          <SelectValue placeholder="Select a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto (use first loaded model)</SelectItem>
+                          {availableModels.map((model) => (
+                            <SelectItem key={model} value={model}>
+                              {model}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="model"
+                        value={tempSettings.model}
+                        onChange={(e) => setTempSettings({ ...tempSettings, model: e.target.value })}
+                        placeholder="e.g. openai/gpt-oss-20b"
+                        data-testid="input-model"
+                        className="font-mono text-sm"
+                      />
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {availableModels.length > 0 
+                        ? `${availableModels.length} model${availableModels.length === 1 ? '' : 's'} loaded in LM Studio`
+                        : "Find the API Model Identifier in LM Studio's model info panel"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <Label>Temperature</Label>
+                      <span className="text-sm text-muted-foreground font-mono">
+                        {tempSettings.temperature.toFixed(2)}
+                      </span>
+                    </div>
+                    <Slider
+                      value={[tempSettings.temperature]}
+                      onValueChange={([value]) => setTempSettings({ ...tempSettings, temperature: value })}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      data-testid="slider-temperature"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Lower values produce more focused, deterministic outputs. Higher values are more creative.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Dual Model Mode - Planner */}
+                  <div className="space-y-3 p-3 rounded-lg border bg-violet-500/5 border-violet-500/20">
+                    <div className="flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-violet-500" />
+                      <Label className="text-sm font-medium">Planner Model</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground -mt-1">
+                      Analyzes requests and creates structured plans. Best with reasoning-focused models.
+                    </p>
+                    {availableModels.length > 0 ? (
+                      <Select
+                        value={tempSettings.plannerModel || "auto"}
+                        onValueChange={(value) => setTempSettings({ ...tempSettings, plannerModel: value === "auto" ? "" : value })}
+                      >
+                        <SelectTrigger data-testid="select-planner-model">
+                          <SelectValue placeholder="Select planner model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto (use first loaded model)</SelectItem>
+                          {availableModels.map((model) => (
+                            <SelectItem key={model} value={model}>{model}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={tempSettings.plannerModel}
+                        onChange={(e) => setTempSettings({ ...tempSettings, plannerModel: e.target.value })}
+                        placeholder="e.g. qwen2.5-32b-instruct"
+                        className="font-mono text-sm"
+                      />
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">Temperature</span>
+                      <span className="text-xs font-mono">{(tempSettings.plannerTemperature ?? 0.3).toFixed(2)}</span>
+                    </div>
+                    <Slider
+                      value={[tempSettings.plannerTemperature ?? 0.3]}
+                      onValueChange={([value]) => setTempSettings({ ...tempSettings, plannerTemperature: value })}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      data-testid="slider-planner-temperature"
+                    />
+                  </div>
+
+                  {/* Dual Model Mode - Builder */}
+                  <div className="space-y-3 p-3 rounded-lg border bg-blue-500/5 border-blue-500/20">
+                    <div className="flex items-center gap-2">
+                      <Code className="h-4 w-4 text-blue-500" />
+                      <Label className="text-sm font-medium">Builder Model</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground -mt-1">
+                      Generates code from plans. Best with code-specialized models.
+                    </p>
+                    {availableModels.length > 0 ? (
+                      <Select
+                        value={tempSettings.builderModel || "auto"}
+                        onValueChange={(value) => setTempSettings({ ...tempSettings, builderModel: value === "auto" ? "" : value })}
+                      >
+                        <SelectTrigger data-testid="select-builder-model">
+                          <SelectValue placeholder="Select builder model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto (use first loaded model)</SelectItem>
+                          {availableModels.map((model) => (
+                            <SelectItem key={model} value={model}>{model}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={tempSettings.builderModel}
+                        onChange={(e) => setTempSettings({ ...tempSettings, builderModel: e.target.value })}
+                        placeholder="e.g. qwen2.5-coder-32b-instruct"
+                        className="font-mono text-sm"
+                      />
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">Temperature</span>
+                      <span className="text-xs font-mono">{(tempSettings.builderTemperature ?? 0.5).toFixed(2)}</span>
+                    </div>
+                    <Slider
+                      value={[tempSettings.builderTemperature ?? 0.5]}
+                      onValueChange={([value]) => setTempSettings({ ...tempSettings, builderTemperature: value })}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      data-testid="slider-builder-temperature"
+                    />
+                  </div>
+                </>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setSettingsOpen(false)}>
