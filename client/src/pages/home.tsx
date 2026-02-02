@@ -900,16 +900,16 @@ export default function Home() {
         />
         
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-2 px-4 py-2 pt-4 border-b bg-background electron-drag-region min-h-[52px]">
-            <div className="flex items-center gap-3">
+          <header className="flex items-center justify-between gap-2 px-4 py-2 pt-4 border-b bg-background electron-drag-region min-h-[52px] overflow-x-auto">
+            <div className="flex items-center gap-3 shrink-0">
               <SidebarTrigger data-testid="button-sidebar-toggle" className="electron-no-drag" />
               {activeProject && (
-                <span className="text-sm font-medium truncate max-w-xs">
+                <span className="text-sm font-medium truncate max-w-[120px]">
                   {activeProject.name}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0">
               {detectedIntent && (
                 <Badge 
                   variant="secondary" 

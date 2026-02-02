@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown } from "lucide-react";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown, ExternalLink } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishingPanel } from "./publishing-panel";
@@ -550,7 +550,7 @@ export function PreviewPanel({
               <div className="h-full flex flex-col bg-white dark:bg-background transition-opacity duration-300">
                 {code && !isGenerating ? (
                   <>
-                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500">
+                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative">
                       <iframe
                         key={iframeKey}
                         src={createPreviewHTML()}
@@ -559,6 +559,16 @@ export function PreviewPanel({
                         title="App Preview"
                         data-testid="iframe-preview"
                       />
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        onClick={() => setIsFullscreen(!isFullscreen)}
+                        className="absolute bottom-4 right-4 shadow-lg opacity-80 hover:opacity-100 transition-opacity z-10"
+                        data-testid="button-popout-preview"
+                        title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+                      >
+                        {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+                      </Button>
                     </div>
                     <ConsolePanel logs={consoleLogs} onClear={clearConsole} />
                     {projectId && lastPrompt && showFeedback && (
