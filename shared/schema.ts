@@ -116,6 +116,9 @@ export const llmSettingsSchema = z.object({
   plannerTemperature: z.number().min(0).max(2).default(0.3),
   builderModel: z.string().default(""),
   builderTemperature: z.number().min(0).max(2).default(0.5),
+  // Web search settings (Serper.dev integration)
+  webSearchEnabled: z.boolean().default(false),
+  serperApiKey: z.string().default(""),
 });
 
 // Model settings for Plan/Build mode

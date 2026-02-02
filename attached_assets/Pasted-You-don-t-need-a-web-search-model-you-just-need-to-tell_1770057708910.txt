@@ -1,0 +1,230 @@
+You don’t need a “web-search model” — you just need to tell Replit’s AI how to wire Serper into your app and how the toggle/permission flow should work.
+
+Here’s a prompt you can paste into Replit (where you normally describe the app) that does exactly what you described.
+
+---
+
+````text
+You are updating an existing TypeScript-based desktop app (built in Replit) that uses local LLMs via LM Studio. Your task is to integrate web search through Serper.dev in a safe, toggleable way.
+
+## Overall Goal
+
+Add **optional web search** powered by Serper.dev:
+
+- Use local models for most work.
+- Only call Serper when the assistant thinks it genuinely needs fresh information from the internet.
+- Expose a **Web Search toggle** in the app’s Settings page.
+- If Web Search is OFF and the assistant thinks it needs the internet, it should:
+  - Ask the user for permission to turn it on.
+  - If the user says yes, flip the toggle ON and continue automatically.
+  - If the user says no, continue the task without web search.
+
+The Serper API key will be stored in the app’s Settings page (and also exposed as an environment variable `SERPER_API_KEY` if available).
+
+---
+
+## 1. Configuration & Settings
+
+1. Add a settings model/config object, persisted (e.g., JSON file, local database, or localStorage depending on the current architecture), containing at least:
+
+   - `webSearchEnabled: boolean` (default: `false`)
+   - `serperApiKey: string | null`
+
+2. On the **Settings page**, add a section called **"Web Search (Serper.dev)"** with:
+
+   - A text/password input field for the Serper API key.
+     - Label: “Serper.dev API Key”
+     - Description: “Stored locally on this machine and used only for web search.”
+   - A toggle/switch:
+     - Label: “Enable Web Search”
+     - Bound to `webSearchEnabled`.
+
+3. If an environment variable `SERPER_API_KEY` is present, use it as a default for the API key field, but allow the user to override it within the UI.
+
+4. Make sure settings are loaded on app startup and saved on change.
+
+---
+
+## 2. Serper Web Search Client
+
+Create a small utility module, for example `src/services/webSearch.ts`, that wraps Serper.dev:
+
+- Export a function:
+
+  ```ts
+  export interface WebSearchResult {
+    title: string;
+    snippet: string;
+    url: string;
+  }
+
+  export async function searchWeb(query: string, apiKey: string): Promise<WebSearchResult[]> {
+    // Use Serper.dev "google" search endpoint.
+    // Endpoint: https://google.serper.dev/search
+    // Method: POST
+    // Headers:
+    //   "X-API-KEY": apiKey
+    //   "Content-Type": "application/json"
+    // Body: { q: query, num: 5 } (or similar)
+
+    // Parse the JSON response and return a normalized array of WebSearchResult.
+    // Handle errors gracefully and throw a clear error if the request fails.
+  }
+````
+
+* Handle cases where `apiKey` is missing by throwing a clear error like `"Serper API key not configured"`.
+
+* Limit to a small number of results (e.g., 3–5) and strip unnecessary data. We only need title, snippet/description, and URL.
+
+---
+
+## 3. “Do we need the web?” classifier
+
+Inside whatever orchestrates the local LLM calls (chat controller, agent, etc.), add a step that decides when to use web search.
+
+1. Implement a helper function:
+
+   ```ts
+   export async function shouldUseWebSearch(userMessage: string): Promise<boolean> {
+     // Call the local LLM (not Serper) with a short classification prompt.
+   }
+   ```
+
+2. The prompt to the local model should be tiny and deterministic, e.g.:
+
+   ```text
+   You are a classifier that decides whether a user question requires fresh information from the internet.
+
+   If the question depends on:
+   - current events,
+   - recent news or prices,
+   - travel schedules,
+   - live documentation changes,
+   - or anything that clearly requires up-to-date web data,
+
+   answer with exactly: USE_WEB
+
+   Otherwise, if the question can be answered from general knowledge or code already available locally, answer with exactly: NO_WEB.
+
+   No explanation, just one of these two tokens.
+
+   User question: "<USER_MESSAGE>"
+   ```
+
+3. Parse the model response (trim, uppercase) and return `true` if it equals `"USE_WEB"`.
+
+---
+
+## 4. Permission flow & toggle behavior
+
+When a user sends a message or requests a build:
+
+1. Load settings (`webSearchEnabled`, `serperApiKey`).
+
+2. Call `shouldUseWebSearch(userMessage)`.
+
+3. Branch:
+
+   ### Case A: `shouldUseWebSearch` = false
+
+   * Do **not** call Serper.
+   * Proceed using only local models as it currently does.
+
+   ### Case B: `shouldUseWebSearch` = true and `webSearchEnabled` = true and `serperApiKey` is set
+
+   * Call `searchWeb(userMessage, serperApiKey)`.
+
+   * Create a context block for the main local LLM call, e.g.:
+
+     ```text
+     The user asked a question that may require up-to-date web information.
+     Here are recent search results:
+
+     1. <title 1>
+        <snippet 1>
+        <url 1>
+
+     2. <title 2>
+        <snippet 2>
+        <url 2>
+
+     3. <title 3>
+        <snippet 3>
+        <url 3>
+
+     Use this information to answer the user’s question as accurately as possible. Cite key URLs in your reasoning text, but keep the answer concise.
+     ```
+
+   * Pass that context + the original user message to the main local LLM that generates the final answer or code.
+
+   ### Case C: `shouldUseWebSearch` = true but **webSearchEnabled = false OR no API key**
+
+   * Instead of silently ignoring web search, the system should ask the user for permission in the UI/chat:
+
+     **Example UI message:**
+
+     > “This request probably needs live internet data to answer well.
+     > Web Search (Serper.dev) is currently turned off.
+     > Would you like to enable Web Search and continue?”
+
+   * Provide clear actions:
+
+     * Button/option: “Enable Web Search and continue”
+     * Button/option: “Continue without Web Search”
+
+   * If the user chooses **Enable Web Search**:
+
+     1. If there is an API key already stored, just set `webSearchEnabled = true`.
+     2. If no API key is stored, prompt them to paste one (or open the Settings page).
+     3. Once enabled, **automatically re-run the original request**, this time going through Case B (with web search).
+
+   * If the user chooses **Continue without Web Search**:
+
+     * Proceed with local-only reasoning and answer, and consider including a short note like:
+
+       > “Note: I answered without online search, so some details might be out of date.”
+
+---
+
+## 5. Clean separation & test hooks
+
+* Keep the Serper integration in its own module (`webSearch.ts`) so it’s easy to swap out later.
+* Keep the classifier (`shouldUseWebSearch`) reusable; we might later add more signals.
+* Add basic error handling:
+
+  * Timeouts or network failures from Serper should fall back to local-only answering with a clear, user-facing note like:
+
+    > “Web search is enabled, but I couldn’t reach the search service. Answering from local knowledge only.”
+
+---
+
+## 6. Developer ergonomics
+
+* Add a small log/debug view (even simple console logs are fine) that indicates when:
+
+  * The classifier decided `USE_WEB` or `NO_WEB`.
+  * Web search was actually called.
+  * Web search failed and fell back to local.
+* Make sure all new code is typed (TypeScript) and integrated with the existing app architecture.
+
+---
+
+Implement all of the above in the existing Replit project without breaking current functionality. When you’re done, I should be able to:
+
+* Paste my Serper API key into Settings.
+* Flip “Enable Web Search” on/off.
+* Ask a question like “What’s the current weather in Tokyo?” and have the assistant:
+
+  * Detect that it needs web search,
+  * Use Serper (if enabled) and incorporate the results,
+  * Or, if disabled, ask for permission to turn it on and automatically continue once I approve.
+
+```
+
+---
+
+If you want, next step I can help you:
+
+- Turn that classifier prompt into a concrete function for your current stack, or  
+- Design the exact UI copy for the Settings + permission dialogs so it feels really clean.
+```
