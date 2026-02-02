@@ -42,7 +42,7 @@ pkg.version = '$VERSION';
 pkg.productName = 'LocalForge';
 pkg.description = 'AI-powered local app builder using LM Studio';
 pkg.author = 'Josh Beron';
-pkg.main = 'electron/main.js';
+pkg.main = 'electron/main.cjs';
 
 // Add Electron scripts
 pkg.scripts = pkg.scripts || {};
