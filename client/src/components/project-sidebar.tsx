@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -52,6 +53,12 @@ interface ProjectSidebarProps {
   onUpdateSettings: (settings: LLMSettings) => void;
 }
 
+interface ModelsResponse {
+  success: boolean;
+  models?: string[];
+  error?: string;
+}
+
 export function ProjectSidebar({
   projects,
   activeProjectId,
@@ -62,15 +69,13 @@ export function ProjectSidebar({
   onRenameProject,
   onUpdateSettings,
 }: ProjectSidebarProps) {
+  const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tempSettings, setTempSettings] = useState(settings);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "checking">("checking");
+  const [debouncedEndpoint, setDebouncedEndpoint] = useState(tempSettings.endpoint);
 
   useEffect(() => {
     if (editingId && inputRef.current) {
@@ -81,41 +86,43 @@ export function ProjectSidebar({
 
   useEffect(() => {
     setTempSettings(settings);
+    setDebouncedEndpoint(settings.endpoint);
   }, [settings]);
 
-  const fetchModels = async (endpoint: string) => {
-    setIsLoadingModels(true);
-    setConnectionStatus("checking");
-    try {
-      const response = await fetch(`/api/llm/models?endpoint=${encodeURIComponent(endpoint)}`);
-      const data = await response.json();
-      if (data.success && data.models) {
-        setAvailableModels(data.models);
-        setConnectionStatus("connected");
-      } else {
-        setAvailableModels([]);
-        setConnectionStatus("disconnected");
-      }
-    } catch {
-      setAvailableModels([]);
-      setConnectionStatus("disconnected");
-    } finally {
-      setIsLoadingModels(false);
-    }
-  };
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedEndpoint(tempSettings.endpoint);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [tempSettings.endpoint]);
+
+  const { data: modelsData, isLoading: isLoadingModels, refetch: refetchModels } = useQuery<ModelsResponse>({
+    queryKey: ["/api/llm/models", debouncedEndpoint],
+    queryFn: async () => {
+      const response = await fetch(`/api/llm/models?endpoint=${encodeURIComponent(debouncedEndpoint)}`);
+      return response.json();
+    },
+    enabled: settingsOpen,
+    staleTime: 30000,
+    refetchOnWindowFocus: false,
+  });
+
+  const availableModels = modelsData?.models || [];
+  const connectionStatus = isLoadingModels ? "checking" : modelsData?.success ? "connected" : "disconnected";
 
   useEffect(() => {
-    if (settingsOpen) {
-      fetchModels(tempSettings.endpoint);
+    if (connectionStatus === "connected" && tempSettings.model && !availableModels.includes(tempSettings.model)) {
+      setTempSettings(prev => ({ ...prev, model: "" }));
     }
-  }, [settingsOpen]);
+  }, [availableModels, connectionStatus, tempSettings.model]);
 
   const handleEndpointChange = (endpoint: string) => {
     setTempSettings({ ...tempSettings, endpoint });
   };
 
   const handleRefreshConnection = () => {
-    fetchModels(tempSettings.endpoint);
+    queryClient.invalidateQueries({ queryKey: ["/api/llm/models", debouncedEndpoint] });
+    refetchModels();
   };
 
   const handleSaveSettings = () => {
@@ -152,7 +159,7 @@ export function ProjectSidebar({
   return (
     <Sidebar className="border-r">
       <SidebarHeader className="p-4 pt-8 pl-20 electron-drag-region">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
               <Hammer className="h-4 w-4 text-white" />
@@ -267,7 +274,7 @@ export function ProjectSidebar({
             </DialogHeader>
             <div className="space-y-5 py-4">
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <Label htmlFor="endpoint">API Endpoint</Label>
                   <div className="flex items-center gap-2">
                     {connectionStatus === "checking" && (
@@ -350,7 +357,7 @@ export function ProjectSidebar({
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <Label>Temperature</Label>
                   <span className="text-sm text-muted-foreground font-mono">
                     {tempSettings.temperature.toFixed(2)}
