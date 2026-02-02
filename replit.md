@@ -17,7 +17,18 @@ LocalForge offers a chat-based interface for application generation, supporting 
 The frontend is built with **React + TypeScript** using **Vite**, styled with **Tailwind CSS** and **Shadcn UI** components. It integrates the **Monaco Editor** for code viewing and editing, and **TanStack Query** for data fetching. Key UI components include a chat panel, live preview, project sidebar, and a modular generation wizard.
 
 ### Backend
-The backend utilizes an **Express.js** API server. It uses the **OpenAI SDK** configured for LM Studio compatibility and implements **Server-Sent Events (SSE)** for streaming LLM responses. **PostgreSQL** with **Drizzle ORM** is used for persistent storage. The backend incorporates modular code generators for schema, routes, frontend components, and Docker configurations.
+The backend utilizes an **Express.js** API server with **modular route architecture** organized by domain:
+- `server/routes/projects.ts` - Project CRUD operations
+- `server/routes/files.ts` - File management within projects
+- `server/routes/versions.ts` - Version control and checkpoints
+- `server/routes/package.ts` - ZIP packaging and downloads
+- `server/routes/llm.ts` - LLM connection and status
+- `server/routes/analytics.ts` - Usage tracking and insights
+- `server/routes/generation.ts` - Code generation endpoints
+- `server/routes/dream-team.ts` - AI expert panel discussions
+- `server/routes/health.ts` - Health checks (/health, /ready, /live)
+
+Uses the **OpenAI SDK** configured for LM Studio compatibility and implements **Server-Sent Events (SSE)** for streaming LLM responses. **PostgreSQL** with **Drizzle ORM** is used for persistent storage. The backend incorporates modular code generators for schema, routes, frontend components, and Docker configurations.
 
 ### Key Features
 - **Project Management**: Create, delete, rename, and update projects with persistent storage.
@@ -106,7 +117,9 @@ Expert advisory system that pauses to consult multiple AI personas for important
 - **Progressive Disclosure**: Search and Console tabs hidden behind "Dev Tools" toggle
 - **Smart Connection**: Subtle green dot when connected, non-intrusive offline badge when disconnected
 - **Polished Animations**: Smooth transitions for loading states, tab changes, and preview updates
-- **Inline Connection Helper**: Friendly messaging when LM Studio is offline
+- **Inline Connection Helper**: Expandable 4-step setup guide when LM Studio is offline, with compact mode for minimal UX
+- **Error Recovery**: Context-aware error recovery UI with retry buttons, connection help, and simplified fallback prompts
+- **Request Deduplication**: Prevents duplicate generation calls for better stability
 - **Command Palette**: Press Cmd+K (Mac) or Ctrl+K (Windows/Linux) for quick access to all actions
 - **Generation Phase Tracking**: Real-time progress indicators showing what's happening during generation (e.g., "Analyzing request...", "Generating code...", "Writing code...", "Finalizing...")
 - **Voice Input**: Click the microphone button to dictate app descriptions instead of typing. Uses browser's built-in speech recognition (Chrome, Edge, Safari). Red pulsing mic indicates active listening.

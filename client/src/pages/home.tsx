@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -16,6 +16,8 @@ import { DreamTeamSettings } from "@/components/dream-team-settings";
 import { DreamTeamPanel } from "@/components/dream-team-panel";
 import { VersionHistory } from "@/components/version-history";
 import { CommandPalette } from "@/components/command-palette";
+import { ErrorRecovery } from "@/components/error-recovery";
+import { QuickUndo } from "@/components/quick-undo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -43,6 +45,10 @@ export default function Home() {
   const [llmConnected, setLlmConnected] = useState<boolean | null>(null);
   const [loadedModel, setLoadedModel] = useState<string | null>(null);
   const [showCelebration, setShowCelebration] = useState(false);
+  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
+  const [lastError, setLastError] = useState<{ message: string; prompt?: string } | null>(null);
+  const [showQuickUndo, setShowQuickUndo] = useState(false);
+  const generationRequestRef = useRef<string | null>(null);
   const [settings, setSettings] = useState<LLMSettings>({
     endpoint: "http://localhost:1234/v1",
     model: "",
@@ -131,6 +137,7 @@ export default function Home() {
 
   // Check LLM connection status
   const checkConnection = useCallback(async () => {
+    setIsCheckingConnection(true);
     try {
       const response = await fetch("/api/llm/status", {
         method: "POST",
@@ -140,15 +147,17 @@ export default function Home() {
       const data = await response.json();
       setLlmConnected(data.connected);
       if (data.connected && data.models?.length > 0) {
-        // Use configured model if set, otherwise show first available
         const activeModel = settings.model || data.models[0];
         setLoadedModel(activeModel);
+        setLastError(null);
       } else {
         setLoadedModel(null);
       }
     } catch {
       setLlmConnected(false);
       setLoadedModel(null);
+    } finally {
+      setIsCheckingConnection(false);
     }
   }, [settings.endpoint, settings.model]);
 
@@ -157,6 +166,11 @@ export default function Home() {
     const interval = setInterval(checkConnection, 30000);
     return () => clearInterval(interval);
   }, [checkConnection]);
+
+  // Clear quick undo when project changes
+  useEffect(() => {
+    setShowQuickUndo(false);
+  }, [activeProjectId]);
 
   const createProjectMutation = useMutation({
     mutationFn: async () => {
@@ -276,6 +290,18 @@ export default function Home() {
 
   const handleSendMessage = useCallback(
     async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings) => {
+      // Request deduplication - prevent duplicate calls using in-flight lock
+      if (generationRequestRef.current !== null || isGenerating) {
+        console.log("Blocking duplicate generation request");
+        return;
+      }
+      
+      // Set lock immediately before any async work
+      const requestId = Date.now().toString();
+      generationRequestRef.current = requestId;
+      setLastError(null);
+      setShowQuickUndo(false);
+      
       let projectId = activeProjectId;
       const projectName = generateProjectName(content);
       
@@ -342,6 +368,7 @@ export default function Home() {
           });
           
           setShowCelebration(true);
+          setShowQuickUndo(true);
           toast({
             title: "Full-Stack Project Generated!",
             description: "Check the Files tab to view and download your project.",
@@ -436,18 +463,24 @@ export default function Home() {
           }
         }
       } catch (error: any) {
+        const errorMessage = error.message || "Failed to generate app";
+        setLastError({ message: errorMessage, prompt: content });
         toast({
           title: "Error",
-          description: error.message || "Failed to generate app",
+          description: errorMessage,
           variant: "destructive",
+        });
+        trackEvent("generation_failed", projectId || undefined, {
+          error: errorMessage,
         });
       } finally {
         setIsGenerating(false);
         setGenerationPhase(null);
         setStreamingCode("");
+        generationRequestRef.current = null;
       }
     },
-    [activeProjectId, settings, toast, projects]
+    [activeProjectId, settings, toast, projects, isGenerating]
   );
 
   // Plan & Build mode handlers
@@ -649,6 +682,7 @@ export default function Home() {
               } else if (data.type === "done") {
                 await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                 setShowCelebration(true);
+                setShowQuickUndo(true);
                 toast({
                   title: "Build Complete!",
                   description: "Your app has been generated successfully.",
@@ -822,6 +856,15 @@ export default function Home() {
 
   const displayCode = isGenerating ? streamingCode : (activeProject?.generatedCode || "");
 
+  const handleRetryFromError = useCallback((prompt?: string) => {
+    if (prompt) {
+      handleIntelligentGenerate(prompt);
+    } else if (lastError?.prompt) {
+      handleIntelligentGenerate(lastError.prompt);
+    }
+    setLastError(null);
+  }, [handleIntelligentGenerate, lastError]);
+
   const sidebarStyle = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
@@ -891,6 +934,16 @@ export default function Home() {
                   Consult Team
                 </Button>
               )}
+              {activeProject && showQuickUndo && (
+                <QuickUndo 
+                  projectId={activeProject.id} 
+                  onUndo={() => {
+                    setShowQuickUndo(false);
+                    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject.id] });
+                  }}
+                />
+              )}
               {activeProject && (
                 <VersionHistory 
                   projectId={activeProject.id} 
@@ -957,14 +1010,29 @@ export default function Home() {
             ) : (
               <ResizablePanelGroup direction="horizontal">
                 <ResizablePanel defaultSize={40} minSize={25}>
-                  <ChatPanel
-                    messages={activeProject?.messages || []}
-                    isLoading={isGenerating || isPlanning}
-                    loadingPhase={generationPhase}
-                    onSendMessage={handleIntelligentGenerate}
-                    llmConnected={llmConnected}
-                    onCheckConnection={checkConnection}
-                  />
+                  <div className="flex flex-col h-full">
+                    {lastError && !isGenerating && (
+                      <div className="p-4 border-b">
+                        <ErrorRecovery
+                          error={lastError.message}
+                          originalPrompt={lastError.prompt}
+                          onRetry={handleRetryFromError}
+                          onCheckConnection={checkConnection}
+                          isRetrying={isGenerating}
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 overflow-hidden">
+                      <ChatPanel
+                        messages={activeProject?.messages || []}
+                        isLoading={isGenerating || isPlanning}
+                        loadingPhase={generationPhase}
+                        onSendMessage={handleIntelligentGenerate}
+                        llmConnected={llmConnected}
+                        onCheckConnection={checkConnection}
+                      />
+                    </div>
+                  </div>
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={60} minSize={35}>
