@@ -37,6 +37,53 @@ const chatRequestSchema = z.object({
   settings: llmSettingsSchema,
 });
 
+// Common LLM limitation patterns to detect and extract from generated code
+const LLM_LIMITATION_PATTERNS = [
+  // Direct inability statements
+  /(?:\/\/|\/\*|{\/\*)\s*(?:Note:|NOTE:|Warning:|WARNING:|Important:|IMPORTANT:)?\s*(?:I\s+)?(?:can(?:not|'t)|cannot|am\s+(?:not\s+)?able\s+to|don'?t\s+have\s+(?:access|the\s+ability))\s+(?:to\s+)?(?:access|fetch|retrieve|get|browse|connect\s+to|make\s+(?:API|http|network)\s+(?:calls?|requests?)|use)\s+(?:live|real(?:-time)?|external|actual|current)\s+(?:data|APIs?|services?|internet|web|information|the\s+(?:internet|web)).*?(?:\*\/|}?\s*$)/gim,
+  // Placeholder data notices
+  /(?:\/\/|\/\*|{\/\*)\s*(?:Note:|NOTE:|Using|This\s+(?:uses?|is)|Placeholder|Mock|Sample|Demo|Example)[\s:]+(?:placeholder|mock|sample|demo|fake|simulated|static|hardcoded)\s+data.*?(?:\*\/|$)/gim,
+  // API key requirements
+  /(?:\/\/|\/\*|{\/\*)\s*(?:TODO:|FIXME:|Note:|Replace|You\s+(?:need|will\s+need|must)|Requires?)[\s:]+(?:add|replace|provide|insert|your)\s+(?:your\s+)?(?:own\s+)?(?:API\s+key|credentials|authentication|token).*?(?:\*\/|$)/gim,
+  // Cannot make HTTP requests
+  /(?:\/\/|\/\*|{\/\*)\s*(?:Note:|NOTE:)?\s*(?:Cannot|Can't|Unable\s+to)\s+(?:make|perform|execute)\s+(?:HTTP|network|API|fetch)\s+(?:requests?|calls?).*?(?:\*\/|$)/gim,
+  // Inline limitation messages in JSX comments
+  /{\/\*\s*(?:Note:|NOTE:)?\s*(?:I\s+)?(?:can(?:not|'t)|don'?t\s+have)\s+.*?\s*\*\/}/gim,
+];
+
+// Extract and clean LLM limitation messages from generated code
+function extractLLMLimitations(code: string): { cleanedCode: string; limitations: string[] } {
+  const limitations: string[] = [];
+  let cleanedCode = code;
+
+  for (const pattern of LLM_LIMITATION_PATTERNS) {
+    const matches = code.matchAll(pattern);
+    for (const match of matches) {
+      let limitation = match[0]
+        // Remove comment markers
+        .replace(/^(?:\/\/|\/\*|{\/\*)\s*/, "")
+        .replace(/(?:\*\/|}\s*)$/, "")
+        // Clean up common prefixes
+        .replace(/^(?:Note:|NOTE:|Warning:|WARNING:|Important:|IMPORTANT:)\s*/i, "")
+        .trim();
+      
+      if (limitation.length > 10 && limitation.length < 500) {
+        // Avoid duplicates
+        if (!limitations.some(l => l.toLowerCase() === limitation.toLowerCase())) {
+          limitations.push(limitation);
+        }
+      }
+    }
+    // Remove the limitation comments from the code
+    cleanedCode = cleanedCode.replace(pattern, "");
+  }
+
+  // Clean up any resulting empty lines from removal
+  cleanedCode = cleanedCode.replace(/\n{3,}/g, "\n\n").trim();
+
+  return { cleanedCode, limitations };
+}
+
 // Helper to get model settings based on phase (planning vs building)
 function getModelForPhase(settings: z.infer<typeof llmSettingsSchema>, phase: "planner" | "builder") {
   if (settings.useDualModels) {
@@ -139,18 +186,28 @@ router.post("/:id/chat", async (req, res) => {
       
       const fullContent = chunks.join("");
 
-      let cleanedCode = fullContent
+      let codeFromMarkdown = fullContent
         .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
         .replace(/```$/gm, "")
         .trim();
+
+      // Extract LLM limitations and clean the code
+      const { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
 
       const endTime = Date.now();
 
       // Only show success message if we actually generated code
       if (cleanedCode && cleanedCode.length > 50) {
+        // Build response message with any limitations surfaced
+        let responseMessage = "I've generated the app for you. Check the preview panel to see it in action!";
+        
+        if (limitations.length > 0) {
+          responseMessage += "\n\n**Note:** " + limitations.join(" ");
+        }
+
         await storage.addMessage(projectId, {
           role: "assistant",
-          content: "I've generated the app for you. Check the preview panel to see it in action!",
+          content: responseMessage,
         });
 
         await storage.updateProject(projectId, {
@@ -287,10 +344,13 @@ router.post("/:id/refine", async (req, res) => {
       
       const fullContent = chunks.join("");
 
-      let cleanedCode = fullContent
+      let codeFromMarkdown = fullContent
         .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
         .replace(/```$/gm, "")
         .trim();
+
+      // Extract LLM limitations and clean the code
+      const { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
 
       await storage.addMessage(projectId, {
         role: "user",
@@ -299,9 +359,16 @@ router.post("/:id/refine", async (req, res) => {
 
       // Only show success if we actually got refined code
       if (cleanedCode && cleanedCode.length > 50) {
+        // Build response message with any limitations surfaced
+        let responseMessage = "I've updated the app based on your feedback. Check the preview!";
+        
+        if (limitations.length > 0) {
+          responseMessage += "\n\n**Note:** " + limitations.join(" ");
+        }
+
         await storage.addMessage(projectId, {
           role: "assistant",
-          content: "I've updated the app based on your feedback. Check the preview!",
+          content: responseMessage,
         });
 
         await storage.updateProject(projectId, {
@@ -603,10 +670,13 @@ Generate complete, working code that implements this plan. Follow the file struc
       
       const generatedCode = codeChunks.join("");
 
-      const cleanedCode = generatedCode
+      const codeFromMarkdown = generatedCode
         .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
         .replace(/```$/gm, "")
         .trim();
+
+      // Extract LLM limitations and clean the code
+      const { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
 
       const validation = validateGeneratedCode([{ path: "App.jsx", content: cleanedCode }]);
 
@@ -618,6 +688,9 @@ Generate complete, working code that implements this plan. Follow the file struc
 
       res.write(`data: ${JSON.stringify({ type: "code", code: cleanedCode })}\n\n`);
       res.write(`data: ${JSON.stringify({ type: "validation", validation })}\n\n`);
+      if (limitations.length > 0) {
+        res.write(`data: ${JSON.stringify({ type: "limitations", limitations })}\n\n`);
+      }
       res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
       res.end();
 
