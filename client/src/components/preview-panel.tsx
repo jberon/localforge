@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -328,7 +328,8 @@ export function PreviewPanel({
     }
   };
 
-  const createPreviewHTML = () => {
+  // Memoize preview HTML to avoid expensive re-computation on every render
+  const previewDataUrl = useMemo(() => {
     if (!localCode) return "";
     
     const nonce = nonceRef.current;
@@ -420,7 +421,7 @@ ${localCode}
 </body>
 </html>`;
     return `data:text/html;charset=utf-8,${encodeURIComponent(htmlDoc)}`;
-  };
+  }, [localCode]);
 
   const isEmpty = !localCode && !isGenerating && !hasFullStackProject;
 
@@ -601,7 +602,7 @@ ${localCode}
                     <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative">
                       <iframe
                         key={iframeKey}
-                        src={createPreviewHTML()}
+                        src={previewDataUrl}
                         className="w-full h-full border-0"
                         sandbox="allow-scripts"
                         title="App Preview"

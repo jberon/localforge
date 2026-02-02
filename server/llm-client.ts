@@ -11,6 +11,7 @@ interface StreamOptions {
   messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
   maxTokens?: number;
   onChunk?: (chunk: string) => void;
+  signal?: AbortSignal; // Support request cancellation
 }
 
 const DEFAULT_ENDPOINT = "http://localhost:1234/v1";
@@ -59,6 +60,12 @@ export async function streamCompletion(
   let fullContent = "";
 
   for await (const chunk of stream) {
+    // Check for cancellation
+    if (options.signal?.aborted) {
+      stream.controller?.abort();
+      throw new Error("Request cancelled");
+    }
+    
     const delta = chunk.choices[0]?.delta?.content || "";
     if (delta) {
       fullContent += delta;

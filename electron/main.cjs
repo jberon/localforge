@@ -9,6 +9,17 @@ let serverProcess;
 const isDev = process.env.NODE_ENV === 'development';
 const PORT = process.env.PORT || 5000;
 
+// M4 Pro optimizations - only apply on macOS
+if (process.platform === 'darwin') {
+  // Enable hardware acceleration and GPU compositing for Apple Silicon
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('enable-zero-copy');
+  app.commandLine.appendSwitch('enable-features', 'Metal');
+  app.commandLine.appendSwitch('disable-software-rasterizer');
+}
+// Increase V8 heap size for handling large code generation (optimized for high-memory systems)
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=8192');
+
 // Common paths where node might be installed on macOS
 const NODE_DIRECT_PATHS = [
   '/opt/homebrew/bin/node',           // Apple Silicon Homebrew
