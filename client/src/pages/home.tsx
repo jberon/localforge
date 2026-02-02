@@ -117,7 +117,7 @@ export default function Home() {
 
   const [dreamTeamSettings, setDreamTeamSettings] = useState<DreamTeamSettingsType>({
     enabled: true,
-    pauseOnMajorDecisions: true,
+    pauseOnMajorDecisions: false, // Disabled by default - Dream Team works autonomously
     discussionDepth: "balanced",
     personas: [...defaultDreamTeamPersonas],
   });
