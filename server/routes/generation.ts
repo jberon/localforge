@@ -433,40 +433,64 @@ router.post("/:id/chat", async (req, res) => {
           }
         }
         
-        // Build response message with any limitations and fix status surfaced
-        let responseMessage = "I've generated the app for you. Check the preview panel to see it in action!";
-        
-        if (wasAutoFixed) {
-          responseMessage = "I generated the app and automatically fixed some issues. Check the preview!";
-        }
-        
-        if (limitations.length > 0) {
-          responseMessage += "\n\n**Note:** " + limitations.join(" ");
-        }
-        
-        // Add validation warnings if any remain
+        // Check final validation state
         const finalValidation = validateCodeSyntax(cleanedCode);
-        if (!finalValidation.valid) {
-          responseMessage += "\n\n**Warning:** The code may have some issues. " + finalValidation.suggestions.join(" ");
+        const codeIsValid = finalValidation.valid || wasAutoFixed;
+        
+        // Only persist valid code to avoid storing broken output
+        if (codeIsValid || validation.valid) {
+          // Build response message with any limitations and fix status surfaced
+          let responseMessage = "I've generated the app for you. Check the preview panel to see it in action!";
+          
+          if (wasAutoFixed) {
+            responseMessage = "I generated the app and automatically fixed some issues. Check the preview!";
+          }
+          
+          if (limitations.length > 0) {
+            responseMessage += "\n\n**Note:** " + limitations.join(" ");
+          }
+          
+          if (!finalValidation.valid && !wasAutoFixed) {
+            responseMessage += "\n\n**Warning:** The code may have some issues. " + finalValidation.suggestions.join(" ");
+          }
+
+          await storage.addMessage(projectId, {
+            role: "assistant",
+            content: responseMessage,
+          });
+
+          await storage.updateProject(projectId, {
+            generatedCode: cleanedCode,
+            generationMetrics: {
+              startTime,
+              endTime: Date.now(),
+              durationMs: Date.now() - startTime,
+              promptLength: content.length,
+              responseLength: fullContent.length,
+              status: wasAutoFixed ? "fixed" : "success",
+              retryCount,
+            },
+          });
+        } else {
+          // Validation failed - don't persist broken code
+          await storage.addMessage(projectId, {
+            role: "assistant",
+            content: `I couldn't generate a valid app - the code had issues that couldn't be fixed automatically. Please try again with a simpler request.\n\n**Issues found:** ${validation.errors.join(", ")}`,
+          });
+
+          await storage.updateProject(projectId, {
+            generationMetrics: {
+              startTime,
+              endTime: Date.now(),
+              durationMs: Date.now() - startTime,
+              promptLength: content.length,
+              responseLength: fullContent.length,
+              status: "validation_failed",
+              errorMessage: validation.errors.join(", "),
+              retryCount,
+            },
+          });
         }
-
-        await storage.addMessage(projectId, {
-          role: "assistant",
-          content: responseMessage,
-        });
-
-        await storage.updateProject(projectId, {
-          generatedCode: cleanedCode,
-          generationMetrics: {
-            startTime,
-            endTime: Date.now(),
-            durationMs: Date.now() - startTime,
-            promptLength: content.length,
-            responseLength: fullContent.length,
-            status: wasAutoFixed ? "fixed" : "success",
-            retryCount,
-          },
-        });
       } else {
         await storage.addMessage(projectId, {
           role: "assistant",
@@ -552,10 +576,13 @@ router.post("/:id/refine", async (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
+    // Use dual model support for refinement (builder model)
+    const builderConfig = getModelForPhase(settings, "builder");
+
     const openai = createLLMClient({
       endpoint: settings.endpoint || "http://localhost:1234/v1",
-      model: settings.model,
-      temperature: settings.temperature || LLM_DEFAULTS.temperature.builder,
+      model: builderConfig.model,
+      temperature: builderConfig.temperature,
     });
 
     let isClientConnected = true;
@@ -565,12 +592,12 @@ router.post("/:id/refine", async (req, res) => {
 
     try {
       const stream = await openai.chat.completions.create({
-        model: settings.model || "local-model",
+        model: builderConfig.model || "local-model",
         messages: [
           { role: "system", content: REFINEMENT_SYSTEM },
           { role: "user", content: `EXISTING CODE:\n\`\`\`jsx\n${project.generatedCode}\n\`\`\`\n\nMODIFICATION REQUEST: ${refinement}` },
         ],
-        temperature: settings.temperature || LLM_DEFAULTS.temperature.builder,
+        temperature: builderConfig.temperature,
         max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
         stream: true,
       });
@@ -629,29 +656,40 @@ router.post("/:id/refine", async (req, res) => {
           }
         }
         
-        // Build response message with any limitations surfaced
-        let responseMessage = wasAutoFixed 
-          ? `I've updated the app and fixed ${retryCount} issue(s). Check the preview!`
-          : "I've updated the app based on your feedback. Check the preview!";
-        
-        if (limitations.length > 0) {
-          responseMessage += "\n\n**Note:** " + limitations.join(" ");
-        }
-        
-        // Add validation warnings if any remain
+        // Check final validation state
         const finalValidation = validateCodeSyntax(cleanedCode);
-        if (!finalValidation.valid) {
-          responseMessage += "\n\n**Warning:** " + finalValidation.suggestions.join(" ");
+        const codeIsValid = finalValidation.valid || wasAutoFixed;
+        
+        // Only persist code if it's valid - don't overwrite good code with broken code
+        if (codeIsValid || validation.valid) {
+          // Build response message with any limitations surfaced
+          let responseMessage = wasAutoFixed 
+            ? `I've updated the app and fixed ${retryCount} issue(s). Check the preview!`
+            : "I've updated the app based on your feedback. Check the preview!";
+          
+          if (limitations.length > 0) {
+            responseMessage += "\n\n**Note:** " + limitations.join(" ");
+          }
+          
+          if (!finalValidation.valid && !wasAutoFixed) {
+            responseMessage += "\n\n**Warning:** " + finalValidation.suggestions.join(" ");
+          }
+
+          await storage.addMessage(projectId, {
+            role: "assistant",
+            content: responseMessage,
+          });
+
+          await storage.updateProject(projectId, {
+            generatedCode: cleanedCode,
+          });
+        } else {
+          // Validation failed after retries - keep original code
+          await storage.addMessage(projectId, {
+            role: "assistant",
+            content: `I couldn't safely update the app - the generated code had issues that couldn't be fixed automatically. Your original code is preserved.\n\n**Issues found:** ${validation.errors.join(", ")}`,
+          });
         }
-
-        await storage.addMessage(projectId, {
-          role: "assistant",
-          content: responseMessage,
-        });
-
-        await storage.updateProject(projectId, {
-          generatedCode: cleanedCode,
-        });
       } else {
         await storage.addMessage(projectId, {
           role: "assistant",
