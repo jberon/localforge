@@ -11,9 +11,8 @@ import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishingPanel } from "./publishing-panel";
 import { PreviewErrorBoundary } from "./error-boundary";
-import { ConsolePanel, type ConsoleLog } from "./console-panel";
+import type { ConsoleLog } from "./console-panel";
 import { CodeAssistant } from "./code-assistant";
-import { FeedbackPanel } from "./feedback-panel";
 import { TestPreview } from "./test-preview";
 import { FileExplorer } from "./file-explorer";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -596,18 +595,7 @@ ${localCode}
                         {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
                       </Button>
                     </div>
-                    <ConsolePanel logs={consoleLogs} onClear={clearConsole} />
-                    {projectId && lastPrompt && showFeedback && (
-                      <div className="p-3 border-t bg-background">
-                        <FeedbackPanel
-                          projectId={projectId}
-                          prompt={lastPrompt}
-                          generatedCode={code}
-                          onClose={() => setShowFeedback(false)}
-                        />
-                      </div>
-                    )}
-                                      </>
+                    </>
                 ) : isGenerating ? (
                   <div className="flex flex-col items-center justify-center h-full gap-6 p-8 animate-in fade-in duration-500">
                     <div className="relative">
