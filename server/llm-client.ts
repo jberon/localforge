@@ -80,7 +80,7 @@ export async function generateCompletion(
   config: LLMClientConfig,
   systemPrompt: string,
   userPrompt: string,
-  maxTokens = LLM_DEFAULTS.maxTokens.quickApp
+  maxTokens: number = LLM_DEFAULTS.maxTokens.quickApp
 ): Promise<string> {
   const client = createLLMClient(config);
 

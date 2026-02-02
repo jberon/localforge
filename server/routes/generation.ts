@@ -8,6 +8,7 @@ import { z } from "zod";
 import { SYSTEM_PROMPT, REFINEMENT_SYSTEM } from "./llm";
 import { searchWeb, formatSearchResultsForContext } from "../services/webSearch";
 import { shouldUseWebSearch, decideWebSearchAction } from "../services/webSearchClassifier";
+import { createOrchestrator, OrchestratorEvent } from "../services/orchestrator";
 
 // Maximum auto-retry attempts for code generation
 const MAX_AUTO_RETRY = 2;
@@ -1116,6 +1117,119 @@ router.delete("/:id/plan", async (req, res) => {
   } catch (error: any) {
     console.error("Delete plan error:", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// AI Dream Team - Autonomous dual-model orchestration
+const dreamTeamRequestSchema = z.object({
+  content: z.string().min(1, "Request is required"),
+  settings: llmSettingsSchema,
+});
+
+router.post("/:id/dream-team", async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const parsed = dreamTeamRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    
+    const { content, settings } = parsed.data;
+    const projectId = req.params.id;
+    
+    const project = await storage.getProject(projectId);
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    await storage.addMessage(projectId, {
+      role: "user",
+      content,
+    });
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    let isClientConnected = true;
+    req.on("close", () => {
+      isClientConnected = false;
+      orchestrator?.abort();
+    });
+
+    const orchestrator = createOrchestrator(settings, (event: OrchestratorEvent) => {
+      if (!isClientConnected) return;
+      
+      switch (event.type) {
+        case "phase_change":
+          res.write(`data: ${JSON.stringify({ type: "phase", phase: event.phase, message: event.message })}\n\n`);
+          break;
+        case "thinking":
+          res.write(`data: ${JSON.stringify({ type: "thinking", model: event.model, content: event.content })}\n\n`);
+          break;
+        case "code_chunk":
+          res.write(`data: ${JSON.stringify({ type: "chunk", content: event.content })}\n\n`);
+          break;
+        case "task_start":
+          res.write(`data: ${JSON.stringify({ type: "task_start", task: event.task })}\n\n`);
+          break;
+        case "task_complete":
+          res.write(`data: ${JSON.stringify({ type: "task_complete", task: event.task })}\n\n`);
+          break;
+        case "search_result":
+          res.write(`data: ${JSON.stringify({ type: "search", query: event.query, count: event.resultCount })}\n\n`);
+          break;
+        case "validation":
+          res.write(`data: ${JSON.stringify({ type: "validation", valid: event.valid, errors: event.errors })}\n\n`);
+          break;
+        case "fix_attempt":
+          res.write(`data: ${JSON.stringify({ type: "fix_attempt", attempt: event.attempt, max: event.maxAttempts })}\n\n`);
+          break;
+        case "complete":
+          break;
+        case "error":
+          res.write(`data: ${JSON.stringify({ type: "error", message: event.message })}\n\n`);
+          break;
+      }
+    });
+
+    const result = await orchestrator.run(content, project.generatedCode || undefined);
+
+    if (result.success && result.code) {
+      await storage.updateProject(projectId, {
+        generatedCode: result.code,
+        generationMetrics: {
+          startTime,
+          endTime: Date.now(),
+          durationMs: Date.now() - startTime,
+          promptLength: content.length,
+          responseLength: result.code.length,
+          status: "success",
+          retryCount: 0,
+        },
+      });
+
+      await storage.addMessage(projectId, {
+        role: "assistant",
+        content: `**AI Dream Team completed!**\n\n${result.summary}\n\nCheck the preview to see your app in action!`,
+      });
+    } else {
+      await storage.addMessage(projectId, {
+        role: "assistant",
+        content: `Dream Team encountered an issue: ${result.summary}. Please try again or simplify your request.`,
+      });
+    }
+
+    const finalProject = await storage.getProject(projectId);
+    res.write(`data: ${JSON.stringify({ type: "done", project: finalProject, success: result.success })}\n\n`);
+    res.end();
+    
+  } catch (error: any) {
+    console.error("Dream Team error:", error);
+    res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+    res.end();
   }
 });
 

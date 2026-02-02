@@ -89,6 +89,8 @@ export default function Home() {
   const [streamingPlan, setStreamingPlan] = useState("");
   const [detectedIntent, setDetectedIntent] = useState<RequestIntent | null>(null);
   const [autoRouting, setAutoRouting] = useState(true);
+  const [orchestratorPhase, setOrchestratorPhase] = useState<string | null>(null);
+  const [orchestratorThinking, setOrchestratorThinking] = useState<{model: string; content: string} | null>(null);
   const [dualModelSettings, setDualModelSettings] = useState<DualModelSettingsType>({
     mode: "auto",
     planner: {
@@ -314,6 +316,87 @@ export default function Home() {
     return truncated.charAt(0).toUpperCase() + truncated.slice(1) + (prompt.length > 40 ? "..." : "");
   };
 
+  // AI Dream Team Orchestrator - uses dual models autonomously
+  const handleOrchestratorGeneration = useCallback(
+    async (projectId: string, content: string) => {
+      setOrchestratorPhase("planning");
+      setOrchestratorThinking(null);
+      setGenerationPhase("AI Dream Team analyzing...");
+      
+      const response = await fetch(`/api/projects/${projectId}/dream-team`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, settings }),
+      });
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      let accumulatedCode = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const event of events) {
+          const lines = event.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.type === "phase") {
+                  setOrchestratorPhase(data.phase);
+                  setGenerationPhase(data.message);
+                } else if (data.type === "thinking") {
+                  setOrchestratorThinking({ model: data.model, content: data.content });
+                } else if (data.type === "chunk") {
+                  accumulatedCode += data.content;
+                  const cleaned = accumulatedCode
+                    .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+                    .replace(/```$/gm, "");
+                  setStreamingCode(cleaned);
+                } else if (data.type === "validation") {
+                  if (!data.valid) {
+                    setGenerationPhase(`Fixing ${data.errors.length} issue(s)...`);
+                  }
+                } else if (data.type === "fix_attempt") {
+                  setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}...`);
+                } else if (data.type === "done") {
+                  await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                  if (data.success) {
+                    setShowCelebration(true);
+                    setShowQuickUndo(true);
+                    toast({
+                      title: "AI Dream Team Complete!",
+                      description: "Your app was built by the planning & building models working together.",
+                    });
+                  }
+                  return data.project;
+                } else if (data.type === "error") {
+                  throw new Error(data.message || data.error);
+                }
+              } catch (e) {
+                if (e instanceof SyntaxError) continue;
+                throw e;
+              }
+            }
+          }
+        }
+      }
+    },
+    [settings, toast]
+  );
+
   const handleSendMessage = useCallback(
     async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings) => {
       // Request deduplication - prevent duplicate calls using in-flight lock
@@ -400,6 +483,21 @@ export default function Home() {
             description: "Check the Files tab to view and download your project.",
           });
         } else {
+          // Use AI Dream Team (orchestrator) when dual models are enabled
+          if (settings.useDualModels && settings.plannerModel && settings.builderModel && projectId) {
+            setGenerationPhase("AI Dream Team initializing...");
+            try {
+              await handleOrchestratorGeneration(projectId, content);
+            } finally {
+              setIsGenerating(false);
+              setGenerationPhase(null);
+              setOrchestratorPhase(null);
+              setOrchestratorThinking(null);
+              generationRequestRef.current = null;
+            }
+            return;
+          }
+          
           setGenerationPhase("Generating code...");
           
           // Use regular LLM streaming for frontend-only apps

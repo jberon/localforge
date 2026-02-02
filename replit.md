@@ -12,7 +12,17 @@ LocalForge is an AI-powered web application builder that generates working React
 ## System Architecture
 
 ### Core Functionality
-LocalForge provides a chat-based interface with streaming responses for real-time code generation. It includes project management, live preview, and code validation. An AI-powered prompt enhancement and iterative refinement system allows users to evolve applications through follow-up requests. The system intelligently routes requests, automatically detecting intent (plan/build/refine/question) and optimizing LLM configurations for each task. It features an AI Dream Team for expert consultations and visual testing with a Replit-style test runner.
+LocalForge provides a chat-based interface with streaming responses for real-time code generation. It includes project management, live preview, and code validation. An AI-powered prompt enhancement and iterative refinement system allows users to evolve applications through follow-up requests. The system intelligently routes requests, automatically detecting intent (plan/build/refine/question) and optimizing LLM configurations for each task.
+
+### AI Dream Team (Autonomous Dual-Model Orchestration)
+When dual models are configured (planner + builder), LocalForge activates the AI Dream Team mode:
+- **Planning Phase**: The reasoning model analyzes requests and creates structured implementation plans
+- **Web Search Integration**: Automatically searches Serper.dev when models need external information (APIs, docs, etc.)
+- **Building Phase**: The code model generates complete applications based on the plan
+- **Validation & Auto-Fix Loop**: Code is validated; if errors are found, the planner diagnoses issues and the builder fixes them (up to 3 retries)
+- **Progress Streaming**: Real-time SSE events show current phase, model thinking, and task completion
+
+The orchestrator is implemented in `server/services/orchestrator.ts` and exposed via the `/api/projects/:id/dream-team` endpoint.
 
 ### Frontend
 The frontend is built with React + TypeScript using Vite, styled with Tailwind CSS and Shadcn UI components. It integrates the Monaco Editor for code interaction and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, and a modular generation wizard. UX design principles focus on quick start, progressive disclosure, polished animations, and contextual error recovery. Features include a command palette, voice input, and keyboard shortcuts. The file explorer provides a Replit-like tree view, file operations, and real-time synchronization.
