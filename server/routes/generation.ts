@@ -26,8 +26,13 @@ Common issues to fix:
 - Undefined variables or functions
 - Incorrect function signatures`;
 
+// Options for code validation
+interface ValidationOptions {
+  requireRenderCall?: boolean; // Only check for render when expecting full app
+}
+
 // Validate code and return detailed errors
-function validateCodeSyntax(code: string): { valid: boolean; errors: string[]; suggestions: string[] } {
+function validateCodeSyntax(code: string, options: ValidationOptions = {}): { valid: boolean; errors: string[]; suggestions: string[] } {
   const errors: string[] = [];
   const suggestions: string[] = [];
   
@@ -53,11 +58,14 @@ function validateCodeSyntax(code: string): { valid: boolean; errors: string[]; s
     suggestions.push("Check for missing closing brackets ']'");
   }
   
-  // Check for React-specific issues
-  if (code.includes('React') || code.includes('useState') || code.includes('useEffect')) {
-    if (!code.includes('ReactDOM.render') && !code.includes('createRoot') && !code.includes('ReactDOM.createRoot')) {
-      errors.push("Missing React render call");
-      suggestions.push("Add ReactDOM.createRoot(document.getElementById('root')).render(<App />)");
+  // Only check for React render call if explicitly required (full app output)
+  // Component-only output is valid without a render call
+  if (options.requireRenderCall) {
+    if (code.includes('React') || code.includes('useState') || code.includes('useEffect')) {
+      if (!code.includes('ReactDOM.render') && !code.includes('createRoot') && !code.includes('ReactDOM.createRoot')) {
+        errors.push("Missing React render call");
+        suggestions.push("Add ReactDOM.createRoot(document.getElementById('root')).render(<App />)");
+      }
     }
   }
   
@@ -91,59 +99,117 @@ function validateCodeSyntax(code: string): { valid: boolean; errors: string[]; s
   };
 }
 
-// Attempt to fix code using LLM
+// Check if LLM response looks like valid code (not explanations)
+function isValidCodeResponse(code: string): boolean {
+  if (!code || code.length < 50) return false;
+  
+  // Must have at least some code-like structure
+  const hasFunction = /function\s+\w+|const\s+\w+\s*=|let\s+\w+\s*=|=>\s*{|\(\)\s*{/i.test(code);
+  const hasJSX = /<[A-Za-z][A-Za-z0-9]*[\s\/>]/i.test(code);
+  const hasImportExport = /import\s+|export\s+(default|const|function)/i.test(code);
+  
+  // Reject if it's mostly natural language (too many sentences)
+  const sentences = code.match(/[.!?]\s+[A-Z]/g) || [];
+  const looksLikeNaturalLanguage = sentences.length > 5;
+  
+  return (hasFunction || hasJSX || hasImportExport) && !looksLikeNaturalLanguage;
+}
+
+// Result of auto-fix attempt with retry count
+interface AutoFixResult {
+  fixed: boolean;
+  code: string;
+  message: string;
+  retryCount: number;
+}
+
+// Attempt to fix code using LLM with retry loop
 async function attemptCodeFix(
   code: string,
   errors: string[],
   settings: LLMSettings,
-  phase: "planner" | "builder"
-): Promise<{ fixed: boolean; code: string; message: string }> {
-  try {
-    const modelConfig = getModelForPhase(settings, phase);
-    const openai = createLLMClient({
-      endpoint: settings.endpoint || "http://localhost:1234/v1",
-      model: modelConfig.model,
-      temperature: 0.2, // Lower temperature for fixing
-    });
+  phase: "planner" | "builder",
+  isClientConnected: () => boolean = () => true
+): Promise<AutoFixResult> {
+  let currentCode = code;
+  let currentErrors = errors;
+  let retryCount = 0;
+  
+  while (retryCount < MAX_AUTO_RETRY) {
+    // Check if client disconnected before each attempt
+    if (!isClientConnected()) {
+      return { fixed: false, code: currentCode, message: "Client disconnected", retryCount };
+    }
     
-    const errorContext = errors.join('\n- ');
-    const fixPrompt = `The following code has errors that need to be fixed:
+    retryCount++;
+    
+    try {
+      const modelConfig = getModelForPhase(settings, phase);
+      const openai = createLLMClient({
+        endpoint: settings.endpoint || "http://localhost:1234/v1",
+        model: modelConfig.model,
+        temperature: 0.2, // Lower temperature for fixing
+      });
+      
+      const errorContext = currentErrors.join('\n- ');
+      const fixPrompt = `The following code has errors that need to be fixed:
 
 ERRORS:
 - ${errorContext}
 
 CODE TO FIX:
-${code}
+${currentCode}
 
 Please provide the complete fixed code with all errors resolved.`;
-    
-    const response = await openai.chat.completions.create({
-      model: modelConfig.model || "local-model",
-      messages: [
-        { role: "system", content: ERROR_FIX_SYSTEM_PROMPT },
-        { role: "user", content: fixPrompt }
-      ],
-      temperature: 0.2,
-      max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
-    });
-    
-    const fixedCode = response.choices[0]?.message?.content || "";
-    const cleanedFixed = fixedCode
-      .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
-      .replace(/```$/gm, "")
-      .trim();
-    
-    if (cleanedFixed && cleanedFixed.length > 50) {
-      const revalidation = validateCodeSyntax(cleanedFixed);
-      if (revalidation.valid) {
-        return { fixed: true, code: cleanedFixed, message: "Code was automatically fixed" };
+      
+      const response = await openai.chat.completions.create({
+        model: modelConfig.model || "local-model",
+        messages: [
+          { role: "system", content: ERROR_FIX_SYSTEM_PROMPT },
+          { role: "user", content: fixPrompt }
+        ],
+        temperature: 0.2,
+        max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
+      });
+      
+      const fixedCode = response.choices[0]?.message?.content || "";
+      const cleanedFixed = fixedCode
+        .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+        .replace(/```$/gm, "")
+        .trim();
+      
+      // Verify the response looks like code, not explanations
+      if (!isValidCodeResponse(cleanedFixed)) {
+        continue; // Try again
       }
+      
+      const revalidation = validateCodeSyntax(cleanedFixed);
+      
+      if (revalidation.valid) {
+        return { 
+          fixed: true, 
+          code: cleanedFixed, 
+          message: `Code was automatically fixed after ${retryCount} attempt(s)`,
+          retryCount 
+        };
+      }
+      
+      // Update for next iteration
+      currentCode = cleanedFixed;
+      currentErrors = revalidation.errors;
+      
+    } catch (error: any) {
+      // Continue retrying on error
+      continue;
     }
-    
-    return { fixed: false, code: code, message: "Could not automatically fix the code" };
-  } catch (error: any) {
-    return { fixed: false, code: code, message: `Fix attempt failed: ${error.message}` };
   }
+  
+  return { 
+    fixed: false, 
+    code: currentCode, 
+    message: `Could not fix after ${retryCount} attempts`,
+    retryCount 
+  };
 }
 
 const router = Router();
@@ -337,20 +403,26 @@ router.post("/:id/chat", async (req, res) => {
         let retryCount = 0;
         let wasAutoFixed = false;
         
-        // Attempt auto-fix if validation fails
-        if (!validation.valid && validation.errors.length > 0) {
+        // Attempt auto-fix if validation fails and client is still connected
+        if (!validation.valid && validation.errors.length > 0 && isClientConnected) {
           res.write(`data: ${JSON.stringify({ type: "status", message: "Validating code..." })}\n\n`);
           
-          // Try to fix the code
+          // Try to fix the code with retry loop
           res.write(`data: ${JSON.stringify({ type: "status", message: "Found issues, attempting auto-fix..." })}\n\n`);
           
-          const fixResult = await attemptCodeFix(cleanedCode, validation.errors, settings, "builder");
-          retryCount = 1;
+          const fixResult = await attemptCodeFix(
+            cleanedCode, 
+            validation.errors, 
+            settings, 
+            "builder",
+            () => isClientConnected
+          );
+          retryCount = fixResult.retryCount;
           
           if (fixResult.fixed) {
             cleanedCode = fixResult.code;
             wasAutoFixed = true;
-            res.write(`data: ${JSON.stringify({ type: "status", message: "Code fixed successfully!" })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "status", message: `Code fixed after ${retryCount} attempt(s)!` })}\n\n`);
           } else {
             // Send validation errors to client
             res.write(`data: ${JSON.stringify({ 
@@ -535,23 +607,31 @@ router.post("/:id/refine", async (req, res) => {
         // Validate the refined code
         const validation = validateCodeSyntax(cleanedCode);
         let wasAutoFixed = false;
+        let retryCount = 0;
         
-        // Attempt auto-fix if validation fails
-        if (!validation.valid && validation.errors.length > 0) {
+        // Attempt auto-fix if validation fails and client is still connected
+        if (!validation.valid && validation.errors.length > 0 && isClientConnected) {
           res.write(`data: ${JSON.stringify({ type: "status", message: "Validating refined code..." })}\n\n`);
           
-          const fixResult = await attemptCodeFix(cleanedCode, validation.errors, settings, "builder");
+          const fixResult = await attemptCodeFix(
+            cleanedCode, 
+            validation.errors, 
+            settings, 
+            "builder",
+            () => isClientConnected
+          );
+          retryCount = fixResult.retryCount;
           
           if (fixResult.fixed) {
             cleanedCode = fixResult.code;
             wasAutoFixed = true;
-            res.write(`data: ${JSON.stringify({ type: "status", message: "Code fixed successfully!" })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "status", message: `Code fixed after ${retryCount} attempt(s)!` })}\n\n`);
           }
         }
         
         // Build response message with any limitations surfaced
         let responseMessage = wasAutoFixed 
-          ? "I've updated the app and fixed some issues. Check the preview!"
+          ? `I've updated the app and fixed ${retryCount} issue(s). Check the preview!`
           : "I've updated the app based on your feedback. Check the preview!";
         
         if (limitations.length > 0) {
