@@ -15,14 +15,38 @@ LocalForge is an AI-powered web application builder that generates working React
 LocalForge provides a chat-based interface with streaming responses for real-time code generation. It includes project management, live preview, and code validation. An AI-powered prompt enhancement and iterative refinement system allows users to evolve applications through follow-up requests. The system intelligently routes requests, automatically detecting intent (plan/build/refine/question) and optimizing LLM configurations for each task.
 
 ### AI Dream Team (Autonomous Dual-Model Orchestration)
-When dual models are configured (planner + builder), LocalForge activates the AI Dream Team mode:
-- **Planning Phase**: The reasoning model analyzes requests and creates structured implementation plans
-- **Web Search Integration**: Automatically searches Serper.dev when models need external information (APIs, docs, etc.)
-- **Building Phase**: The code model generates complete applications based on the plan
-- **Validation & Auto-Fix Loop**: Code is validated; if errors are found, the planner diagnoses issues and the builder fixes them (up to 3 retries)
-- **Progress Streaming**: Real-time SSE events show current phase, model thinking, and task completion
+When dual models are configured (planner + builder), LocalForge activates the AI Dream Team mode with named AI agents:
 
-The orchestrator is implemented in `server/services/orchestrator.ts` and exposed via the `/api/projects/:id/dream-team` endpoint.
+**Core Team Members** (always present):
+- **Aria** (Product Architect): System design, architecture, planning - analyzes requests and creates business cases
+- **Forge** (Senior Engineer): React/TypeScript implementation - writes and fixes code
+- **Pixel** (UX Designer): Interface design, accessibility, styling
+- **Scout** (Research Analyst): Market research, API documentation, web searches
+- **Sentinel** (Quality Guardian): Testing, code review, security validation
+
+**Dynamic Specialists**: The reasoning model analyzes each project's business case and automatically recruits industry-specific specialists (healthcare expert, finance advisor, etc.) when needed.
+
+**Business Case Generation**: For each project, Aria automatically generates a comprehensive business case including:
+- App name, tagline, and problem statement
+- Target audience and value proposition
+- Core features with priorities (must-have, should-have, nice-to-have)
+- Industry analysis, competitors, and differentiators
+- Monetization and pricing model suggestions
+
+**README Auto-Generation**: Forge automatically generates a professional README.md based on the business case.
+
+**Activity Logging**: All team member actions (thinking, deciding, building, reviewing, etc.) are logged and visible in the Project Team Panel UI.
+
+**Workflow**:
+- **Planning Phase**: Aria analyzes the request and creates business case + implementation plan
+- **Specialist Recruitment**: Aria evaluates if domain experts are needed for the project
+- **Web Search Integration**: Scout searches Serper.dev when external information is needed
+- **Building Phase**: Forge generates complete applications based on the plan
+- **Validation & Auto-Fix Loop**: Sentinel validates code; Forge fixes any issues (up to 3 retries)
+- **Documentation**: Forge generates README after successful build
+- **Progress Streaming**: Real-time SSE events show current phase, team member actions, and task completion
+
+The orchestrator is implemented in `server/services/orchestrator.ts` and the Dream Team service in `server/services/dreamTeam.ts`. Exposed via `/api/projects/:id/dream-team` and `/api/dream-team/*` endpoints.
 
 ### Production Mode (Multi-File TypeScript Projects)
 When production mode is enabled alongside dual models, LocalForge generates sellable, enterprise-grade applications:

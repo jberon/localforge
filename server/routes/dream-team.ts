@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { createLLMClient } from "../llm-client";
+import { createDreamTeamService } from "../services/dreamTeam";
+import { CORE_DREAM_TEAM } from "@shared/schema";
 import { z } from "zod";
 
 const router = Router();
@@ -17,6 +19,214 @@ const dreamTeamDiscussionSchema = z.object({
   discussionDepth: z.enum(["brief", "balanced", "thorough"]).default("balanced"),
   endpoint: z.string().optional(),
   temperature: z.number().optional(),
+});
+
+const generateBusinessCaseSchema = z.object({
+  projectId: z.string(),
+  userRequest: z.string(),
+  context: z.string().optional(),
+  endpoint: z.string(),
+  model: z.string(),
+  temperature: z.number().optional(),
+});
+
+const analyzeSpecialistsSchema = z.object({
+  projectId: z.string(),
+  endpoint: z.string(),
+  model: z.string(),
+  temperature: z.number().optional(),
+});
+
+router.get("/members", (req, res) => {
+  res.json({
+    core: CORE_DREAM_TEAM,
+    description: "The core Dream Team members available for all projects",
+  });
+});
+
+router.get("/projects/:projectId/team", async (req, res) => {
+  const { projectId } = req.params;
+  const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
+  const model = (req.query.model as string) || "";
+  
+  const service = createDreamTeamService({
+    endpoint,
+    reasoningModel: model,
+  });
+  
+  const team = await service.getFullTeam(projectId);
+  res.json(team);
+});
+
+router.get("/projects/:projectId/activity", async (req, res) => {
+  const { projectId } = req.params;
+  const limit = parseInt(req.query.limit as string) || 50;
+  const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
+  const model = (req.query.model as string) || "";
+  
+  const service = createDreamTeamService({
+    endpoint,
+    reasoningModel: model,
+  });
+  
+  const logs = await service.getActivityLog(projectId, limit);
+  res.json({ logs });
+});
+
+router.get("/projects/:projectId/business-case", async (req, res) => {
+  const { projectId } = req.params;
+  const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
+  const model = (req.query.model as string) || "";
+  
+  const service = createDreamTeamService({
+    endpoint,
+    reasoningModel: model,
+  });
+  
+  const businessCase = await service.getBusinessCase(projectId);
+  res.json({ businessCase });
+});
+
+router.get("/projects/:projectId/readme", async (req, res) => {
+  const { projectId } = req.params;
+  const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
+  const model = (req.query.model as string) || "";
+  
+  const service = createDreamTeamService({
+    endpoint,
+    reasoningModel: model,
+  });
+  
+  const readme = await service.getReadme(projectId);
+  res.json({ readme });
+});
+
+router.post("/business-case/generate", async (req, res) => {
+  const parsed = generateBusinessCaseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  }
+
+  const { projectId, userRequest, context, endpoint, model, temperature } = parsed.data;
+  
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const service = createDreamTeamService({
+    endpoint,
+    reasoningModel: model,
+    temperature,
+  });
+
+  try {
+    const businessCase = await service.generateBusinessCase(
+      projectId,
+      userRequest,
+      context,
+      (chunk) => {
+        res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+      }
+    );
+
+    res.write(`data: ${JSON.stringify({ type: "complete", businessCase })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (error: any) {
+    res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    res.end();
+  }
+});
+
+router.post("/specialists/analyze", async (req, res) => {
+  const parsed = analyzeSpecialistsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  }
+
+  const { projectId, endpoint, model, temperature } = parsed.data;
+  
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const service = createDreamTeamService({
+    endpoint,
+    reasoningModel: model,
+    temperature,
+  });
+
+  try {
+    const businessCase = await service.getBusinessCase(projectId);
+    if (!businessCase) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: "No business case found for this project" })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const specialists = await service.analyzeAndCreateSpecialists(
+      projectId,
+      businessCase,
+      (chunk) => {
+        res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+      }
+    );
+
+    res.write(`data: ${JSON.stringify({ type: "complete", specialists })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (error: any) {
+    res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    res.end();
+  }
+});
+
+router.post("/readme/generate", async (req, res) => {
+  const schema = z.object({
+    projectId: z.string(),
+    endpoint: z.string(),
+    model: z.string(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  }
+
+  const { projectId, endpoint, model } = parsed.data;
+  
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const service = createDreamTeamService({
+    endpoint,
+    reasoningModel: model,
+  });
+
+  try {
+    const businessCase = await service.getBusinessCase(projectId);
+    if (!businessCase) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: "No business case found" })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const readme = await service.generateReadme(
+      projectId,
+      businessCase,
+      (chunk) => {
+        res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+      }
+    );
+
+    res.write(`data: ${JSON.stringify({ type: "complete", readme })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (error: any) {
+    res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    res.end();
+  }
 });
 
 router.post("/discuss", async (req, res) => {

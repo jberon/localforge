@@ -459,6 +459,290 @@ export const defaultDreamTeamPersonas: DreamTeamPersona[] = [
   },
 ];
 
+// ============================================================================
+// DREAM TEAM - AI Agent System
+// ============================================================================
+
+// Team Member expertise and specialization
+export const teamMemberRoleSchema = z.enum([
+  "architect",      // System design and planning
+  "engineer",       // Code implementation  
+  "designer",       // UX/UI and styling
+  "analyst",        // Research and data
+  "quality",        // Testing and validation
+  "specialist",     // Dynamic domain expert
+]);
+
+// Enhanced team member with personality and expertise
+export const dreamTeamMemberSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  title: z.string(),
+  role: teamMemberRoleSchema,
+  avatar: z.string(), // Icon name from lucide-react
+  color: z.string(),  // Tailwind color
+  expertise: z.array(z.string()),
+  personality: z.string(),
+  catchphrase: z.string().optional(),
+  isCore: z.boolean().default(true), // Core team vs dynamic specialist
+  createdForProject: z.string().optional(), // Project ID if dynamic
+  inspiration: z.string().optional(), // Who inspires this character
+});
+
+// Activity log entry - tracks all team member actions
+export const activityLogEntrySchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  teamMemberId: z.string(),
+  teamMemberName: z.string(),
+  action: z.enum([
+    "thinking",      // Reasoning/planning
+    "deciding",      // Making a decision
+    "building",      // Writing code
+    "reviewing",     // Code review
+    "researching",   // Web search
+    "designing",     // UI/UX work
+    "testing",       // Validation
+    "fixing",        // Bug fixes
+    "suggesting",    // Recommendations
+    "collaborating", // Team discussion
+  ]),
+  content: z.string(),
+  metadata: z.record(z.any()).optional(),
+  timestamp: z.number(),
+});
+
+// Business case that evolves over time
+export const businessCaseSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  version: z.number().default(1),
+  
+  // Core business info
+  appName: z.string(),
+  tagline: z.string().optional(),
+  problemStatement: z.string(),
+  targetAudience: z.string(),
+  valueProposition: z.string(),
+  
+  // Market analysis
+  industry: z.string().optional(),
+  competitors: z.array(z.string()).optional(),
+  differentiators: z.array(z.string()).optional(),
+  
+  // Features and scope
+  coreFeatures: z.array(z.object({
+    name: z.string(),
+    description: z.string(),
+    priority: z.enum(["must-have", "should-have", "nice-to-have"]),
+  })),
+  futureFeatures: z.array(z.string()).optional(),
+  
+  // Technical notes
+  techStack: z.array(z.string()).optional(),
+  integrations: z.array(z.string()).optional(),
+  
+  // Revenue model
+  monetization: z.string().optional(),
+  pricingModel: z.string().optional(),
+  
+  // Status
+  status: z.enum(["draft", "evolving", "finalized"]).default("draft"),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+// Project README that auto-generates
+export const projectReadmeSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  version: z.number().default(1),
+  
+  content: z.string(), // Markdown content
+  sections: z.object({
+    overview: z.string(),
+    features: z.string(),
+    installation: z.string().optional(),
+    usage: z.string().optional(),
+    techStack: z.string().optional(),
+    contributing: z.string().optional(),
+    license: z.string().optional(),
+  }),
+  
+  generatedBy: z.string(), // Team member who generated it
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+// Team composition for a specific project
+export const projectTeamSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  coreMembers: z.array(z.string()), // Team member IDs
+  specialists: z.array(z.string()), // Dynamic specialist IDs
+  createdAt: z.number(),
+});
+
+export type TeamMemberRole = z.infer<typeof teamMemberRoleSchema>;
+export type DreamTeamMember = z.infer<typeof dreamTeamMemberSchema>;
+export type ActivityLogEntry = z.infer<typeof activityLogEntrySchema>;
+export type BusinessCase = z.infer<typeof businessCaseSchema>;
+export type ProjectReadme = z.infer<typeof projectReadmeSchema>;
+export type ProjectTeam = z.infer<typeof projectTeamSchema>;
+
+// Database tables for Dream Team
+export const dreamTeamMembers = pgTable("dream_team_members", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  name: text("name").notNull(),
+  title: text("title").notNull(),
+  role: varchar("role", { length: 20 }).notNull(),
+  avatar: varchar("avatar", { length: 50 }).notNull(),
+  color: varchar("color", { length: 30 }).notNull(),
+  expertise: jsonb("expertise").notNull().default([]),
+  personality: text("personality").notNull(),
+  catchphrase: text("catchphrase"),
+  isCore: text("is_core").notNull().default("true"),
+  createdForProject: varchar("created_for_project", { length: 36 }),
+  inspiration: text("inspiration"),
+});
+
+export const activityLogs = pgTable("activity_logs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  teamMemberId: varchar("team_member_id", { length: 36 }).notNull(),
+  teamMemberName: varchar("team_member_name", { length: 100 }).notNull(),
+  action: varchar("action", { length: 20 }).notNull(),
+  content: text("content").notNull(),
+  metadata: jsonb("metadata"),
+  timestamp: bigint("timestamp", { mode: "number" }).notNull(),
+});
+
+export const businessCases = pgTable("business_cases", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  version: bigint("version", { mode: "number" }).notNull().default(1),
+  appName: text("app_name").notNull(),
+  tagline: text("tagline"),
+  problemStatement: text("problem_statement").notNull(),
+  targetAudience: text("target_audience").notNull(),
+  valueProposition: text("value_proposition").notNull(),
+  industry: text("industry"),
+  competitors: jsonb("competitors"),
+  differentiators: jsonb("differentiators"),
+  coreFeatures: jsonb("core_features").notNull(),
+  futureFeatures: jsonb("future_features"),
+  techStack: jsonb("tech_stack"),
+  integrations: jsonb("integrations"),
+  monetization: text("monetization"),
+  pricingModel: text("pricing_model"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+export const projectReadmes = pgTable("project_readmes", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  version: bigint("version", { mode: "number" }).notNull().default(1),
+  content: text("content").notNull(),
+  sections: jsonb("sections").notNull(),
+  generatedBy: varchar("generated_by", { length: 100 }).notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+export const projectTeams = pgTable("project_teams", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  coreMembers: jsonb("core_members").notNull(),
+  specialists: jsonb("specialists").notNull().default([]),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+export const insertDreamTeamMemberSchema = createInsertSchema(dreamTeamMembers).omit({ id: true });
+export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true });
+export const insertBusinessCaseSchema = createInsertSchema(businessCases).omit({ id: true });
+export const insertProjectReadmeSchema = createInsertSchema(projectReadmes).omit({ id: true });
+export const insertProjectTeamSchema = createInsertSchema(projectTeams).omit({ id: true });
+
+export type DreamTeamMemberDb = typeof dreamTeamMembers.$inferSelect;
+export type ActivityLogDb = typeof activityLogs.$inferSelect;
+export type BusinessCaseDb = typeof businessCases.$inferSelect;
+export type ProjectReadmeDb = typeof projectReadmes.$inferSelect;
+export type ProjectTeamDb = typeof projectTeams.$inferSelect;
+
+// ============================================================================
+// CORE DREAM TEAM MEMBERS - The consistent team across all projects
+// ============================================================================
+
+export const CORE_DREAM_TEAM: DreamTeamMember[] = [
+  {
+    id: "aria",
+    name: "Aria",
+    title: "Product Architect",
+    role: "architect",
+    avatar: "brain",
+    color: "purple",
+    expertise: ["system design", "architecture", "requirements analysis", "technical planning"],
+    personality: "Visionary thinker who sees the big picture. Breaks complex problems into elegant solutions. Always asks 'why' before 'how'.",
+    catchphrase: "Let me map out the architecture...",
+    isCore: true,
+    inspiration: "Steve Jobs' design philosophy meets systems thinking",
+  },
+  {
+    id: "forge",
+    name: "Forge",
+    title: "Senior Engineer",
+    role: "engineer",
+    avatar: "hammer",
+    color: "orange",
+    expertise: ["React", "TypeScript", "full-stack development", "performance optimization", "clean code"],
+    personality: "Pragmatic craftsman who writes elegant, maintainable code. Believes in doing things right the first time.",
+    catchphrase: "Building something solid here...",
+    isCore: true,
+    inspiration: "John Carmack's technical excellence",
+  },
+  {
+    id: "pixel",
+    name: "Pixel",
+    title: "UX Designer",
+    role: "designer",
+    avatar: "palette",
+    color: "pink",
+    expertise: ["user experience", "interface design", "accessibility", "visual hierarchy", "Tailwind CSS"],
+    personality: "Empathetic designer who obsesses over every detail. Believes great design is invisible.",
+    catchphrase: "Making it feel right...",
+    isCore: true,
+    inspiration: "Jony Ive's minimalist aesthetic",
+  },
+  {
+    id: "scout",
+    name: "Scout",
+    title: "Research Analyst",
+    role: "analyst",
+    avatar: "search",
+    color: "blue",
+    expertise: ["market research", "API documentation", "competitive analysis", "trend spotting"],
+    personality: "Curious investigator who finds the best solutions. Connects dots others miss.",
+    catchphrase: "Let me dig into this...",
+    isCore: true,
+    inspiration: "Data-driven decision making",
+  },
+  {
+    id: "sentinel",
+    name: "Sentinel",
+    title: "Quality Guardian",
+    role: "quality",
+    avatar: "shield",
+    color: "green",
+    expertise: ["testing", "code review", "security", "error handling", "validation"],
+    personality: "Meticulous guardian who catches issues before they become problems. Nothing ships without approval.",
+    catchphrase: "Running validation checks...",
+    isCore: true,
+    inspiration: "NASA-level quality standards",
+  },
+];
+
 export const users = {} as any;
 export type InsertUser = { username: string; password: string };
 export type User = { id: string; username: string; password: string };

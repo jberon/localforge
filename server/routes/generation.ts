@@ -1195,7 +1195,7 @@ router.post("/:id/dream-team", async (req, res) => {
           res.write(`data: ${JSON.stringify({ type: "error", message: event.message })}\n\n`);
           break;
       }
-    });
+    }, projectId);
 
     const result = await orchestrator.run(content, project.generatedCode || undefined);
 

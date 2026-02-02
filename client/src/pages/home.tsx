@@ -18,6 +18,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { ErrorRecovery } from "@/components/error-recovery";
 import { QuickUndo } from "@/components/quick-undo";
 import { AIThinkingPanel } from "@/components/ai-thinking-panel";
+import { ProjectTeamPanel } from "@/components/project-team-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -1372,7 +1373,22 @@ export default function Home() {
                             <PanelRightClose className="h-4 w-4" />
                           </Button>
                         </div>
-                        <div className="flex-1 overflow-hidden">
+                        <div className="flex-1 overflow-y-auto">
+                          {/* Dream Team Panel - Shows team and activity log */}
+                          {settings.useDualModels && (
+                            <div className="p-2 border-b">
+                              <ProjectTeamPanel
+                                projectId={activeProjectId}
+                                llmSettings={{
+                                  endpoint: settings.endpoint,
+                                  plannerModel: settings.plannerModel,
+                                  builderModel: settings.builderModel,
+                                }}
+                              />
+                            </div>
+                          )}
+                          
+                          {/* File Explorer */}
                           {activeProject?.generatedFiles && activeProject.generatedFiles.length > 0 ? (
                             <FileExplorer
                               files={activeProject.generatedFiles}
