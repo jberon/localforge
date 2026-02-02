@@ -563,7 +563,7 @@ export function PreviewPanel({
                         size="icon"
                         variant="secondary"
                         onClick={() => setIsFullscreen(!isFullscreen)}
-                        className="absolute bottom-4 right-4 shadow-lg opacity-80 hover:opacity-100 transition-opacity z-10"
+                        className="absolute bottom-4 right-4 shadow-lg z-10"
                         data-testid="button-popout-preview"
                         title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
                       >
