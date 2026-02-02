@@ -11,7 +11,6 @@ export interface IStorage {
   updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined>;
   deleteProject(id: string): Promise<boolean>;
   addMessage(projectId: string, message: Omit<Message, "id" | "timestamp">): Promise<Message | undefined>;
-  // Version control
   getProjectVersions(projectId: string): Promise<ProjectVersion[]>;
   createVersion(projectId: string, name: string, description?: string, isAutoSave?: boolean): Promise<ProjectVersion | undefined>;
   restoreVersion(projectId: string, versionId: string): Promise<Project | undefined>;
@@ -35,14 +34,118 @@ function dbToProject(row: typeof projects.$inferSelect): Project {
   };
 }
 
+export class MemoryStorage implements IStorage {
+  private projects: Map<string, Project> = new Map();
+  private versions: Map<string, ProjectVersion> = new Map();
+
+  async getProjects(): Promise<Project[]> {
+    return Array.from(this.projects.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  async getProject(id: string): Promise<Project | undefined> {
+    return this.projects.get(id);
+  }
+
+  async createProject(insertProject: InsertProject): Promise<Project> {
+    const id = randomUUID();
+    const now = Date.now();
+    const project: Project = {
+      id,
+      name: insertProject.name,
+      description: insertProject.description,
+      messages: insertProject.messages ?? [],
+      generatedCode: insertProject.generatedCode,
+      generatedFiles: insertProject.generatedFiles ?? [],
+      dataModel: insertProject.dataModel,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.projects.set(id, project);
+    return project;
+  }
+
+  async updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined> {
+    const existing = this.projects.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...updates, updatedAt: Date.now() };
+    this.projects.set(id, updated);
+    return updated;
+  }
+
+  async deleteProject(id: string): Promise<boolean> {
+    return this.projects.delete(id);
+  }
+
+  async addMessage(projectId: string, message: Omit<Message, "id" | "timestamp">): Promise<Message | undefined> {
+    const project = this.projects.get(projectId);
+    if (!project) return undefined;
+    const newMessage: Message = { ...message, id: randomUUID(), timestamp: Date.now() };
+    project.messages = [...project.messages, newMessage];
+    project.updatedAt = Date.now();
+    return newMessage;
+  }
+
+  async getProjectVersions(projectId: string): Promise<ProjectVersion[]> {
+    return Array.from(this.versions.values())
+      .filter(v => v.projectId === projectId)
+      .sort((a, b) => b.version - a.version);
+  }
+
+  async createVersion(projectId: string, name: string, description?: string, isAutoSave = false): Promise<ProjectVersion | undefined> {
+    const project = this.projects.get(projectId);
+    if (!project) return undefined;
+    const versions = await this.getProjectVersions(projectId);
+    const nextVersion = versions.length > 0 ? Math.max(...versions.map(v => v.version)) + 1 : 1;
+    const version: ProjectVersion = {
+      id: randomUUID(),
+      projectId,
+      version: nextVersion,
+      name,
+      description,
+      snapshot: {
+        messages: project.messages,
+        generatedCode: project.generatedCode,
+        generatedFiles: project.generatedFiles,
+        dataModel: project.dataModel,
+        plan: (project as any).plan,
+      },
+      createdAt: Date.now(),
+      isAutoSave,
+    };
+    this.versions.set(version.id, version);
+    return version;
+  }
+
+  async restoreVersion(projectId: string, versionId: string): Promise<Project | undefined> {
+    const version = this.versions.get(versionId);
+    if (!version || version.projectId !== projectId) return undefined;
+    const project = this.projects.get(projectId);
+    if (!project) return undefined;
+    const restored = {
+      ...project,
+      messages: version.snapshot.messages,
+      generatedCode: version.snapshot.generatedCode,
+      generatedFiles: version.snapshot.generatedFiles,
+      dataModel: version.snapshot.dataModel,
+      updatedAt: Date.now(),
+    };
+    this.projects.set(projectId, restored);
+    return restored;
+  }
+
+  async deleteVersion(versionId: string): Promise<boolean> {
+    return this.versions.delete(versionId);
+  }
+}
+
 export class DatabaseStorage implements IStorage {
   async getProjects(): Promise<Project[]> {
-    const rows = await db.select().from(projects).orderBy(projects.updatedAt);
+    const rows = await db!.select().from(projects).orderBy(projects.updatedAt);
     return rows.map(dbToProject).reverse();
   }
 
   async getProject(id: string): Promise<Project | undefined> {
-    const [row] = await db.select().from(projects).where(eq(projects.id, id));
+    const [row] = await db!.select().from(projects).where(eq(projects.id, id));
     return row ? dbToProject(row) : undefined;
   }
 
@@ -50,7 +153,7 @@ export class DatabaseStorage implements IStorage {
     const id = randomUUID();
     const now = Date.now();
     
-    const [row] = await db.insert(projects).values({
+    const [row] = await db!.insert(projects).values({
       id,
       name: insertProject.name,
       description: insertProject.description ?? null,
@@ -82,7 +185,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.lastPrompt !== undefined) updateData.lastPrompt = updates.lastPrompt;
     if (updates.validation !== undefined) updateData.validation = updates.validation;
     
-    const [row] = await db.update(projects)
+    const [row] = await db!.update(projects)
       .set(updateData)
       .where(eq(projects.id, id))
       .returning();
@@ -91,7 +194,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProject(id: string): Promise<boolean> {
-    const result = await db.delete(projects).where(eq(projects.id, id)).returning();
+    const result = await db!.delete(projects).where(eq(projects.id, id)).returning();
     return result.length > 0;
   }
 
@@ -107,7 +210,7 @@ export class DatabaseStorage implements IStorage {
     
     const updatedMessages = [...project.messages, newMessage];
     
-    await db.update(projects)
+    await db!.update(projects)
       .set({ 
         messages: updatedMessages,
         updatedAt: Date.now(),
@@ -117,9 +220,8 @@ export class DatabaseStorage implements IStorage {
     return newMessage;
   }
 
-  // Version Control Methods
   async getProjectVersions(projectId: string): Promise<ProjectVersion[]> {
-    const rows = await db.select()
+    const rows = await db!.select()
       .from(projectVersions)
       .where(eq(projectVersions.projectId, projectId))
       .orderBy(desc(projectVersions.version));
@@ -140,7 +242,6 @@ export class DatabaseStorage implements IStorage {
     const project = await this.getProject(projectId);
     if (!project) return undefined;
 
-    // Get current max version
     const versions = await this.getProjectVersions(projectId);
     const nextVersion = versions.length > 0 ? Math.max(...versions.map(v => v.version)) + 1 : 1;
 
@@ -155,7 +256,7 @@ export class DatabaseStorage implements IStorage {
       plan: (project as any).plan,
     };
 
-    const [row] = await db.insert(projectVersions).values({
+    const [row] = await db!.insert(projectVersions).values({
       id,
       projectId,
       version: nextVersion,
@@ -179,7 +280,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async restoreVersion(projectId: string, versionId: string): Promise<Project | undefined> {
-    const [versionRow] = await db.select()
+    const [versionRow] = await db!.select()
       .from(projectVersions)
       .where(eq(projectVersions.id, versionId));
 
@@ -187,8 +288,7 @@ export class DatabaseStorage implements IStorage {
 
     const snapshot = versionRow.snapshot as ProjectVersion["snapshot"];
 
-    // Restore project from snapshot
-    const [row] = await db.update(projects)
+    const [row] = await db!.update(projects)
       .set({
         messages: snapshot.messages,
         generatedCode: snapshot.generatedCode ?? null,
@@ -204,11 +304,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteVersion(versionId: string): Promise<boolean> {
-    const result = await db.delete(projectVersions)
+    const result = await db!.delete(projectVersions)
       .where(eq(projectVersions.id, versionId))
       .returning();
     return result.length > 0;
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage: IStorage = db ? new DatabaseStorage() : new MemoryStorage();
+
+console.log(`[storage] Using ${db ? 'DatabaseStorage' : 'MemoryStorage (in-memory)'}`);
