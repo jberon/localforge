@@ -81,15 +81,19 @@ Optimized for Mac M4 Pro, LocalForge integrates with LM Studio for local LLM inf
 LocalForge is specifically optimized for MacBook Pro M4 Pro (14-core CPU, 20-core GPU, 16-core Neural Engine, 48GB unified memory):
 
 **Electron Desktop App (electron/main.cjs):**
-- GPU acceleration: Metal, zero-copy, GPU rasterization enabled for macOS
-- V8 heap: 8GB (--max-old-space-size=8192) for handling large code generation
+- GPU acceleration: Metal, zero-copy, GPU rasterization, Canvas OOP rasterization for macOS
+- 2D canvas acceleration and VSync optimization for high refresh rate displays
+- V8 heap: 8GB (--max-old-space-size=8192) with exposed GC for large code generation
+- Renderer backgrounding disabled to maintain performance during code generation
 - Traffic light positioning optimized for macOS titlebar
 
 **LLM Client Configuration (server/llm-client.ts):**
 - Memory allocation: 16GB for context, 24GB for model weights, 8GB system reserved
-- Concurrency: Single request at a time (LM Studio limitation) with 10-request queue
-- Streaming chunk size: 1024 bytes optimal for local inference
+- Concurrency: Single request at a time (LM Studio limitation) with 20-request queue
+- Streaming chunk size: 1024 bytes with 50ms SSE throttling to prevent UI flooding
 - Timeouts: 120s per request, 30s warning threshold
+- Connection health tracking with consecutive failure detection
+- Performance telemetry: tokens/sec monitoring with M4 Pro threshold validation
 
 **Recommended LM Studio Settings:**
 - GPU Layers: -1 (all layers on GPU for Metal acceleration)

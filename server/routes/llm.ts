@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../storage";
-import { createLLMClient, checkConnection, LLM_DEFAULTS } from "../llm-client";
+import { createLLMClient, checkConnection, LLM_DEFAULTS, getLLMQueueStatus, getConnectionHealth, getTelemetry } from "../llm-client";
 import { llmSettingsSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -79,6 +79,15 @@ router.post("/status", async (req, res) => {
       error: error.message 
     });
   }
+});
+
+// Queue status endpoint for UI backpressure indicator
+router.get("/queue-status", (_req, res) => {
+  res.json({
+    queue: getLLMQueueStatus(),
+    health: getConnectionHealth(),
+    telemetry: getTelemetry(),
+  });
 });
 
 router.get("/models", async (req, res) => {

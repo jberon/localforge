@@ -14,11 +14,16 @@ if (process.platform === 'darwin') {
   // Enable hardware acceleration and GPU compositing for Apple Silicon
   app.commandLine.appendSwitch('enable-gpu-rasterization');
   app.commandLine.appendSwitch('enable-zero-copy');
-  app.commandLine.appendSwitch('enable-features', 'Metal');
   app.commandLine.appendSwitch('disable-software-rasterizer');
+  // Combined enable-features flag (single call to avoid overrides)
+  app.commandLine.appendSwitch('enable-features', 'Metal,CanvasOopRasterization,VSync');
+  // Use GPU for compositing (leverages M4 Pro's 20-core GPU)
+  app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
 }
-// Increase V8 heap size for handling large code generation (optimized for high-memory systems)
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=8192');
+// Increase V8 heap size for handling large code generation (optimized for 48GB unified memory)
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=8192 --expose-gc');
+// Optimize for high memory systems
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 // Common paths where node might be installed on macOS
 const NODE_DIRECT_PATHS = [
@@ -536,6 +541,6 @@ app.setAboutPanelOptions({
   applicationName: 'LocalForge',
   applicationVersion: app.getVersion(),
   version: app.getVersion(),
-  copyright: '© 2025 Josh Beron',
-  credits: 'Built with Electron, React, and LM Studio integration'
+  copyright: '© 2026 Josh Beron',
+  credits: 'Built with Electron, React, and LM Studio integration\nOptimized for MacBook Pro M4 Pro'
 });

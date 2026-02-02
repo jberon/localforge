@@ -136,8 +136,39 @@ class RequestQueue {
 // Singleton request queue for LLM requests (enforces single concurrent request for LM Studio)
 const llmRequestQueue = new RequestQueue(
   1,  // maxConcurrent: LM Studio handles one request at a time
-  10  // maxQueueSize: Queue up to 10 requests
+  20  // maxQueueSize: Queue up to 20 requests (increased for better UX during multi-panel actions)
 );
+
+// Connection health state
+interface ConnectionHealth {
+  isHealthy: boolean;
+  lastCheck: number;
+  consecutiveFailures: number;
+  lastError?: string;
+}
+
+const connectionHealth: ConnectionHealth = {
+  isHealthy: false,
+  lastCheck: 0,
+  consecutiveFailures: 0,
+};
+
+export function getConnectionHealth(): ConnectionHealth {
+  return { ...connectionHealth };
+}
+
+export function updateConnectionHealth(success: boolean, error?: string): void {
+  connectionHealth.lastCheck = Date.now();
+  if (success) {
+    connectionHealth.isHealthy = true;
+    connectionHealth.consecutiveFailures = 0;
+    connectionHealth.lastError = undefined;
+  } else {
+    connectionHealth.consecutiveFailures++;
+    connectionHealth.isHealthy = false;
+    connectionHealth.lastError = error;
+  }
+}
 
 export function createLLMClient(config: LLMClientConfig): OpenAI {
   const endpoint = config.endpoint || DEFAULT_ENDPOINT;
@@ -323,22 +354,43 @@ export async function checkConnection(endpoint: string): Promise<{
   models?: string[];
   error?: string;
   telemetry?: PerformanceTelemetry;
+  health?: ConnectionHealth;
+  queueStatus?: { pending: number; active: number };
 }> {
   try {
     const client = createLLMClient({ endpoint });
     const models = await client.models.list();
     const modelIds = models.data?.map((m) => m.id) || [];
     
+    updateConnectionHealth(true);
+    
     return {
       connected: true,
       models: modelIds,
       telemetry: getTelemetry(),
+      health: getConnectionHealth(),
+      queueStatus: getLLMQueueStatus(),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
+    
+    // Provide more helpful error messages
+    let friendlyError = message;
+    if (message.includes("ECONNREFUSED") || message.includes("fetch failed")) {
+      friendlyError = "LM Studio is not running. Please start LM Studio and load a model.";
+    } else if (message.includes("No models loaded")) {
+      friendlyError = "LM Studio is running but no model is loaded. Please load a model in LM Studio.";
+    } else if (message.includes("timeout")) {
+      friendlyError = "Connection timed out. LM Studio may be busy or unresponsive.";
+    }
+    
+    updateConnectionHealth(false, friendlyError);
+    
     return {
       connected: false,
-      error: message,
+      error: friendlyError,
+      health: getConnectionHealth(),
+      queueStatus: getLLMQueueStatus(),
     };
   }
 }
@@ -359,7 +411,7 @@ export const M4_PRO_CONFIG = {
   // Concurrency limits to prevent memory pressure
   concurrency: {
     maxParallelRequests: 1,        // LM Studio handles one request at a time
-    requestQueueSize: 10,          // Queue up to 10 requests
+    requestQueueSize: 20,          // Queue up to 20 requests (increased for multi-panel UX)
     streamingChunkSize: 1024,      // Optimal chunk size for streaming
   },
   // Recommended LM Studio settings for best performance
