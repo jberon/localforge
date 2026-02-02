@@ -53,6 +53,24 @@ jobs:
           chmod +x scripts/setup-electron.sh
           LOCALFORGE_VERSION=${{ steps.version.outputs.VERSION }} SKIP_BACKUP=true ./scripts/setup-electron.sh
       
+      - name: Generate app icon
+        run: |
+          # Install rsvg-convert for SVG to PNG conversion
+          brew install librsvg
+          # Create 512x512 PNG from SVG
+          rsvg-convert -w 512 -h 512 electron/assets/icon.svg -o electron/assets/icon.png
+          # Create iconset for macOS
+          mkdir -p electron/assets/icon.iconset
+          for size in 16 32 64 128 256 512; do
+            rsvg-convert -w $size -h $size electron/assets/icon.svg -o "electron/assets/icon.iconset/icon_${size}x${size}.png"
+            if [ $size -le 256 ]; then
+              rsvg-convert -w $((size*2)) -h $((size*2)) electron/assets/icon.svg -o "electron/assets/icon.iconset/icon_${size}x${size}@2x.png"
+            fi
+          done
+          # Convert to icns
+          iconutil -c icns electron/assets/icon.iconset -o electron/assets/icon.icns
+          ls -la electron/assets/
+      
       - name: Build application
         run: npm run build
       

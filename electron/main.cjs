@@ -78,6 +78,8 @@ function createMenu() {
         { label: 'Reload', accelerator: 'CmdOrCtrl+R', role: 'reload' },
         { label: 'Force Reload', accelerator: 'CmdOrCtrl+Shift+R', role: 'forceReload' },
         { type: 'separator' },
+        { label: 'Toggle Developer Tools', accelerator: 'Alt+CmdOrCtrl+I', role: 'toggleDevTools' },
+        { type: 'separator' },
         { label: 'Actual Size', accelerator: 'CmdOrCtrl+0', role: 'resetZoom' },
         { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', role: 'zoomIn' },
         { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', role: 'zoomOut' },
@@ -173,6 +175,21 @@ function startServer() {
   });
 }
 
+function checkPortAvailable(port) {
+  return new Promise((resolve) => {
+    const net = require('net');
+    const tester = net.createServer()
+      .once('error', (err) => {
+        resolve(err.code !== 'EADDRINUSE');
+      })
+      .once('listening', () => {
+        tester.close();
+        resolve(true);
+      })
+      .listen(port, '127.0.0.1');
+  });
+}
+
 function waitForServer(callback, attempts = 0) {
   const maxAttempts = 60;
   const delay = 500;
@@ -189,11 +206,17 @@ function waitForServer(callback, attempts = 0) {
     }
   });
 
-  req.on('error', () => {
+  req.on('error', async () => {
     if (attempts < maxAttempts) {
       setTimeout(() => waitForServer(callback, attempts + 1), delay);
     } else {
-      showErrorWindow('Could not connect to LocalForge server. Please check if port 5000 is available.');
+      // Check if port is in use by another application
+      const portFree = await checkPortAvailable(PORT);
+      if (!portFree) {
+        showErrorWindow(`Port ${PORT} is already in use by another application.\n\nOn macOS, AirPlay Receiver often uses port 5000.\n\nTo fix: Go to System Settings → AirDrop & Handoff → AirPlay Receiver → Turn OFF`);
+      } else {
+        showErrorWindow('Could not connect to LocalForge server. Please restart the application.');
+      }
     }
   });
 
