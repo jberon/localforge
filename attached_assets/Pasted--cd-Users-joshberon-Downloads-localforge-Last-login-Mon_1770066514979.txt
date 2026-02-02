@@ -1,0 +1,309 @@
+## cd /Users/joshberon/Downloads/localforge ##
+Last login: Mon Feb  2 16:03:34 on ttys005
+joshberon@MacBook-Pro ~ % cd ~/Downloads
+rm -rf localforge
+cp -r Local-Dev-Suite localforge
+cd localforge
+rm -rf .git .local
+git init
+git add .
+git commit -m "LocalForge v1.2.0 - M4 Pro optimization and improved resilience
+
+- Added LLM request queue enforcing single concurrent request
+- Implemented JSON parsing retry with exponential backoff (3 attempts)
+- Added safe JSON extraction from markdown/raw responses
+- Improved planning phase with explicit re-prompting on failures
+- Enhanced error handling with graceful fallbacks
+- Excluded Replit internal files from repository"
+
+git remote add origin https://github.com/jberon/localforge.git
+git push origin main --force
+git tag -f v1.2.0
+git push origin v1.2.0 --force
+Initialized empty Git repository in /Users/joshberon/Downloads/localforge/.git/
+[main (root-commit) 345e865] LocalForge v1.2.0 - M4 Pro optimization and improved resilience
+ Committer: Josh Beron <joshberon@MacBook-Pro.local>
+Your name and email address were configured automatically based
+on your username and hostname. Please check that they are accurate.
+You can suppress this message by setting them explicitly. Run the
+following command and follow the instructions in your editor to edit
+your configuration file:
+
+    git config --global --edit
+
+After doing this, you may fix the identity used for this commit with:
+
+    git commit --amend --reset-author
+
+ 258 files changed, 45721 insertions(+)
+ create mode 100644 .github/workflows/build-desktop.yml
+ create mode 100644 .gitignore
+ create mode 100644 .replit
+ create mode 100644 ELECTRON_BUILD.md
+ create mode 100644 GITHUB_SETUP.md
+ create mode 100644 README.md
+ create mode 100644 attached_assets/My_Mac_1770061332684.png
+ create mode 100644 attached_assets/My_Mac_1770064124747.png
+ create mode 100644 attached_assets/Pasted-Expiration-This-token-expires-on-Wed-Mar-4-2026-To-set-_1770008925269.txt
+ create mode 100644 attached_assets/Pasted-Last-login-Mon-Feb-2-16-02-26-on-ttys004-joshberon-MacB_1770066244876.txt
+ create mode 100644 attached_assets/Pasted-You-are-Rory-Sutherland-co-chairman-of-Ogilvy-You-are-a_1769920078014.txt
+ create mode 100644 attached_assets/Pasted-You-are-updating-an-existing-TypeScript-based-desktop-a_1770057727209.txt
+ create mode 100644 attached_assets/Pasted-You-don-t-need-a-web-search-model-you-just-need-to-tell_1770057708910.txt
+ create mode 100644 attached_assets/Pasted-joshberon-MacBook-Pro-Local-Dev-Suite-lsof-i-5000-COMMA_1770048845007.txt
+ create mode 100644 attached_assets/Pasted-joshberon-MacBook-Pro-Local-Dev-Suite-lsof-i-5000-COMMA_1770048884326.txt
+ create mode 100644 attached_assets/Screenshot_2026-01-09_at_3.37.19_PM_1769912440194.png
+ create mode 100644 attached_assets/Screenshot_2026-01-09_at_3.37.19_PM_1769975737333.png
+ create mode 100644 attached_assets/Screenshot_2026-01-09_at_3.37.19_PM_1769998972087.png
+ create mode 100644 attached_assets/Screenshot_2026-01-09_at_3.37.19_PM_1770047200091.png
+ create mode 100644 attached_assets/Screenshot_2026-01-09_at_3.37.19_PM_1770059456123.png
+ create mode 100644 attached_assets/Screenshot_2026-01-31_at_11.30.28_PM_1769920229741.png
+ create mode 100644 attached_assets/Screenshot_2026-01-31_at_11.37.04_PM_1769920625934.png
+ create mode 100644 attached_assets/Screenshot_2026-01-31_at_9.31.02_PM_1769913063829.png
+ create mode 100644 attached_assets/Screenshot_2026-01-31_at_9.32.51_PM_1769913211585.png
+ create mode 100644 attached_assets/Screenshot_2026-01-31_at_9.33.03_PM_1769913211585.png
+ create mode 100644 attached_assets/Screenshot_2026-01-31_at_9.33.12_PM_1769913211585.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.08.00_PM_1769969625931.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.14.09_PM_1769969652819.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.24.59_AM_1769927101892.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.25.58_AM_1769927160283.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.26.16_AM_1769927177979.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.26.52_AM_1769927215612.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.29.44_AM_1769927387642.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.34.09_AM_1769927652295.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.38.55_AM_1769927939411.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_1.56.05_AM_1769928967267.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_10.02.15_PM_1770001347898.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_11.33.14_AM_1769963595599.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_11.34.32_AM_1769963673705.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_11.40.11_AM_1769964012465.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_11.40.24_AM_1769964025401.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_11.58.40_PM_1770008325209.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.09.28_AM_1769922570034.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.28.42_AM_1769923724099.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.33.58_AM_1769924039735.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.34.57_AM_1769924100972.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.35.24_AM_1769924126723.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.37.39_AM_1769924262363.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.50.47_AM_1769925078446.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.51.33_AM_1769925096399.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.52.57_AM_1769925179140.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.53.16_AM_1769925198316.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_12.54.27_AM_1769925269079.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_2.07.50_AM_1769929671464.png
+ create mode 100644 attached_assets/Screenshot_2026-02-01_at_9.51.13_PM_1770000675410.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_1.12.46_PM_(2)_1770056069660.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_1.13.57_PM_1770056039773.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_1.45.20_PM_1770057922775.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_10.11.22_AM_1770045085267.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_10.36.23_AM_1770046585075.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_11.10.20_AM_1770048624070.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_11.12.59_AM_1770048780904.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.00.56_AM_1770008459469.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.01.27_AM_1770008509293.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.03.23_PM_1770051805120.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.05.45_PM_1770051947101.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.05.54_PM_1770051956120.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.15.03_AM_1770009308440.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.22.18_PM_1770052940853.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.26.31_PM_1770053192830.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.30.03_PM_1770053405290.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_12.59.34_PM_1770055176471.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_2.00.38_PM_1770058841736.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_2.01.32_PM_1770058895168.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_2.04.01_PM_1770059044222.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_2.05.12_PM_1770059114234.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_2.06.42_PM_1770059204740.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_2.08.30_PM_1770059313293.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_2.09.05_PM_1770059347350.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_3.26.34_PM_1770063996142.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.14.39_AM_1770041681436.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.15.10_AM_1770041713506.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.16.22_AM_1770041786425.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.16.22_AM_2_1770041786425.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.17.57_AM_1770041880759.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.19.00_AM_1770041944095.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.20.51_AM_1770042066182.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.22.17_AM_1770042139325.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.23.16_AM_1770042198154.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.24.39_AM_1770042281460.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.25.18_AM_1770042320490.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.26.25_AM_1770042387206.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.28.09_AM_1770042492124.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.48.07_AM_1770043689969.png
+ create mode 100644 attached_assets/Screenshot_2026-02-02_at_9.54.49_AM_1770044091982.png
+ create mode 100644 attached_assets/image_1769972972306.png
+ create mode 100644 attached_assets/image_1769973501898.png
+ create mode 100644 attached_assets/image_1770047440025.png
+ create mode 100644 attached_assets/image_1770047685822.png
+ create mode 100644 attached_assets/image_1770052034671.png
+ create mode 100644 client/index.html
+ create mode 100644 client/public/favicon.png
+ create mode 100644 client/src/App.tsx
+ create mode 100644 client/src/components/ai-thinking-panel.tsx
+ create mode 100644 client/src/components/attachment-preview.tsx
+ create mode 100644 client/src/components/chat-panel.tsx
+ create mode 100644 client/src/components/code-assistant.tsx
+ create mode 100644 client/src/components/command-palette.tsx
+ create mode 100644 client/src/components/connection-helper.tsx
+ create mode 100644 client/src/components/console-panel.tsx
+ create mode 100644 client/src/components/dream-team-panel.tsx
+ create mode 100644 client/src/components/dream-team-settings.tsx
+ create mode 100644 client/src/components/dual-model-settings.tsx
+ create mode 100644 client/src/components/empty-state.tsx
+ create mode 100644 client/src/components/error-boundary.tsx
+ create mode 100644 client/src/components/error-recovery.tsx
+ create mode 100644 client/src/components/example-prompts.tsx
+ create mode 100644 client/src/components/feedback-panel.tsx
+ create mode 100644 client/src/components/file-explorer.tsx
+ create mode 100644 client/src/components/generation-wizard.tsx
+ create mode 100644 client/src/components/launch-guide.tsx
+ create mode 100644 client/src/components/onboarding-modal.tsx
+ create mode 100644 client/src/components/plan-review-panel.tsx
+ create mode 100644 client/src/components/preview-panel.tsx
+ create mode 100644 client/src/components/project-sidebar.tsx
+ create mode 100644 client/src/components/project-team-panel.tsx
+ create mode 100644 client/src/components/publishing-panel.tsx
+ create mode 100644 client/src/components/quick-undo.tsx
+ create mode 100644 client/src/components/refinement-panel.tsx
+ create mode 100644 client/src/components/success-celebration.tsx
+ create mode 100644 client/src/components/test-preview.tsx
+ create mode 100644 client/src/components/theme-toggle.tsx
+ create mode 100644 client/src/components/ui/accordion.tsx
+ create mode 100644 client/src/components/ui/alert-dialog.tsx
+ create mode 100644 client/src/components/ui/alert.tsx
+ create mode 100644 client/src/components/ui/aspect-ratio.tsx
+ create mode 100644 client/src/components/ui/avatar.tsx
+ create mode 100644 client/src/components/ui/badge.tsx
+ create mode 100644 client/src/components/ui/breadcrumb.tsx
+ create mode 100644 client/src/components/ui/button.tsx
+ create mode 100644 client/src/components/ui/calendar.tsx
+ create mode 100644 client/src/components/ui/card.tsx
+ create mode 100644 client/src/components/ui/carousel.tsx
+ create mode 100644 client/src/components/ui/chart.tsx
+ create mode 100644 client/src/components/ui/checkbox.tsx
+ create mode 100644 client/src/components/ui/collapsible.tsx
+ create mode 100644 client/src/components/ui/command.tsx
+ create mode 100644 client/src/components/ui/context-menu.tsx
+ create mode 100644 client/src/components/ui/dialog.tsx
+ create mode 100644 client/src/components/ui/drawer.tsx
+ create mode 100644 client/src/components/ui/dropdown-menu.tsx
+ create mode 100644 client/src/components/ui/form.tsx
+ create mode 100644 client/src/components/ui/hover-card.tsx
+ create mode 100644 client/src/components/ui/input-otp.tsx
+ create mode 100644 client/src/components/ui/input.tsx
+ create mode 100644 client/src/components/ui/label.tsx
+ create mode 100644 client/src/components/ui/menubar.tsx
+ create mode 100644 client/src/components/ui/navigation-menu.tsx
+ create mode 100644 client/src/components/ui/pagination.tsx
+ create mode 100644 client/src/components/ui/popover.tsx
+ create mode 100644 client/src/components/ui/progress.tsx
+ create mode 100644 client/src/components/ui/radio-group.tsx
+ create mode 100644 client/src/components/ui/resizable.tsx
+ create mode 100644 client/src/components/ui/scroll-area.tsx
+ create mode 100644 client/src/components/ui/select.tsx
+ create mode 100644 client/src/components/ui/separator.tsx
+ create mode 100644 client/src/components/ui/sheet.tsx
+ create mode 100644 client/src/components/ui/sidebar.tsx
+ create mode 100644 client/src/components/ui/skeleton.tsx
+ create mode 100644 client/src/components/ui/slider.tsx
+ create mode 100644 client/src/components/ui/switch.tsx
+ create mode 100644 client/src/components/ui/table.tsx
+ create mode 100644 client/src/components/ui/tabs.tsx
+ create mode 100644 client/src/components/ui/textarea.tsx
+ create mode 100644 client/src/components/ui/toast.tsx
+ create mode 100644 client/src/components/ui/toaster.tsx
+ create mode 100644 client/src/components/ui/toggle-group.tsx
+ create mode 100644 client/src/components/ui/toggle.tsx
+ create mode 100644 client/src/components/ui/tooltip.tsx
+ create mode 100644 client/src/components/version-history.tsx
+ create mode 100644 client/src/components/wizard/configure-step.tsx
+ create mode 100644 client/src/components/wizard/data-model-builder.tsx
+ create mode 100644 client/src/components/wizard/freeform-prompt.tsx
+ create mode 100644 client/src/components/wizard/index.ts
+ create mode 100644 client/src/components/wizard/module-selector.tsx
+ create mode 100644 client/src/components/wizard/review-step.tsx
+ create mode 100644 client/src/components/wizard/template-selector.tsx
+ create mode 100644 client/src/components/wizard/templates.ts
+ create mode 100644 client/src/components/wizard/types.ts
+ create mode 100644 client/src/components/working-indicator.tsx
+ create mode 100644 client/src/hooks/use-file-attachments.tsx
+ create mode 100644 client/src/hooks/use-keyboard-shortcuts.tsx
+ create mode 100644 client/src/hooks/use-mobile.tsx
+ create mode 100644 client/src/hooks/use-speech-recognition.tsx
+ create mode 100644 client/src/hooks/use-theme.tsx
+ create mode 100644 client/src/hooks/use-toast.ts
+ create mode 100644 client/src/index.css
+ create mode 100644 client/src/lib/analytics.ts
+ create mode 100644 client/src/lib/queryClient.ts
+ create mode 100644 client/src/lib/request-classifier.ts
+ create mode 100644 client/src/lib/utils.ts
+ create mode 100644 client/src/main.tsx
+ create mode 100644 client/src/pages/analytics.tsx
+ create mode 100644 client/src/pages/home.tsx
+ create mode 100644 client/src/pages/not-found.tsx
+ create mode 100644 client/src/pages/preview.tsx
+ create mode 100644 components.json
+ create mode 100644 drizzle.config.ts
+ create mode 100644 electron-builder.json
+ create mode 100644 electron/assets/icon.svg
+ create mode 100644 electron/entitlements.mac.plist
+ create mode 100644 electron/main.cjs
+ create mode 100644 electron/preload.cjs
+ create mode 100644 generated-icon.png
+ create mode 100644 package-lock.json
+ create mode 100644 package.json
+ create mode 100644 postcss.config.js
+ create mode 100644 replit.md
+ create mode 100644 script/build.ts
+ create mode 100755 scripts/build-desktop.sh
+ create mode 100755 scripts/setup-electron.sh
+ create mode 100644 server/analytics-storage.ts
+ create mode 100644 server/code-generator.ts
+ create mode 100644 server/db.ts
+ create mode 100644 server/generators/cicd.ts
+ create mode 100644 server/generators/docker.ts
+ create mode 100644 server/generators/environment.ts
+ create mode 100644 server/generators/frontend.ts
+ create mode 100644 server/generators/package.ts
+ create mode 100644 server/generators/routes.ts
+ create mode 100644 server/generators/schema.ts
+ create mode 100644 server/generators/testing.ts
+ create mode 100644 server/generators/utils.ts
+ create mode 100644 server/generators/validator.ts
+ create mode 100644 server/index.ts
+ create mode 100644 server/llm-client.ts
+ create mode 100644 server/routes.ts
+ create mode 100644 server/routes/analytics.ts
+ create mode 100644 server/routes/dream-team.ts
+ create mode 100644 server/routes/files.ts
+ create mode 100644 server/routes/generation.ts
+ create mode 100644 server/routes/health.ts
+ create mode 100644 server/routes/llm.ts
+ create mode 100644 server/routes/package.ts
+ create mode 100644 server/routes/projects.ts
+ create mode 100644 server/routes/versions.ts
+ create mode 100644 server/services/dreamTeam.ts
+ create mode 100644 server/services/orchestrator.ts
+ create mode 100644 server/services/productionOrchestrator.ts
+ create mode 100644 server/services/webSearch.ts
+ create mode 100644 server/services/webSearchClassifier.ts
+ create mode 100644 server/static.ts
+ create mode 100644 server/storage.ts
+ create mode 100644 server/vite.ts
+ create mode 100644 shared/schema.ts
+ create mode 100644 tailwind.config.ts
+ create mode 100644 tsconfig.json
+ create mode 100644 vite.config.ts
+Enumerating objects: 271, done.
+Counting objects: 100% (271/271), done.
+Delta compression using up to 14 threads
+Compressing objects: 100% (265/265), done.
+Writing objects: 100% (271/271), 22.87 MiB | 27.81 MiB/s, done.
+Total 271 (delta 10), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (10/10), done.
+To https://github.com/jberon/localforge.git
+ + b972e3a...345e865 main -> main (forced update)
+Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+To https://github.com/jberon/localforge.git
+ + 01a09b6...345e865 v1.2.0 -> v1.2.0 (forced update)
+joshberon@MacBook-Pro localforge % 
