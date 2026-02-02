@@ -160,40 +160,38 @@ export function ProjectSidebar({
 
   return (
     <Sidebar className="border-r">
-      <SidebarHeader className="p-4 pt-8 pl-20 electron-drag-region">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-              <Hammer className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-semibold">LocalForge</span>
+      <SidebarHeader className="p-4 pt-8 electron-drag-region">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+            <Hammer className="h-4 w-4 text-white" />
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={onNewProject}
-            data-testid="button-new-project"
-            className="electron-no-drag"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          <span className="font-semibold text-base">LocalForge</span>
         </div>
+        <Button
+          variant="ghost"
+          onClick={onNewProject}
+          data-testid="button-new-project"
+          className="w-full justify-center h-9 border border-dashed border-muted-foreground/30 hover:border-muted-foreground/50 electron-no-drag"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          <span className="text-sm">New Project</span>
+        </Button>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            <ScrollArea className="h-[calc(100vh-180px)]">
-              <SidebarMenu className="px-2">
+            <ScrollArea className="h-[calc(100vh-220px)]">
+              <SidebarMenu className="px-2 space-y-1">
                 {projects.length === 0 ? (
                   <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                     No projects yet.
                     <br />
-                    Click + to create one.
+                    Create one to get started.
                   </div>
                 ) : (
                   projects.map((project) => (
-                    <SidebarMenuItem key={project.id}>
+                    <SidebarMenuItem key={project.id} className="list-none">
                       {editingId === project.id ? (
                         <div className="flex items-center gap-1 px-2 py-1">
                           <Input
@@ -202,41 +200,41 @@ export function ProjectSidebar({
                             onChange={(e) => setEditingName(e.target.value)}
                             onKeyDown={handleKeyDown}
                             onBlur={saveEdit}
-                            className="h-7 text-sm"
+                            className="h-8 text-sm"
                             data-testid="input-project-name"
                           />
                         </div>
                       ) : (
-                        <div className="flex items-center group">
+                        <div className="flex items-center group w-full">
                           <SidebarMenuButton
                             isActive={project.id === activeProjectId}
                             onClick={() => onSelectProject(project.id)}
-                            className="flex-1"
+                            className="flex-1 justify-start px-3 py-2 h-auto min-h-[36px]"
                             data-testid={`button-project-${project.id}`}
                           >
-                            <span className="truncate">{project.name}</span>
+                            <span className="truncate text-sm">{project.name}</span>
                           </SidebarMenuButton>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                 data-testid={`button-project-menu-${project.id}`}
                               >
-                                <MoreHorizontal className="h-3 w-3" />
+                                <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => startEditing(project)}>
-                                <Pencil className="h-3 w-3 mr-2" />
+                                <Pencil className="h-4 w-4 mr-2" />
                                 Rename
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => onDeleteProject(project.id)}
                                 className="text-destructive"
                               >
-                                <Trash2 className="h-3 w-3 mr-2" />
+                                <Trash2 className="h-4 w-4 mr-2" />
                                 Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
