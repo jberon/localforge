@@ -27,7 +27,8 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Users, Globe, Settings } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Users, Globe, Settings, PanelRight, PanelRightClose, FolderTree } from "lucide-react";
+import { FileExplorer } from "@/components/file-explorer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,7 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Link } from "wouter";
 import JSZip from "jszip";
-import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion } from "@shared/schema";
+import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion, GeneratedFile } from "@shared/schema";
 import { defaultDreamTeamPersonas } from "@shared/schema";
 import type { Attachment } from "@/hooks/use-file-attachments";
 
@@ -57,6 +58,8 @@ export default function Home() {
   const [isCheckingConnection, setIsCheckingConnection] = useState(false);
   const [lastError, setLastError] = useState<{ message: string; prompt?: string } | null>(null);
   const [showQuickUndo, setShowQuickUndo] = useState(false);
+  const [showFileExplorer, setShowFileExplorer] = useState(true);
+  const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
   const generationRequestRef = useRef<string | null>(null);
   const [settings, setSettings] = useState<LLMSettings>({
     endpoint: "http://localhost:1234/v1",
@@ -1029,6 +1032,17 @@ export default function Home() {
                 </div>
               )}
               <ThemeToggle />
+              {!showFileExplorer && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowFileExplorer(true)}
+                  title="Show Files"
+                  data-testid="button-show-files"
+                >
+                  <PanelRight className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </header>
           
@@ -1057,8 +1071,9 @@ export default function Home() {
               </div>
             ) : (
               <ResizablePanelGroup direction="horizontal">
-                <ResizablePanel defaultSize={40} minSize={25}>
-                  <div className="flex flex-col h-full">
+                {/* Left Panel: Chat */}
+                <ResizablePanel defaultSize={30} minSize={20} maxSize={45}>
+                  <div className="flex flex-col h-full border-r">
                     {lastError && !isGenerating && (
                       <div className="p-4 border-b">
                         <ErrorRecovery
@@ -1083,7 +1098,9 @@ export default function Home() {
                   </div>
                 </ResizablePanel>
                 <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={60} minSize={35}>
+                
+                {/* Center Panel: Preview/App */}
+                <ResizablePanel defaultSize={showFileExplorer ? 50 : 70} minSize={30}>
                   <PreviewPanel
                     code={displayCode}
                     isGenerating={isGenerating}
@@ -1109,6 +1126,53 @@ export default function Home() {
                     }}
                   />
                 </ResizablePanel>
+                
+                {/* Right Panel: Files (Collapsible) */}
+                {showFileExplorer && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel defaultSize={20} minSize={15} maxSize={35}>
+                      <div className="flex flex-col h-full border-l bg-background">
+                        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
+                          <div className="flex items-center gap-2">
+                            <FolderTree className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm font-medium">Files</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => setShowFileExplorer(false)}
+                            data-testid="button-collapse-files"
+                          >
+                            <PanelRightClose className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          {activeProject?.generatedFiles && activeProject.generatedFiles.length > 0 ? (
+                            <FileExplorer
+                              files={activeProject.generatedFiles}
+                              selectedFile={selectedFile}
+                              onSelectFile={setSelectedFile}
+                              isGenerating={isGenerating}
+                              className="h-full"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                              <FolderTree className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                              <p className="text-sm text-muted-foreground">
+                                No files generated yet
+                              </p>
+                              <p className="text-xs text-muted-foreground/70 mt-1">
+                                Start a conversation to generate your app
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </ResizablePanel>
+                  </>
+                )}
               </ResizablePanelGroup>
             )}
           </main>
