@@ -179,7 +179,7 @@ function waitForServer(callback, attempts = 0) {
 
   const http = require('http');
   
-  const req = http.get(`http://localhost:${PORT}/health`, (res) => {
+  const req = http.get(`http://localhost:${PORT}/api/health`, (res) => {
     if (res.statusCode === 200) {
       callback();
     } else if (attempts < maxAttempts) {

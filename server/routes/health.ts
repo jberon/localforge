@@ -10,12 +10,17 @@ router.get("/", async (req, res) => {
   
   const checks: Record<string, { status: "healthy" | "unhealthy" | "degraded"; latencyMs?: number; error?: string }> = {};
   
-  try {
-    const dbStart = Date.now();
-    await db.execute(sql`SELECT 1`);
-    checks.database = { status: "healthy", latencyMs: Date.now() - dbStart };
-  } catch (error: any) {
-    checks.database = { status: "unhealthy", error: error.message };
+  // Check database - handle null db (MemoryStorage mode)
+  if (db) {
+    try {
+      const dbStart = Date.now();
+      await db.execute(sql`SELECT 1`);
+      checks.database = { status: "healthy", latencyMs: Date.now() - dbStart };
+    } catch (error: any) {
+      checks.database = { status: "unhealthy", error: error.message };
+    }
+  } else {
+    checks.database = { status: "degraded", error: "Using in-memory storage" };
   }
   
   try {
@@ -50,6 +55,12 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/ready", async (req, res) => {
+  // In MemoryStorage mode, we're always ready
+  if (!db) {
+    res.json({ ready: true, mode: "memory" });
+    return;
+  }
+  
   try {
     await db.execute(sql`SELECT 1`);
     res.json({ ready: true });
