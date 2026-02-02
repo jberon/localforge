@@ -205,25 +205,23 @@ export function ProjectSidebar({
                           />
                         </div>
                       ) : (
-                        <div className="flex items-center group/project w-full">
-                          <SidebarMenuButton
-                            isActive={project.id === activeProjectId}
-                            onClick={() => onSelectProject(project.id)}
-                            className="flex-1 justify-start px-3 py-2 h-auto min-h-[36px]"
-                            data-testid={`button-project-${project.id}`}
-                          >
-                            <span className="truncate text-sm">{project.name}</span>
-                          </SidebarMenuButton>
+                        <SidebarMenuButton
+                          isActive={project.id === activeProjectId}
+                          onClick={() => onSelectProject(project.id)}
+                          className="flex items-center justify-between w-full px-3 py-2 h-auto min-h-[36px] group/project"
+                          data-testid={`button-project-${project.id}`}
+                        >
+                          <span className="truncate text-sm flex-1">{project.name}</span>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 opacity-0 group-hover/project:opacity-100 transition-opacity flex-shrink-0"
+                              <div
+                                role="button"
+                                onClick={(e) => e.stopPropagation()}
+                                className="h-6 w-6 flex items-center justify-center rounded opacity-0 group-hover/project:opacity-100 hover:bg-accent transition-opacity flex-shrink-0"
                                 data-testid={`button-project-menu-${project.id}`}
                               >
                                 <MoreHorizontal className="h-4 w-4" />
-                              </Button>
+                              </div>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => startEditing(project)}>
@@ -239,7 +237,7 @@ export function ProjectSidebar({
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </div>
+                        </SidebarMenuButton>
                       )}
                     </SidebarMenuItem>
                   ))
