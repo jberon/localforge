@@ -122,23 +122,44 @@ router.post("/:id/chat", async (req, res) => {
 
       const endTime = Date.now();
 
-      await storage.addMessage(projectId, {
-        role: "assistant",
-        content: "I've generated the app for you. Check the preview panel to see it in action!",
-      });
+      // Only show success message if we actually generated code
+      if (cleanedCode && cleanedCode.length > 50) {
+        await storage.addMessage(projectId, {
+          role: "assistant",
+          content: "I've generated the app for you. Check the preview panel to see it in action!",
+        });
 
-      await storage.updateProject(projectId, {
-        generatedCode: cleanedCode,
-        generationMetrics: {
-          startTime,
-          endTime,
-          durationMs: endTime - startTime,
-          promptLength: content.length,
-          responseLength: fullContent.length,
-          status: "success",
-          retryCount: 0,
-        },
-      });
+        await storage.updateProject(projectId, {
+          generatedCode: cleanedCode,
+          generationMetrics: {
+            startTime,
+            endTime,
+            durationMs: endTime - startTime,
+            promptLength: content.length,
+            responseLength: fullContent.length,
+            status: "success",
+            retryCount: 0,
+          },
+        });
+      } else {
+        await storage.addMessage(projectId, {
+          role: "assistant",
+          content: "I couldn't generate the app. The response was empty or incomplete. Please try again or check that LM Studio is running properly.",
+        });
+
+        await storage.updateProject(projectId, {
+          generationMetrics: {
+            startTime,
+            endTime,
+            durationMs: endTime - startTime,
+            promptLength: content.length,
+            responseLength: fullContent.length,
+            status: "error",
+            errorMessage: "Empty or incomplete response",
+            retryCount: 0,
+          },
+        });
+      }
 
       const finalProject = await storage.getProject(projectId);
       res.write(`data: ${JSON.stringify({ type: "done", project: finalProject })}\n\n`);
@@ -251,20 +272,33 @@ router.post("/:id/refine", async (req, res) => {
         role: "user",
         content: `Refine: ${refinement}`,
       });
-      await storage.addMessage(projectId, {
-        role: "assistant",
-        content: "I've updated the app based on your feedback. Check the preview!",
-      });
 
-      await storage.updateProject(projectId, {
-        generatedCode: cleanedCode,
-      });
+      // Only show success if we actually got refined code
+      if (cleanedCode && cleanedCode.length > 50) {
+        await storage.addMessage(projectId, {
+          role: "assistant",
+          content: "I've updated the app based on your feedback. Check the preview!",
+        });
+
+        await storage.updateProject(projectId, {
+          generatedCode: cleanedCode,
+        });
+      } else {
+        await storage.addMessage(projectId, {
+          role: "assistant",
+          content: "I couldn't refine the app. The response was empty or incomplete. Please try again.",
+        });
+      }
 
       const finalProject = await storage.getProject(projectId);
       res.write(`data: ${JSON.stringify({ type: "done", project: finalProject })}\n\n`);
       res.end();
     } catch (llmError: any) {
       console.error("Refinement LLM Error:", llmError);
+      await storage.addMessage(projectId, {
+        role: "assistant",
+        content: `I couldn't refine the app. Error: ${llmError.message}`,
+      });
       res.write(`data: ${JSON.stringify({ type: "error", error: llmError.message })}\n\n`);
       res.end();
     }
