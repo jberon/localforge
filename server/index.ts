@@ -90,14 +90,36 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+  
+  // In production (desktop app), bind to localhost only for security
+  // In development, bind to 0.0.0.0 for external access
+  const host = process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0";
+  
   httpServer.listen(
     {
       port,
-      host: "0.0.0.0",
+      host,
       reusePort: true,
     },
     () => {
-      log(`serving on port ${port}`);
+      log(`serving on ${host}:${port}`);
     },
   );
+
+  // Graceful shutdown handling
+  const shutdown = () => {
+    log("Shutting down gracefully...");
+    httpServer.close(() => {
+      log("Server closed");
+      process.exit(0);
+    });
+    // Force exit after 5 seconds if graceful shutdown fails
+    setTimeout(() => {
+      log("Forcing shutdown");
+      process.exit(1);
+    }, 5000);
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 })();

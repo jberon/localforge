@@ -23,7 +23,9 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs')
     },
-    icon: undefined
+    icon: app.isPackaged 
+      ? path.join(process.resourcesPath, 'dist', 'icon.png')
+      : path.join(__dirname, 'assets', 'icon.svg')
   });
 
   const startUrl = isDev 

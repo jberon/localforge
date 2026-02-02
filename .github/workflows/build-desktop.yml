@@ -57,22 +57,23 @@ jobs:
         run: |
           # Install rsvg-convert for SVG to PNG conversion
           brew install librsvg
-          # Create 512x512 PNG from SVG
+          # Create 512x512 PNG from SVG (for window icon)
           rsvg-convert -w 512 -h 512 electron/assets/icon.svg -o electron/assets/icon.png
-          # Create iconset for macOS
+          # Create iconset for macOS (standard sizes only: 16, 32, 128, 256, 512)
           mkdir -p electron/assets/icon.iconset
-          for size in 16 32 64 128 256 512; do
+          for size in 16 32 128 256 512; do
             rsvg-convert -w $size -h $size electron/assets/icon.svg -o "electron/assets/icon.iconset/icon_${size}x${size}.png"
-            if [ $size -le 256 ]; then
-              rsvg-convert -w $((size*2)) -h $((size*2)) electron/assets/icon.svg -o "electron/assets/icon.iconset/icon_${size}x${size}@2x.png"
-            fi
+            rsvg-convert -w $((size*2)) -h $((size*2)) electron/assets/icon.svg -o "electron/assets/icon.iconset/icon_${size}x${size}@2x.png"
           done
           # Convert to icns
           iconutil -c icns electron/assets/icon.iconset -o electron/assets/icon.icns
           ls -la electron/assets/
       
       - name: Build application
-        run: npm run build
+        run: |
+          npm run build
+          # Copy icon to dist for BrowserWindow
+          cp electron/assets/icon.png dist/icon.png
       
       - name: Build Electron app
         run: npx electron-builder --mac --${{ matrix.arch }} --config electron-builder.json

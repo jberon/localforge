@@ -372,7 +372,7 @@ router.get("/export-manifest", async (req, res) => {
     
     const manifest = {
       exportedAt: new Date().toISOString(),
-      version: "1.0.0",
+      version: process.env.npm_package_version || "1.0.0",
       generator: "LocalForge",
       totalProjects: allProjects.length,
       projects: allProjects.map(p => ({
