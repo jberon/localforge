@@ -1,12 +1,61 @@
 const { app, BrowserWindow, Menu, shell } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
+const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
 
 const isDev = process.env.NODE_ENV === 'development';
 const PORT = process.env.PORT || 5000;
+
+// Common paths where node might be installed on macOS
+const NODE_PATHS = [
+  '/opt/homebrew/bin/node',      // Apple Silicon Homebrew
+  '/usr/local/bin/node',         // Intel Homebrew / manual install
+  '/usr/bin/node',               // System install
+  path.join(process.env.HOME || '', '.nvm/versions/node'),  // NVM (check subdirs)
+  path.join(process.env.HOME || '', '.volta/bin/node'),     // Volta
+  path.join(process.env.HOME || '', '.asdf/shims/node'),    // asdf
+];
+
+function findNodePath() {
+  // First check if node is in PATH (works in dev mode)
+  try {
+    const nodePath = execSync('which node', { encoding: 'utf8' }).trim();
+    if (nodePath && fs.existsSync(nodePath)) {
+      return nodePath;
+    }
+  } catch (e) {
+    // which failed, continue checking known paths
+  }
+
+  // Check known installation paths
+  for (const nodePath of NODE_PATHS) {
+    if (fs.existsSync(nodePath)) {
+      // Handle NVM which has version subdirectories
+      if (nodePath.includes('.nvm/versions/node')) {
+        try {
+          const versions = fs.readdirSync(nodePath);
+          if (versions.length > 0) {
+            // Use the most recent version (sorted)
+            const latestVersion = versions.sort().reverse()[0];
+            const nvmNodePath = path.join(nodePath, latestVersion, 'bin', 'node');
+            if (fs.existsSync(nvmNodePath)) {
+              return nvmNodePath;
+            }
+          }
+        } catch (e) {
+          continue;
+        }
+      } else {
+        return nodePath;
+      }
+    }
+  }
+
+  return null;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -129,21 +178,48 @@ function createMenu() {
 }
 
 function startServer() {
-  let appPath, serverPath;
+  let appPath, serverPath, command, args;
   
   if (app.isPackaged) {
+    // In packaged mode, find node installation
+    const nodePath = findNodePath();
+    
+    if (!nodePath) {
+      console.error('Node.js not found');
+      showErrorWindow(
+        'Node.js is required but was not found on your system.',
+        'Please install Node.js from nodejs.org and restart LocalForge.',
+        'https://nodejs.org'
+      );
+      return;
+    }
+    
+    console.log('Found Node.js at:', nodePath);
+    
     // In packaged mode, the app bundle is at app.getAppPath()
     // dist is copied to resources/dist via extraResources
     appPath = path.dirname(app.getAppPath());
     serverPath = path.join(process.resourcesPath, 'dist', 'index.cjs');
+    command = nodePath;
+    args = [serverPath];
+    
+    // Check if server file exists
+    if (!fs.existsSync(serverPath)) {
+      console.error('Server file not found:', serverPath);
+      showErrorWindow(
+        'Server files are missing.',
+        'The application may be corrupted. Please download LocalForge again.',
+        'https://github.com/jberon/localforge/releases'
+      );
+      return;
+    }
   } else {
     // In dev mode, run from project root
     appPath = path.join(__dirname, '..');
     serverPath = path.join(__dirname, '..', 'server', 'index.ts');
+    command = 'npx';
+    args = ['tsx', serverPath];
   }
-
-  const command = app.isPackaged ? 'node' : 'npx';
-  const args = app.isPackaged ? [serverPath] : ['tsx', serverPath];
 
   console.log('Starting server:', command, args.join(' '));
   console.log('Working directory:', appPath);
@@ -167,7 +243,11 @@ function startServer() {
 
   serverProcess.on('error', (err) => {
     console.error('Failed to start server:', err);
-    showErrorWindow(`Failed to start server: ${err.message}`);
+    showErrorWindow(
+      'Failed to start server',
+      err.message,
+      null
+    );
   });
 
   serverProcess.on('exit', (code) => {
@@ -204,7 +284,11 @@ function waitForServer(callback, attempts = 0) {
     } else if (attempts < maxAttempts) {
       setTimeout(() => waitForServer(callback, attempts + 1), delay);
     } else {
-      showErrorWindow('Server health check failed. Please restart the application.');
+      showErrorWindow(
+        'Server health check failed',
+        'The server started but is not responding correctly. Please restart LocalForge.',
+        null
+      );
     }
   });
 
@@ -215,9 +299,17 @@ function waitForServer(callback, attempts = 0) {
       // Check if port is in use by another application
       const portFree = await checkPortAvailable(PORT);
       if (!portFree) {
-        showErrorWindow(`Port ${PORT} is already in use by another application.\n\nOn macOS, AirPlay Receiver often uses port 5000.\n\nTo fix: Go to System Settings → AirDrop & Handoff → AirPlay Receiver → Turn OFF`);
+        showErrorWindow(
+          `Port ${PORT} is already in use`,
+          'Another application is using this port. On macOS, AirPlay Receiver often uses port 5000.\n\nTo fix: Go to System Settings → AirDrop & Handoff → AirPlay Receiver → Turn OFF',
+          null
+        );
       } else {
-        showErrorWindow('Could not connect to LocalForge server. Please restart the application.');
+        showErrorWindow(
+          'Could not connect to server',
+          'LocalForge server failed to start. Please restart the application.',
+          null
+        );
       }
     }
   });
@@ -225,56 +317,125 @@ function waitForServer(callback, attempts = 0) {
   req.end();
 }
 
-function showErrorWindow(message) {
+function showErrorWindow(title, description, helpUrl) {
   const errorWindow = new BrowserWindow({
-    width: 500,
-    height: 300,
+    width: 520,
+    height: 380,
     title: 'LocalForge - Error',
     backgroundColor: '#0a0a0b',
+    resizable: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true
     }
   });
 
-  errorWindow.loadURL(`data:text/html,
-    <html>
-      <head>
-        <style>
-          body { 
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
-            background: #0a0a0b; 
-            color: white; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            height: 100vh; 
-            margin: 0;
-            flex-direction: column;
-            text-align: center;
-            padding: 20px;
-          }
-          h1 { color: #ef4444; margin-bottom: 16px; }
-          p { color: #a1a1aa; margin-bottom: 24px; }
-          button {
-            background: #6366f1;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-          }
-          button:hover { background: #4f46e5; }
-        </style>
-      </head>
-      <body>
-        <h1>Startup Error</h1>
-        <p>${message}</p>
-        <button onclick="window.close()">Close</button>
-      </body>
-    </html>
-  `);
+  // Escape HTML to prevent injection
+  const escapeHtml = (str) => {
+    if (!str) return '';
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+      .replace(/\n/g, '<br>');
+  };
+
+  const safeTitle = escapeHtml(title);
+  const safeDescription = escapeHtml(description);
+  const linkButton = helpUrl ? `
+    <a href="${helpUrl}" target="_blank" class="link-btn">Get Help</a>
+  ` : '';
+
+  errorWindow.loadURL(`data:text/html,${encodeURIComponent(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <style>
+      * { box-sizing: border-box; }
+      body { 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+        background: #0a0a0b; 
+        color: white; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        height: 100vh; 
+        margin: 0;
+        flex-direction: column;
+        text-align: center;
+        padding: 40px;
+        -webkit-app-region: drag;
+      }
+      .icon {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 20px;
+        fill: #ef4444;
+      }
+      h1 { 
+        color: #f5f5f5; 
+        margin: 0 0 12px 0;
+        font-size: 20px;
+        font-weight: 600;
+      }
+      p { 
+        color: #a1a1aa; 
+        margin: 0 0 28px 0;
+        font-size: 14px;
+        line-height: 1.6;
+        max-width: 400px;
+      }
+      .buttons {
+        display: flex;
+        gap: 12px;
+        -webkit-app-region: no-drag;
+      }
+      button, .link-btn {
+        background: #27272a;
+        color: white;
+        border: 1px solid #3f3f46;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.15s ease;
+      }
+      button:hover, .link-btn:hover { 
+        background: #3f3f46;
+        border-color: #52525b;
+      }
+      .link-btn {
+        background: #6366f1;
+        border-color: #6366f1;
+      }
+      .link-btn:hover {
+        background: #4f46e5;
+        border-color: #4f46e5;
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1-7v2h2v-2h-2zm0-8v6h2V7h-2z"/>
+    </svg>
+    <h1>${safeTitle}</h1>
+    <p>${safeDescription}</p>
+    <div class="buttons">
+      ${linkButton}
+      <button onclick="window.close()">Close</button>
+    </div>
+  </body>
+</html>`)}`);
+
+  // Handle external links
+  errorWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
 }
 
 app.whenReady().then(() => {
