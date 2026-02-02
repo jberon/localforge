@@ -37,7 +37,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp, Globe, Eye, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -399,25 +398,6 @@ export function ProjectSidebar({
                     </p>
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <Label>Temperature</Label>
-                      <span className="text-sm text-muted-foreground font-mono">
-                        {tempSettings.temperature.toFixed(2)}
-                      </span>
-                    </div>
-                    <Slider
-                      value={[tempSettings.temperature]}
-                      onValueChange={([value]) => setTempSettings({ ...tempSettings, temperature: value })}
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      data-testid="slider-temperature"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Lower values produce more focused, deterministic outputs. Higher values are more creative.
-                    </p>
-                  </div>
                 </>
               ) : (
                 <>
@@ -453,18 +433,6 @@ export function ProjectSidebar({
                         className="font-mono text-sm"
                       />
                     )}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-muted-foreground">Temperature</span>
-                      <span className="text-xs font-mono">{(tempSettings.plannerTemperature ?? 0.3).toFixed(2)}</span>
-                    </div>
-                    <Slider
-                      value={[tempSettings.plannerTemperature ?? 0.3]}
-                      onValueChange={([value]) => setTempSettings({ ...tempSettings, plannerTemperature: value })}
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      data-testid="slider-planner-temperature"
-                    />
                   </div>
 
                   {/* Dual Model Mode - Builder */}
@@ -499,18 +467,6 @@ export function ProjectSidebar({
                         className="font-mono text-sm"
                       />
                     )}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-muted-foreground">Temperature</span>
-                      <span className="text-xs font-mono">{(tempSettings.builderTemperature ?? 0.5).toFixed(2)}</span>
-                    </div>
-                    <Slider
-                      value={[tempSettings.builderTemperature ?? 0.5]}
-                      onValueChange={([value]) => setTempSettings({ ...tempSettings, builderTemperature: value })}
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      data-testid="slider-builder-temperature"
-                    />
                   </div>
                 </>
               )}
