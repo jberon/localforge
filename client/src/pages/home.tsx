@@ -74,7 +74,7 @@ export default function Home() {
     builderTemperature: 0.5,
     webSearchEnabled: false,
     serperApiKey: "",
-    productionMode: false,
+    productionMode: true,
   });
   
   // Web search permission state

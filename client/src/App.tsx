@@ -24,7 +24,7 @@ function AnalyticsWrapper() {
     builderTemperature: 0.7,
     webSearchEnabled: false,
     serperApiKey: "",
-    productionMode: false,
+    productionMode: true,
   });
 
   useEffect(() => {

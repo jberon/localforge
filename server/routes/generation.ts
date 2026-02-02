@@ -842,7 +842,7 @@ router.post("/:id/plan", async (req, res) => {
       builderTemperature: LLM_DEFAULTS.temperature.builder,
       webSearchEnabled: false,
       serperApiKey: "",
-      productionMode: false,
+      productionMode: true,
     };
 
     // Use planner model when dual models are enabled
