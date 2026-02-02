@@ -49,13 +49,14 @@ export interface ProductionState {
 
 export type ProductionEvent =
   | { type: "phase_change"; phase: ProductionState["phase"]; message: string }
-  | { type: "thinking"; model: "planner" | "builder"; content: string }
+  | { type: "thinking"; model: "planner" | "builder" | "web_search"; content: string }
   | { type: "file_start"; file: string; purpose: string }
   | { type: "file_complete"; file: string; size: number }
-  | { type: "file_chunk"; file: string; content: string }
+  | { type: "file_chunk"; file: string; content: string; progress?: number }
   | { type: "test_result"; file: string; passed: boolean; error?: string }
   | { type: "quality_issue"; issue: QualityReport["issues"][0] }
   | { type: "quality_score"; score: number; passed: boolean }
+  | { type: "search"; query: string }
   | { type: "search_result"; query: string; resultCount: number }
   | { type: "fix_attempt"; attempt: number; maxAttempts: number; reason: string }
   | { type: "complete"; files: ProjectFile[]; summary: string; qualityScore: number }

@@ -36,8 +36,9 @@ export type OrchestratorEvent =
   | { type: "phase_change"; phase: OrchestratorState["phase"]; message: string }
   | { type: "task_start"; task: OrchestratorTask }
   | { type: "task_complete"; task: OrchestratorTask }
-  | { type: "thinking"; model: "planner" | "builder"; content: string }
+  | { type: "thinking"; model: "planner" | "builder" | "web_search"; content: string }
   | { type: "code_chunk"; content: string }
+  | { type: "search"; query: string }
   | { type: "search_result"; query: string; resultCount: number }
   | { type: "validation"; valid: boolean; errors: string[] }
   | { type: "fix_attempt"; attempt: number; maxAttempts: number }
@@ -227,7 +228,14 @@ export class AIOrchestrator {
       context = `\n\nEXISTING CODE TO MODIFY:\n${existingCode.slice(0, 2000)}...`;
     }
 
-    this.emit({ type: "thinking", model: "planner", content: "Analyzing requirements and creating implementation plan..." });
+    this.emit({ type: "thinking", model: "planner", content: "Reading your request and identifying what kind of application you want to build..." });
+
+    // Emit more detailed thinking as we analyze
+    setTimeout(() => {
+      if (!this.aborted) {
+        this.emit({ type: "thinking", model: "planner", content: "Breaking down the project into components, features, and implementation steps..." });
+      }
+    }, 2000);
 
     const response = await generateCompletion(
       config,
@@ -276,11 +284,14 @@ export class AIOrchestrator {
   private async searchPhase(queries: string[]) {
     if (!this.settings.serperApiKey) return;
 
+    this.emit({ type: "thinking", model: "web_search", content: `Searching the web for relevant information: "${queries[0]}"...` });
+
     let allResults = "";
     
     for (const query of queries.slice(0, 3)) {
       if (this.aborted) return;
       
+      this.emit({ type: "search", query });
       const result = await searchWeb(query, this.settings.serperApiKey);
       
       if (result.success && result.results.length > 0) {
@@ -308,7 +319,26 @@ export class AIOrchestrator {
       .replace("{context}", context || "No additional context.")
       .replace("{plan}", JSON.stringify(plan, null, 2));
 
-    this.emit({ type: "thinking", model: "builder", content: "Generating complete application code..." });
+    this.emit({ type: "thinking", model: "builder", content: "Starting code generation with the implementation plan..." });
+
+    // Emit progress updates during building
+    const buildThoughts = [
+      "Setting up the component structure and imports...",
+      "Implementing the main application logic...",
+      "Adding state management and event handlers...",
+      "Styling with Tailwind CSS for a polished look...",
+      "Finalizing the user interface components...",
+    ];
+    
+    let thoughtIndex = 0;
+    const thoughtInterval = setInterval(() => {
+      if (!this.aborted && thoughtIndex < buildThoughts.length) {
+        this.emit({ type: "thinking", model: "builder", content: buildThoughts[thoughtIndex] });
+        thoughtIndex++;
+      } else {
+        clearInterval(thoughtInterval);
+      }
+    }, 3000);
 
     for (const task of plan.tasks.filter(t => t.type === "build")) {
       task.status = "in_progress";

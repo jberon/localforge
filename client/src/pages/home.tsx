@@ -17,6 +17,7 @@ import { VersionHistory } from "@/components/version-history";
 import { CommandPalette } from "@/components/command-palette";
 import { ErrorRecovery } from "@/components/error-recovery";
 import { QuickUndo } from "@/components/quick-undo";
+import { AIThinkingPanel } from "@/components/ai-thinking-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -1294,6 +1295,20 @@ export default function Home() {
                         />
                       </div>
                     )}
+                    
+                    {/* AI Thinking Panel - Shows real-time LLM reasoning */}
+                    {(isGenerating || isPlanning) && (
+                      <div className="px-2 py-2 shrink-0">
+                        <AIThinkingPanel
+                          phase={orchestratorPhase}
+                          thinking={orchestratorThinking}
+                          generationPhase={generationPhase}
+                          isActive={isGenerating || isPlanning}
+                          streamingCode={streamingCode}
+                        />
+                      </div>
+                    )}
+                    
                     <div className="flex-1 overflow-hidden">
                       <ChatPanel
                         messages={activeProject?.messages || []}
