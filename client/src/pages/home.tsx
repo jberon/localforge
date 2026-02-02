@@ -27,7 +27,17 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Users } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Users, Globe, Settings } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Link } from "wouter";
 import JSZip from "jszip";
 import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion } from "@shared/schema";
@@ -52,7 +62,21 @@ export default function Home() {
     endpoint: "http://localhost:1234/v1",
     model: "",
     temperature: 0.7,
+    useDualModels: false,
+    plannerModel: "",
+    plannerTemperature: 0.3,
+    builderModel: "",
+    builderTemperature: 0.5,
+    webSearchEnabled: false,
+    serperApiKey: "",
   });
+  
+  // Web search permission state
+  const [webSearchPermissionPending, setWebSearchPermissionPending] = useState<{
+    message: string;
+    needsApiKey: boolean;
+    pendingContent: string;
+  } | null>(null);
   
   // Plan & Build mode state
   const planBuildMode = true; // Always use intelligent mode
@@ -441,6 +465,16 @@ export default function Home() {
                         type: "frontend",
                         codeLength: accumulatedCode.length,
                       });
+                    } else if (data.type === "web_search_permission") {
+                      // Show permission dialog
+                      setWebSearchPermissionPending({
+                        message: data.message,
+                        needsApiKey: data.needsApiKey,
+                        pendingContent: content,
+                      });
+                    } else if (data.type === "status") {
+                      // Update generation phase with status message
+                      setGenerationPhase(data.message);
                     } else if (data.type === "error") {
                       toast({
                         title: "Generation Failed",
@@ -577,7 +611,10 @@ export default function Home() {
       setPendingGeneration(null);
       
       // Use full builder settings from dual model settings when in Smart Mode
-      const builderSettings: LLMSettings = dualModelSettings.builder;
+      const builderSettings: LLMSettings = {
+        ...settings,
+        ...dualModelSettings.builder,
+      };
       
       if (usePlanner) {
         await handleCreatePlan(content, dataModel);
@@ -751,7 +788,10 @@ export default function Home() {
       });
 
       // Use full builder settings (endpoint, model, temperature) from dual model settings when in Smart Mode
-      const builderSettings: LLMSettings = dualModelSettings.builder;
+      const builderSettings: LLMSettings = {
+        ...settings,
+        ...dualModelSettings.builder,
+      };
 
       if (usePlanner) {
         // Route to planner model for planning/reasoning requests
@@ -1076,6 +1116,86 @@ export default function Home() {
       </div>
       <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
       <OnboardingModal />
+      
+      {/* Web Search Permission Dialog */}
+      <AlertDialog 
+        open={!!webSearchPermissionPending} 
+        onOpenChange={(open) => !open && setWebSearchPermissionPending(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-emerald-500" />
+              Enable Web Search?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>{webSearchPermissionPending?.message}</p>
+              {webSearchPermissionPending?.needsApiKey && (
+                <p className="text-amber-600 dark:text-amber-400">
+                  You'll need to add your Serper.dev API key in Settings first.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Web search uses Serper.dev to fetch current information from the internet.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={() => {
+                // Continue without web search
+                setWebSearchPermissionPending(null);
+                toast({
+                  title: "Continuing without web search",
+                  description: "Results may not include the latest information",
+                });
+              }}
+              data-testid="button-skip-web-search"
+            >
+              Continue Without
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (webSearchPermissionPending?.needsApiKey) {
+                  // Open settings
+                  toast({
+                    title: "Add API Key",
+                    description: "Open Settings to add your Serper.dev API key",
+                  });
+                } else {
+                  // Enable web search and retry
+                  const newSettings = { ...settings, webSearchEnabled: true };
+                  setSettings(newSettings);
+                  toast({
+                    title: "Web Search Enabled",
+                    description: "Retrying your request with web search...",
+                  });
+                  // Retry the message
+                  if (webSearchPermissionPending?.pendingContent) {
+                    setTimeout(() => {
+                      handleSendMessage(webSearchPermissionPending.pendingContent);
+                    }, 500);
+                  }
+                }
+                setWebSearchPermissionPending(null);
+              }}
+              data-testid="button-enable-web-search"
+            >
+              {webSearchPermissionPending?.needsApiKey ? (
+                <>
+                  <Settings className="h-4 w-4 mr-2" />
+                  Open Settings
+                </>
+              ) : (
+                <>
+                  <Globe className="h-4 w-4 mr-2" />
+                  Enable & Continue
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <CommandPalette
         onNewProject={() => createProjectMutation.mutate()}
         onDownload={activeProject ? handleDownload : undefined}
