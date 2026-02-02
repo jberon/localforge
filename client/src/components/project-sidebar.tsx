@@ -205,7 +205,7 @@ export function ProjectSidebar({
                           />
                         </div>
                       ) : (
-                        <div className="flex items-center group w-full">
+                        <div className="flex items-center group/project w-full">
                           <SidebarMenuButton
                             isActive={project.id === activeProjectId}
                             onClick={() => onSelectProject(project.id)}
@@ -219,7 +219,7 @@ export function ProjectSidebar({
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                className="h-7 w-7 opacity-0 group-hover/project:opacity-100 transition-opacity flex-shrink-0"
                                 data-testid={`button-project-menu-${project.id}`}
                               >
                                 <MoreHorizontal className="h-4 w-4" />
