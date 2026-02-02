@@ -1,0 +1,129 @@
+name: Build Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.2.0)'
+        required: false
+        default: '1.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    # Use macos-15 for ARM64 (Apple Silicon) builds only
+    runs-on: macos-15
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="1.1.0"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci || npm install
+      
+      - name: Setup Electron
+        run: |
+          chmod +x scripts/setup-electron.sh
+          LOCALFORGE_VERSION=${{ steps.version.outputs.VERSION }} SKIP_BACKUP=true ./scripts/setup-electron.sh
+      
+      - name: Generate app icon
+        run: |
+          # Install rsvg-convert for SVG to PNG conversion
+          brew install librsvg
+          # Create 512x512 PNG from SVG (for window icon)
+          rsvg-convert -w 512 -h 512 electron/assets/icon.svg -o electron/assets/icon.png
+          # Create iconset for macOS (standard sizes only: 16, 32, 128, 256, 512)
+          mkdir -p electron/assets/icon.iconset
+          for size in 16 32 128 256 512; do
+            rsvg-convert -w $size -h $size electron/assets/icon.svg -o "electron/assets/icon.iconset/icon_${size}x${size}.png"
+            rsvg-convert -w $((size*2)) -h $((size*2)) electron/assets/icon.svg -o "electron/assets/icon.iconset/icon_${size}x${size}@2x.png"
+          done
+          # Convert to icns
+          iconutil -c icns electron/assets/icon.iconset -o electron/assets/icon.icns
+          ls -la electron/assets/
+      
+      - name: Build application
+        run: |
+          npm run build
+          # Copy icon to dist for BrowserWindow
+          cp electron/assets/icon.png dist/icon.png
+      
+      - name: Build Electron app
+        run: npx electron-builder --mac --arm64 --config electron-builder.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: List release folder
+        run: ls -la release/ || echo "No release folder"
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalForge-macOS-arm64
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+
+  create-release:
+    needs: build-macos
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+      
+      - name: List artifacts
+        run: |
+          echo "=== Artifact Structure ==="
+          find artifacts -type f -name "*.dmg" -o -name "*.zip" | head -50
+          echo "=== Full Tree ==="
+          ls -laR artifacts/
+      
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" \) -exec cp {} release-files/ \;
+          echo "=== Files to upload ==="
+          ls -la release-files/
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: LocalForge ${{ github.ref_name }}
+          files: release-files/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          token: ${{ secrets.GITHUB_TOKEN }}
