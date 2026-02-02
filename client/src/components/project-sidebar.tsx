@@ -593,10 +593,10 @@ export function ProjectSidebar({
           size="sm"
           className="w-full mt-2"
           onClick={() => window.open('https://github.com/jberon/localforge/releases/latest', '_blank')}
-          data-testid="button-download-desktop"
+          data-testid="button-github-releases"
         >
           <Download className="h-4 w-4 mr-2" />
-          Download Desktop App
+          Check for Updates
         </Button>
         <div className="text-center mt-2">
           <p className="text-xs text-muted-foreground">
