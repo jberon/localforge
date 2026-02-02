@@ -77,6 +77,17 @@ export function PreviewPanel({
   const [isFileSaving, setIsFileSaving] = useState(false);
   const [hasFileChanges, setHasFileChanges] = useState(false);
   const [devToolsExpanded, setDevToolsExpanded] = useState(false);
+
+  // Handle Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const fileEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -414,7 +425,19 @@ ${localCode}
   const isEmpty = !localCode && !isGenerating && !hasFullStackProject;
 
   return (
-    <div className={`flex flex-col h-full bg-card border-l ${isFullscreen ? "fixed inset-0 z-50" : ""}`}>
+    <div className={`flex flex-col h-full bg-card border-l ${isFullscreen ? "fixed inset-0 z-50 bg-background" : ""}`}>
+      {isFullscreen && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setIsFullscreen(false)}
+          className="absolute top-4 right-4 z-50 gap-2 shadow-lg"
+          data-testid="button-exit-fullscreen"
+        >
+          <Minimize2 className="h-4 w-4" />
+          Exit Fullscreen
+        </Button>
+      )}
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
         <div className="flex items-center gap-3">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code" | "files" | "publish" | "console" | "search")}>
