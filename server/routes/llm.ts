@@ -1,6 +1,16 @@
 import { Router } from "express";
 import { storage } from "../storage";
-import { createLLMClient, checkConnection, LLM_DEFAULTS, getLLMQueueStatus, getConnectionHealth, getTelemetry, getExtendedQueueTelemetry } from "../llm-client";
+import { 
+  createLLMClient, 
+  checkConnection, 
+  LLM_DEFAULTS, 
+  getLLMQueueStatus, 
+  getConnectionHealth, 
+  getTelemetry, 
+  getExtendedQueueTelemetry,
+  getCircuitBreakerStatus,
+  resetCircuitBreaker,
+} from "../llm-client";
 import { llmSettingsSchema } from "@shared/schema";
 import { z } from "zod";
 import { llmRateLimiter } from "../middleware/rate-limit";
@@ -96,6 +106,17 @@ router.get("/queue-status", (_req, res) => {
     },
     health: getConnectionHealth(),
     telemetry: getTelemetry(),
+    circuitBreaker: getCircuitBreakerStatus(),
+  });
+});
+
+// Reset circuit breaker endpoint
+router.post("/reset-circuit-breaker", (_req, res) => {
+  resetCircuitBreaker();
+  res.json({ 
+    success: true, 
+    message: "Circuit breaker reset",
+    status: getCircuitBreakerStatus(),
   });
 });
 

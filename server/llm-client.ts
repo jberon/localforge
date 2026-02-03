@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { llmCircuitBreaker, CircuitOpenError } from "./lib/circuit-breaker";
 
 interface LLMClientConfig {
   endpoint: string;
@@ -226,61 +227,70 @@ export async function streamCompletion(
   config: LLMClientConfig,
   options: StreamOptions
 ): Promise<string> {
+  // Check circuit breaker before queuing
+  if (!llmCircuitBreaker.isAvailable()) {
+    const stats = llmCircuitBreaker.getStats();
+    throw new CircuitOpenError(
+      `LLM connection circuit is open. Retry in ${Math.ceil((stats.timeout - (Date.now() - stats.lastFailureTime)) / 1000)}s`
+    );
+  }
+
   // Queue the request to enforce concurrency limits (M4 Pro optimization)
   return llmRequestQueue.enqueue(async () => {
-    const client = createLLMClient(config);
-    const startTime = Date.now();
+    return llmCircuitBreaker.execute(async () => {
+      const client = createLLMClient(config);
+      const startTime = Date.now();
     
-    // Use provided maxTokens or default to fullStack limit (optimized for 48GB M4 Pro)
-    const maxTokens = options.maxTokens || LLM_DEFAULTS.maxTokens.fullStack;
-    
-    const stream = await client.chat.completions.create({
-      model: config.model || "local-model",
-      messages: [
-        { role: "system", content: options.systemPrompt },
-        ...options.messages,
-      ],
-      temperature: config.temperature ?? 0.7,
-      max_tokens: maxTokens,
-      stream: true,
-    });
-
-    let fullContent = "";
-    let tokenCount = 0;
-    
-    // Use throttled callback if provided to prevent UI flooding
-    const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
-    const throttler = options.onChunk 
-      ? new ChunkThrottler(throttleMs, options.onChunk)
-      : null;
-
-    try {
-      for await (const chunk of stream) {
-        // Check for cancellation
-        if (options.signal?.aborted) {
-          stream.controller?.abort();
-          throw new Error("Request cancelled");
-        }
-        
-        const delta = chunk.choices[0]?.delta?.content || "";
-        if (delta) {
-          fullContent += delta;
-          tokenCount++; // Approximate: each chunk ~= 1 token
-          throttler?.add(delta);
-        }
-      }
-    } finally {
-      // Ensure remaining buffer is flushed
-      throttler?.destroy();
+      // Use provided maxTokens or default to fullStack limit (optimized for 48GB M4 Pro)
+      const maxTokens = options.maxTokens || LLM_DEFAULTS.maxTokens.fullStack;
       
-      // Update performance telemetry
-      const durationMs = Date.now() - startTime;
-      // Better token estimate: ~4 chars per token average
-      const estimatedTokens = Math.ceil(fullContent.length / 4);
-      updateTelemetry(durationMs, estimatedTokens);
-    }
+      const stream = await client.chat.completions.create({
+        model: config.model || "local-model",
+        messages: [
+          { role: "system", content: options.systemPrompt },
+          ...options.messages,
+        ],
+        temperature: config.temperature ?? 0.7,
+        max_tokens: maxTokens,
+        stream: true,
+      });
 
-    return fullContent;
+      let fullContent = "";
+      let tokenCount = 0;
+      
+      // Use throttled callback if provided to prevent UI flooding
+      const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
+      const throttler = options.onChunk 
+        ? new ChunkThrottler(throttleMs, options.onChunk)
+        : null;
+
+      try {
+        for await (const chunk of stream) {
+          // Check for cancellation
+          if (options.signal?.aborted) {
+            stream.controller?.abort();
+            throw new Error("Request cancelled");
+          }
+          
+          const delta = chunk.choices[0]?.delta?.content || "";
+          if (delta) {
+            fullContent += delta;
+            tokenCount++;
+            throttler?.add(delta);
+          }
+        }
+      } finally {
+        // Ensure remaining buffer is flushed
+        throttler?.destroy();
+        
+        // Update performance telemetry
+        const durationMs = Date.now() - startTime;
+        const estimatedTokens = Math.ceil(fullContent.length / 4);
+        updateTelemetry(durationMs, estimatedTokens);
+      }
+
+      return fullContent;
+    });
   });
 }
 
@@ -290,30 +300,39 @@ export async function generateCompletion(
   userPrompt: string,
   maxTokens: number = LLM_DEFAULTS.maxTokens.quickApp
 ): Promise<string> {
+  // Check circuit breaker before queuing
+  if (!llmCircuitBreaker.isAvailable()) {
+    const stats = llmCircuitBreaker.getStats();
+    throw new CircuitOpenError(
+      `LLM connection circuit is open. Retry in ${Math.ceil((stats.timeout - (Date.now() - stats.lastFailureTime)) / 1000)}s`
+    );
+  }
+
   // Queue the request to enforce concurrency limits (M4 Pro optimization)
   return llmRequestQueue.enqueue(async () => {
-    const client = createLLMClient(config);
-    const startTime = Date.now();
+    return llmCircuitBreaker.execute(async () => {
+      const client = createLLMClient(config);
+      const startTime = Date.now();
 
-    const response = await client.chat.completions.create({
-      model: config.model || "local-model",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: config.temperature ?? 0.7,
-      max_tokens: maxTokens,
+      const response = await client.chat.completions.create({
+        model: config.model || "local-model",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: config.temperature ?? 0.7,
+        max_tokens: maxTokens,
+      });
+
+      const content = response.choices[0]?.message?.content || "";
+      
+      // Update performance telemetry
+      const durationMs = Date.now() - startTime;
+      const tokenCount = response.usage?.completion_tokens || Math.ceil(content.length / 4);
+      updateTelemetry(durationMs, tokenCount);
+      
+      return content;
     });
-
-    const content = response.choices[0]?.message?.content || "";
-    
-    // Update performance telemetry
-    const durationMs = Date.now() - startTime;
-    // Use API-provided token count if available, otherwise estimate
-    const tokenCount = response.usage?.completion_tokens || Math.ceil(content.length / 4);
-    updateTelemetry(durationMs, tokenCount);
-    
-    return content;
   });
 }
 
@@ -473,14 +492,36 @@ export function clearClientCache(): void {
   clientCache.clear();
 }
 
+// Export circuit breaker for monitoring and control
+export function getCircuitBreakerStatus(): {
+  state: "closed" | "open" | "half-open";
+  failures: number;
+  lastFailureTime: number;
+  isAvailable: boolean;
+} {
+  const stats = llmCircuitBreaker.getStats();
+  return {
+    state: stats.state,
+    failures: stats.failures,
+    lastFailureTime: stats.lastFailureTime,
+    isAvailable: llmCircuitBreaker.isAvailable(),
+  };
+}
+
+export function resetCircuitBreaker(): void {
+  llmCircuitBreaker.reset();
+}
+
+export { CircuitOpenError } from "./lib/circuit-breaker";
+
 // M4 Pro Performance Configuration
 // MacBook Pro M4 Pro: 14-core CPU, 20-core GPU, 16-core Neural Engine, 48GB unified memory
 export const M4_PRO_CONFIG = {
-  // Memory allocation for LLM processing
+  // Memory allocation for LLM processing (optimized for 48GB)
   memory: {
-    maxContextMB: 16384,           // ~16GB for model context
-    reservedSystemMB: 8192,        // 8GB for system + app overhead
-    availableForModelsMB: 24576,   // 24GB for model weights
+    maxModelSizeMB: 32768,         // 32GB for model weights (fits 30B+ models)
+    maxContextMB: 12288,           // 12GB for model context
+    reservedSystemMB: 4096,        // 4GB for system + app overhead
   },
   // Concurrency limits to prevent memory pressure
   concurrency: {
@@ -488,18 +529,27 @@ export const M4_PRO_CONFIG = {
     requestQueueSize: 20,          // Queue up to 20 requests (increased for multi-panel UX)
     streamingChunkSize: 1024,      // Optimal chunk size for streaming
   },
-  // Recommended LM Studio settings for best performance
+  // Recommended LM Studio settings for best performance on M4 Pro
   lmStudioSettings: {
     gpuLayers: -1,                 // Use all GPU layers (Metal acceleration)
-    contextLength: 32768,          // 32K context for large apps
-    batchSize: 512,                // Optimal batch size for M4 Pro
-    threads: 10,                   // Leave 4 cores for system
+    contextLength: 65536,          // 64K context for very large apps
+    batchSize: 1024,               // Larger batch size for M4 Pro GPU
+    threads: 10,                   // Leave 4 cores for system (14-core CPU)
+    flashAttention: true,          // Enable flash attention if supported
+    mmap: true,                    // Memory-mapped file loading
   },
   // Performance monitoring thresholds
   thresholds: {
     warningLatencyMs: 30000,       // Warn if request takes > 30s
     errorLatencyMs: 120000,        // Error if request takes > 2min
-    minTokensPerSecond: 10,        // Minimum acceptable speed
+    minTokensPerSecond: 15,        // Minimum acceptable speed for M4 Pro
+    targetTokensPerSecond: 30,     // Target speed for optimal experience
+  },
+  // Circuit breaker configuration
+  circuitBreaker: {
+    failureThreshold: 3,           // Open after 3 consecutive failures
+    successThreshold: 2,           // Close after 2 consecutive successes
+    timeout: 30000,                // Retry after 30 seconds
   },
 } as const;
 
