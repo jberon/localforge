@@ -10,6 +10,9 @@ import { searchWeb, formatSearchResultsForContext } from "../services/webSearch"
 import { shouldUseWebSearch, decideWebSearchAction } from "../services/webSearchClassifier";
 import { createOrchestrator, OrchestratorEvent } from "../services/orchestrator";
 import { createProductionOrchestrator, ProductionEvent } from "../services/productionOrchestrator";
+import { generationRateLimiter } from "../middleware/rate-limit";
+import { validateBody } from "../lib/validation";
+import logger from "../lib/logger";
 
 // Maximum auto-retry attempts for code generation
 const MAX_AUTO_RETRY = 2;
@@ -309,7 +312,7 @@ function getModelForPhase(settings: z.infer<typeof llmSettingsSchema>, phase: "p
   };
 }
 
-router.post("/:id/chat", async (req, res) => {
+router.post("/:id/chat", generationRateLimiter, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -606,7 +609,7 @@ const refineRequestSchema = z.object({
   settings: llmSettingsSchema,
 });
 
-router.post("/:id/refine", async (req, res) => {
+router.post("/:id/refine", generationRateLimiter, async (req, res) => {
   try {
     const parsed = refineRequestSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1128,7 +1131,7 @@ const dreamTeamRequestSchema = z.object({
   settings: llmSettingsSchema,
 });
 
-router.post("/:id/dream-team", async (req, res) => {
+router.post("/:id/dream-team", generationRateLimiter, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -1247,7 +1250,7 @@ const productionRequestSchema = z.object({
   settings: llmSettingsSchema,
 });
 
-router.post("/:id/production", async (req, res) => {
+router.post("/:id/production", generationRateLimiter, async (req, res) => {
   const startTime = Date.now();
   
   try {

@@ -71,6 +71,39 @@ LocalForge includes intelligent app classification to ensure generated code matc
 
 The app classifier is in `server/services/appClassifier.ts`.
 
+### Production-Grade Security & Infrastructure (v1.4.0)
+LocalForge includes production-grade security and infrastructure improvements:
+
+**Security Headers** (`server/middleware/security.ts`):
+- X-Content-Type-Options: nosniff
+- X-Frame-Options: SAMEORIGIN
+- X-XSS-Protection: 1; mode=block
+- Referrer-Policy: strict-origin-when-cross-origin
+- Permissions-Policy: geolocation=(), microphone=(), camera=()
+- HSTS in production environments
+
+**Rate Limiting** (`server/middleware/rate-limit.ts`):
+- Generation endpoints: 5 requests/minute (chat, refine, dream-team, production)
+- LLM endpoints: 10 requests/minute (status, enhance-prompt, fix-code, assist)
+- Proper 429 responses with Retry-After headers
+
+**Structured Logging** (`server/lib/logger.ts`):
+- Log levels: debug, info, warn, error
+- Context objects and error stack traces
+- Specialized methods: request(), llm(), db()
+- Integrated in server/index.ts, server/routes/llm.ts, server/routes/projects.ts
+
+**Input Validation** (`server/lib/validation.ts`):
+- Zod schemas for projects, settings, files, versions
+- validateBody, validateParams, validateQuery middleware
+- Routes use inline Zod safeParse validation
+
+**Request Size Limits**: 10MB for JSON and urlencoded bodies
+
+**Error Boundary** (`client/src/components/error-boundary.tsx`):
+- Graceful error handling with retry/reload options
+- Preview-specific error fallback for generated code
+
 ### Frontend
 The frontend is built with React + TypeScript using Vite, styled with Tailwind CSS and Shadcn UI components. It integrates the Monaco Editor for code interaction and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, and a modular generation wizard. UX design principles focus on quick start, progressive disclosure, polished animations, and contextual error recovery. Features include a command palette, voice input, and keyboard shortcuts. The file explorer provides a Replit-like tree view, file operations, and real-time synchronization.
 

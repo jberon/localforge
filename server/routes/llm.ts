@@ -3,6 +3,8 @@ import { storage } from "../storage";
 import { createLLMClient, checkConnection, LLM_DEFAULTS, getLLMQueueStatus, getConnectionHealth, getTelemetry } from "../llm-client";
 import { llmSettingsSchema } from "@shared/schema";
 import { z } from "zod";
+import { llmRateLimiter } from "../middleware/rate-limit";
+import logger from "../lib/logger";
 
 const router = Router();
 
@@ -68,7 +70,7 @@ RULES:
 
 Output ONLY the modified code, starting with "function App()".`;
 
-router.post("/status", async (req, res) => {
+router.post("/status", llmRateLimiter, async (req, res) => {
   try {
     const { endpoint } = req.body;
     const result = await checkConnection(endpoint || "http://localhost:1234/v1");
@@ -121,7 +123,7 @@ const enhancePromptSchema = z.object({
   settings: llmSettingsSchema,
 });
 
-router.post("/enhance-prompt", async (req, res) => {
+router.post("/enhance-prompt", llmRateLimiter, async (req, res) => {
   try {
     const parsed = enhancePromptSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -153,7 +155,7 @@ router.post("/enhance-prompt", async (req, res) => {
       improvement: enhancedPrompt.length > prompt.length * 1.5 
     });
   } catch (error: any) {
-    console.error("Prompt enhancement error:", error);
+    logger.error("Prompt enhancement error", {}, error);
     res.status(500).json({ error: "Failed to enhance prompt", details: error.message });
   }
 });
@@ -164,7 +166,7 @@ const fixCodeSchema = z.object({
   settings: llmSettingsSchema,
 });
 
-router.post("/fix-code", async (req, res) => {
+router.post("/fix-code", llmRateLimiter, async (req, res) => {
   try {
     const parsed = fixCodeSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -202,7 +204,7 @@ router.post("/fix-code", async (req, res) => {
       errorsFixed: errors.length 
     });
   } catch (error: any) {
-    console.error("Code fix error:", error);
+    logger.error("Code fix error", {}, error);
     res.status(500).json({ error: "Failed to fix code", details: error.message });
   }
 });
@@ -215,7 +217,7 @@ const assistCodeSchema = z.object({
   settings: llmSettingsSchema,
 });
 
-router.post("/assist", async (req, res) => {
+router.post("/assist", llmRateLimiter, async (req, res) => {
   try {
     const parsed = assistCodeSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -260,7 +262,7 @@ router.post("/assist", async (req, res) => {
       suggestedCode: action !== "explain" ? suggestedCode : null,
     });
   } catch (error: any) {
-    console.error("AI assist error:", error);
+    logger.error("AI assist error", {}, error);
     res.status(500).json({ error: "Failed to get AI assistance", details: error.message });
   }
 });

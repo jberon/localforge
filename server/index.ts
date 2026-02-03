@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { securityHeaders } from "./middleware/security";
+import logger from "./lib/logger";
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,15 +14,18 @@ declare module "http" {
   }
 }
 
+app.use(securityHeaders);
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
+    limit: "10mb",
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -30,7 +35,7 @@ export function log(message: string, source = "express") {
     hour12: true,
   });
 
-  console.log(`${formattedTime} [${source}] ${message}`);
+  logger.info(`[${source}] ${message}`);
 }
 
 app.use((req, res, next) => {
@@ -66,7 +71,7 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    console.error("Internal Server Error:", err);
+    logger.error("Internal Server Error", { status, path: _req.path }, err);
 
     if (res.headersSent) {
       return next(err);

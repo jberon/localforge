@@ -56,10 +56,13 @@ export class ErrorBoundary extends Component<Props, State> {
                 </pre>
               )}
             </CardContent>
-            <CardFooter>
-              <Button onClick={this.handleReset} className="gap-2">
+            <CardFooter className="gap-2">
+              <Button onClick={this.handleReset} className="gap-2" data-testid="button-try-again">
                 <RefreshCw className="h-4 w-4" />
                 Try Again
+              </Button>
+              <Button variant="outline" onClick={() => window.location.reload()} data-testid="button-reload-page">
+                Reload Page
               </Button>
             </CardFooter>
           </Card>

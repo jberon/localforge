@@ -2,6 +2,7 @@ import { Router } from "express";
 import { storage } from "../storage";
 import { insertProjectSchema } from "@shared/schema";
 import { z } from "zod";
+import logger from "../lib/logger";
 
 const router = Router();
 
@@ -38,8 +39,8 @@ router.post("/", async (req, res) => {
       description: parsed.data.description,
     });
     res.json(project);
-  } catch (error) {
-    console.error("Error creating project:", error);
+  } catch (error: any) {
+    logger.error("Error creating project", {}, error);
     res.status(500).json({ error: "Failed to create project" });
   }
 });
@@ -76,8 +77,8 @@ router.patch("/:id/name", async (req, res) => {
     }
 
     res.json(project);
-  } catch (error) {
-    console.error("Error updating project name:", error);
+  } catch (error: any) {
+    logger.error("Error updating project name", {}, error);
     res.status(500).json({ error: "Failed to update project name" });
   }
 });
@@ -102,8 +103,8 @@ router.patch("/:id/code", async (req, res) => {
     }
 
     res.json(project);
-  } catch (error) {
-    console.error("Error updating project code:", error);
+  } catch (error: any) {
+    logger.error("Error updating project code", {}, error);
     res.status(500).json({ error: "Failed to update project code" });
   }
 });
