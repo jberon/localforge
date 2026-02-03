@@ -110,6 +110,19 @@ LocalForge includes a Circuit Breaker pattern for LLM connection resilience:
 - **Monitoring**: Circuit breaker status exposed via `/api/llm/queue-status`
 - **Manual Reset**: Available via `/api/llm/reset-circuit-breaker`
 
+### In-Browser Bundler
+LocalForge uses esbuild-wasm for production-grade in-browser bundling of multi-file TypeScript/React projects:
+- **Virtual File System**: Maps generated files to esbuild with proper module resolution
+- **Hot Refresh**: 300ms debounced recompilation on file changes with content hashing
+- **React/ReactDOM Support**: External modules loaded from CDN (React 18)
+- **Error Overlay**: Compilation errors display with line numbers and suggestions
+- **Bundle Telemetry**: Shows compilation time and warnings in preview
+
+Key files:
+- `client/src/lib/bundler.ts` - esbuild-wasm bundling service
+- `client/src/hooks/use-bundler.ts` - React hook for bundler state management
+- Preview runtime injects Tailwind CSS and React from CDN for live preview
+
 ## External Dependencies
 - **LM Studio**: Local LLM inference.
 - **PostgreSQL**: Primary database.
