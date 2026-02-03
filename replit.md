@@ -117,6 +117,31 @@ LocalForge includes a Circuit Breaker pattern for LLM connection resilience:
 - **Monitoring**: Circuit breaker status exposed via `/api/llm/queue-status`
 - **Manual Reset**: Available via `/api/llm/reset-circuit-breaker`
 
+### Optimization API Endpoints
+LocalForge provides optimization and monitoring endpoints for M4 Pro performance:
+- `GET /api/optimization/m4-pro-recommendations` - Hardware-specific settings for M4 Pro
+- `GET /api/optimization/resource-status` - Current GPU memory, request queue, and wait times
+- `GET /api/optimization/models` - Available models with capabilities and role assignments
+- `GET /api/optimization/resilience-stats` - Circuit breaker and bulkhead status
+- `GET /api/optimization/cache-stats` - LLM response cache hit rates
+- `GET /api/optimization/health` - Comprehensive health check with all metrics
+- `POST /api/optimization/reset-circuit/:key` - Reset specific circuit breaker
+
+### Model Provider Service
+The ModelProviderService provides intelligent model routing:
+- **Capability Registry**: Tracks model strengths, VRAM requirements, and tokens/second
+- **Policy-Based Routing**: Automatically selects planner vs builder based on task type
+- **Resource-Aware Selection**: Chooses optimal model based on available GPU memory
+- **Request Scheduling**: Priority queue with concurrency limits for M4 Pro
+- **Caching & Deduplication**: Avoids redundant LLM calls for identical prompts
+
+### Resilience Service
+The ResilienceService provides enterprise-grade fault tolerance:
+- **Circuit Breaker**: Prevents cascading failures with configurable thresholds
+- **Exponential Backoff**: Automatic retry with jitter to prevent thundering herd
+- **Bulkhead Pattern**: Isolates failures and limits concurrent executions
+- **Timeout Management**: Configurable timeouts with proper cleanup
+
 ### In-Browser Bundler
 LocalForge uses esbuild-wasm for production-grade in-browser bundling of multi-file TypeScript/React projects:
 - **Virtual File System**: Maps generated files to esbuild with proper module resolution

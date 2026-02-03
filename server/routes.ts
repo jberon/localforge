@@ -11,6 +11,7 @@ import generationRoutes from "./routes/generation";
 import dreamTeamRoutes from "./routes/dream-team";
 import healthRoutes from "./routes/health";
 import databaseRoutes from "./routes/database";
+import optimizationRoutes from "./routes/optimization";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -36,6 +37,8 @@ export async function registerRoutes(
   app.use("/api/health", healthRoutes);
   
   app.use("/api/database", databaseRoutes);
+  
+  app.use("/api/optimization", optimizationRoutes);
 
   return httpServer;
 }
