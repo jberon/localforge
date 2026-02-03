@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown, ExternalLink } from "lucide-react";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown, ExternalLink, Loader2, Zap } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishingPanel } from "./publishing-panel";
@@ -18,6 +18,7 @@ import { FileExplorer } from "./file-explorer";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@shared/schema";
 import type { editor } from "monaco-editor";
+import { useBundler } from "@/hooks/use-bundler";
 
 interface PreviewPanelProps {
   code: string;
@@ -78,6 +79,7 @@ export function PreviewPanel({
   const [isFileSaving, setIsFileSaving] = useState(false);
   const [hasFileChanges, setHasFileChanges] = useState(false);
   const [devToolsExpanded, setDevToolsExpanded] = useState(false);
+  const [bundlerEnabled, setBundlerEnabled] = useState(true);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
@@ -234,6 +236,25 @@ export function PreviewPanel({
   }, []);
   
   const hasFullStackProject = safeGeneratedFiles.length > 0;
+  
+  const bundlerFiles = useMemo(() => {
+    return safeGeneratedFiles.map(f => ({ path: f.path, content: f.content }));
+  }, [safeGeneratedFiles]);
+  
+  const { 
+    previewHtml: bundledPreviewHtml, 
+    isCompiling, 
+    errors: bundleErrors, 
+    warnings: bundleWarnings,
+    lastBundleTime,
+    rebundle 
+  } = useBundler({
+    files: bundlerFiles,
+    enabled: bundlerEnabled && hasFullStackProject && !isGenerating,
+    nonce: nonceRef.current,
+  });
+  
+  const hasRunnableMultiFileProject = hasFullStackProject && bundledPreviewHtml && !isCompiling && bundleErrors.length === 0;
   const canRegenerate = hasFullStackProject && onRegenerate && !isGenerating;
   
   // Reset feedback panel when new generation starts or lastPrompt changes
@@ -315,6 +336,9 @@ export function PreviewPanel({
 
   const handleRefresh = () => {
     setIframeKey((k) => k + 1);
+    if (hasFullStackProject && bundlerEnabled) {
+      rebundle();
+    }
   };
 
   const handleOpenRegenerate = () => {
@@ -649,47 +673,116 @@ ${localCode}
                     </div>
                   </div>
                 ) : hasFullStackProject ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                      validation && !validation.valid ? "bg-yellow-500/10" : "bg-green-500/10"
-                    }`}>
-                      {validation && !validation.valid ? (
-                        <AlertTriangle className="h-8 w-8 text-yellow-500" />
-                      ) : (
-                        <Rocket className="h-8 w-8 text-green-500" />
-                      )}
+                  isCompiling ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+                      <div className="relative">
+                        <div className="w-16 h-16 border-2 border-primary/20 rounded-full" />
+                        <div className="absolute inset-0 w-16 h-16 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        <Zap className="absolute inset-0 m-auto h-6 w-6 text-primary" />
+                      </div>
+                      <div className="text-center space-y-2">
+                        <p className="font-semibold text-lg">Compiling Project</p>
+                        <p className="text-sm text-muted-foreground max-w-xs">
+                          Bundling {safeGeneratedFiles.length} files with esbuild...
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-lg mb-2">
-                        {validation && !validation.valid ? "Project Generated (with warnings)" : "Full-Stack Project Ready!"}
-                      </h3>
-                      <p className="text-sm text-muted-foreground max-w-md">
-                        Your complete project has been generated. Use the <strong>Files</strong> tab to browse all generated code,
-                        or the <strong>Launch</strong> tab for step-by-step instructions to run your app.
-                      </p>
-                      {validation && (validation.warnings.length > 0 || validation.errors.length > 0) && (
-                        <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                          {validation.valid ? (
-                            <Badge variant="secondary" className="gap-1">
-                              <Check className="h-3 w-3" />
-                              Validated
-                            </Badge>
-                          ) : validation.errors.length > 0 ? (
-                            <Badge variant="destructive" className="gap-1">
-                              <AlertTriangle className="h-3 w-3" />
-                              {validation.errors.length} error{validation.errors.length > 1 ? "s" : ""}
-                            </Badge>
-                          ) : null}
-                          {validation.warnings.length > 0 && (
-                            <Badge variant="secondary" className="gap-1 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
-                              <AlertTriangle className="h-3 w-3" />
-                              {validation.warnings.length} warning{validation.warnings.length > 1 ? "s" : ""}
-                            </Badge>
-                          )}
+                  ) : bundleErrors.length > 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+                      <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+                        <AlertTriangle className="h-8 w-8 text-red-500" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg mb-2">Build Errors</h3>
+                        <div className="text-left max-w-lg mx-auto bg-muted/50 rounded-lg p-4 mt-4">
+                          <ScrollArea className="max-h-48">
+                            {bundleErrors.map((error, i) => (
+                              <p key={i} className="text-sm text-red-600 dark:text-red-400 font-mono mb-2">{error}</p>
+                            ))}
+                          </ScrollArea>
                         </div>
-                      )}
+                        <Button onClick={rebundle} variant="outline" className="mt-4 gap-2">
+                          <RefreshCw className="h-4 w-4" />
+                          Retry Build
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  ) : bundledPreviewHtml ? (
+                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative h-full">
+                      <iframe
+                        key={iframeKey}
+                        src={bundledPreviewHtml}
+                        className="w-full h-full border-0"
+                        sandbox="allow-scripts"
+                        title="App Preview"
+                        data-testid="iframe-bundled-preview"
+                      />
+                      <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                        <Badge variant="secondary" className="gap-1 text-xs">
+                          <Zap className="h-3 w-3" />
+                          Bundled in {lastBundleTime}ms
+                        </Badge>
+                        {bundleWarnings.length > 0 && (
+                          <Badge variant="secondary" className="gap-1 text-xs bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
+                            <AlertTriangle className="h-3 w-3" />
+                            {bundleWarnings.length} warning{bundleWarnings.length > 1 ? "s" : ""}
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        onClick={() => setIsFullscreen(!isFullscreen)}
+                        className="absolute bottom-4 right-4 shadow-lg z-10"
+                        data-testid="button-popout-bundled-preview"
+                        title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+                      >
+                        {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                        validation && !validation.valid ? "bg-yellow-500/10" : "bg-green-500/10"
+                      }`}>
+                        {validation && !validation.valid ? (
+                          <AlertTriangle className="h-8 w-8 text-yellow-500" />
+                        ) : (
+                          <Rocket className="h-8 w-8 text-green-500" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg mb-2">
+                          {validation && !validation.valid ? "Project Generated (with warnings)" : "Full-Stack Project Ready!"}
+                        </h3>
+                        <p className="text-sm text-muted-foreground max-w-md">
+                          Your complete project has been generated. Use the <strong>Files</strong> tab to browse all generated code,
+                          or the <strong>Launch</strong> tab for step-by-step instructions to run your app.
+                        </p>
+                        {validation && (validation.warnings.length > 0 || validation.errors.length > 0) && (
+                          <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                            {validation.valid ? (
+                              <Badge variant="secondary" className="gap-1">
+                                <Check className="h-3 w-3" />
+                                Validated
+                              </Badge>
+                            ) : validation.errors.length > 0 ? (
+                              <Badge variant="destructive" className="gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                {validation.errors.length} error{validation.errors.length > 1 ? "s" : ""}
+                              </Badge>
+                            ) : null}
+                            {validation.warnings.length > 0 && (
+                              <Badge variant="secondary" className="gap-1 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
+                                <AlertTriangle className="h-3 w-3" />
+                                {validation.warnings.length} warning{validation.warnings.length > 1 ? "s" : ""}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
                 ) : null}
               </div>
             ) : activeTab === "files" ? (
