@@ -121,7 +121,10 @@ export function StatusIndicator({ status, text, className }: StatusIndicatorProp
 
 export function LiveStatusDot({ isActive = true, className }: { isActive?: boolean; className?: string }) {
   return (
-    <div className={cn("relative flex items-center justify-center", className)}>
+    <div 
+      className={cn("relative flex items-center justify-center", className)}
+      data-testid={`status-dot-${isActive ? "active" : "inactive"}`}
+    >
       <div 
         className={cn(
           "w-2 h-2 rounded-full",

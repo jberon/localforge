@@ -61,11 +61,44 @@ class ChunkThrottler {
   }
 }
 
-// Default throttle interval for SSE (50ms = 20 updates/sec max)
-const DEFAULT_THROTTLE_MS = 50;
+// ============================================================================
+// M4 PRO CONFIGURATION - Tunable via environment variables
+// ============================================================================
+// These settings are optimized for MacBook Pro M4 Pro (14-core CPU, 20-core GPU, 48GB RAM)
+// Adjust via environment variables without code changes
 
-const DEFAULT_ENDPOINT = "http://localhost:1234/v1";
-const LOCAL_API_KEY = "lm-studio";
+const LLM_CONFIG = {
+  // SSE throttle interval (default 50ms = 20 updates/sec max to prevent UI flooding)
+  throttleMs: parseInt(process.env.LLM_THROTTLE_MS || "50", 10),
+  
+  // Max concurrent LLM requests (LM Studio handles one at a time)
+  maxConcurrent: parseInt(process.env.LLM_MAX_CONCURRENT || "1", 10),
+  
+  // Max queue size before rejecting new requests
+  maxQueueSize: parseInt(process.env.LLM_MAX_QUEUE_SIZE || "20", 10),
+  
+  // Request timeout in milliseconds (2 minutes default for large generations)
+  requestTimeoutMs: parseInt(process.env.LLM_REQUEST_TIMEOUT_MS || "120000", 10),
+  
+  // Chunk size for streaming responses (1KB default)
+  streamChunkSize: parseInt(process.env.LLM_STREAM_CHUNK_SIZE || "1024", 10),
+  
+  // Default endpoint for LM Studio
+  defaultEndpoint: process.env.LLM_DEFAULT_ENDPOINT || "http://localhost:1234/v1",
+  
+  // API key for local LM Studio
+  apiKey: process.env.LLM_API_KEY || "lm-studio",
+} as const;
+
+// Export config for external access (debugging, UI display)
+export function getLLMConfig() {
+  return { ...LLM_CONFIG };
+}
+
+// Legacy constants for backward compatibility
+const DEFAULT_THROTTLE_MS = LLM_CONFIG.throttleMs;
+const DEFAULT_ENDPOINT = LLM_CONFIG.defaultEndpoint;
+const LOCAL_API_KEY = LLM_CONFIG.apiKey;
 
 const clientCache = new Map<string, OpenAI>();
 
@@ -82,7 +115,7 @@ class RequestQueue {
   private readonly maxConcurrent: number;
   private readonly maxQueueSize: number;
 
-  constructor(maxConcurrent = 1, maxQueueSize = 10) {
+  constructor(maxConcurrent = LLM_CONFIG.maxConcurrent, maxQueueSize = LLM_CONFIG.maxQueueSize) {
     this.maxConcurrent = maxConcurrent;
     this.maxQueueSize = maxQueueSize;
   }
@@ -134,9 +167,10 @@ class RequestQueue {
 }
 
 // Singleton request queue for LLM requests (enforces single concurrent request for LM Studio)
+// Configuration via environment: LLM_MAX_CONCURRENT, LLM_MAX_QUEUE_SIZE
 const llmRequestQueue = new RequestQueue(
-  1,  // maxConcurrent: LM Studio handles one request at a time
-  20  // maxQueueSize: Queue up to 20 requests (increased for better UX during multi-panel actions)
+  LLM_CONFIG.maxConcurrent,  // Default 1: LM Studio handles one request at a time
+  LLM_CONFIG.maxQueueSize    // Default 20: Queue up to 20 requests for multi-panel actions
 );
 
 // Connection health state

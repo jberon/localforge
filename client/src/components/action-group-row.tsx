@@ -99,7 +99,7 @@ export function ActionGroupRow({ actions, className, ...props }: ActionGroupRowP
         className="flex items-center gap-2 py-1.5 px-2 rounded-md hover-elevate transition-colors w-full text-left group"
         data-testid="button-expand-actions"
       >
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5" data-testid="action-icons-row">
           {visibleActions.map((action, index) => {
             const Icon = actionIcons[action.type] || Code2;
             const colorClass = actionColors[action.type] || "text-muted-foreground";
@@ -112,6 +112,7 @@ export function ActionGroupRow({ actions, className, ...props }: ActionGroupRowP
                   "bg-background border border-border/50"
                 )}
                 style={{ zIndex: visibleActions.length - index }}
+                data-testid={`action-icon-${action.type}-${action.id}`}
               >
                 <Icon className={cn("h-3 w-3", colorClass)} />
               </div>
@@ -174,5 +175,5 @@ export function ActionGroupRow({ actions, className, ...props }: ActionGroupRowP
 export function ActionIcon({ type, className }: { type: ActionType; className?: string }) {
   const Icon = actionIcons[type] || Code2;
   const colorClass = actionColors[type] || "text-muted-foreground";
-  return <Icon className={cn("h-4 w-4", colorClass, className)} />;
+  return <Icon className={cn("h-4 w-4", colorClass, className)} data-testid={`action-icon-${type}`} />;
 }

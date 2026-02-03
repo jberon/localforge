@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, User, Sparkles, FileCode, Loader2, Mic, MicOff, Paperclip, Image } from "lucide-react";
@@ -21,90 +21,95 @@ interface ChatPanelProps {
   onCheckConnection: () => void;
 }
 
-function formatMessageContent(content: string): JSX.Element[] {
-  const lines = content.split('\n');
-  const elements: JSX.Element[] = [];
-  let currentSection: string[] = [];
-  let sectionIndex = 0;
+// Memoized message content formatter - prevents re-parsing unchanged content
+const FormattedMessageContent = memo(function FormattedMessageContent({ content }: { content: string }) {
+  const elements = useMemo(() => {
+    const lines = content.split('\n');
+    const result: JSX.Element[] = [];
+    let currentSection: string[] = [];
+    let sectionIndex = 0;
 
-  const flushSection = () => {
-    if (currentSection.length > 0) {
-      elements.push(
-        <p key={`section-${sectionIndex}`} className="text-sm leading-relaxed whitespace-pre-wrap">
-          {currentSection.join('\n')}
-        </p>
-      );
-      currentSection = [];
-      sectionIndex++;
-    }
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    if (line.match(/^```/)) {
-      flushSection();
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].match(/^```/)) {
-        codeLines.push(lines[i]);
-        i++;
+    const flushSection = () => {
+      if (currentSection.length > 0) {
+        result.push(
+          <p key={`section-${sectionIndex}`} className="text-sm leading-relaxed whitespace-pre-wrap">
+            {currentSection.join('\n')}
+          </p>
+        );
+        currentSection = [];
+        sectionIndex++;
       }
-      elements.push(
-        <div key={`code-${sectionIndex}`} className="my-2 rounded-md bg-muted/50 border overflow-hidden" data-testid={`code-block-${sectionIndex}`}>
-          <div className="px-3 py-1.5 bg-muted/80 border-b flex items-center gap-2">
-            <FileCode className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground font-medium">Code</span>
-          </div>
-          <pre className="p-3 text-xs overflow-x-auto">
-            <code>{codeLines.join('\n')}</code>
-          </pre>
-        </div>
-      );
-      sectionIndex++;
-    } else if (line.startsWith('# ')) {
-      flushSection();
-      elements.push(
-        <h3 key={`h-${sectionIndex}`} className="text-base font-semibold mt-3 mb-1">
-          {line.substring(2)}
-        </h3>
-      );
-      sectionIndex++;
-    } else if (line.startsWith('## ')) {
-      flushSection();
-      elements.push(
-        <h4 key={`h-${sectionIndex}`} className="text-sm font-semibold mt-2 mb-1">
-          {line.substring(3)}
-        </h4>
-      );
-      sectionIndex++;
-    } else if (line.startsWith('- ') || line.startsWith('* ')) {
-      flushSection();
-      elements.push(
-        <div key={`li-${sectionIndex}`} className="flex gap-2 text-sm pl-2">
-          <span className="text-muted-foreground">•</span>
-          <span>{line.substring(2)}</span>
-        </div>
-      );
-      sectionIndex++;
-    } else if (line.match(/^\d+\. /)) {
-      flushSection();
-      const num = line.match(/^(\d+)\. /)?.[1];
-      elements.push(
-        <div key={`li-${sectionIndex}`} className="flex gap-2 text-sm pl-2">
-          <span className="text-muted-foreground min-w-[1.25rem]">{num}.</span>
-          <span>{line.replace(/^\d+\. /, '')}</span>
-        </div>
-      );
-      sectionIndex++;
-    } else {
-      currentSection.push(line);
-    }
-  }
+    };
 
-  flushSection();
-  return elements;
-}
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      if (line.match(/^```/)) {
+        flushSection();
+        const codeLines: string[] = [];
+        i++;
+        while (i < lines.length && !lines[i].match(/^```/)) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        result.push(
+          <div key={`code-${sectionIndex}`} className="my-2 rounded-md bg-muted/50 border overflow-hidden" data-testid={`code-block-${sectionIndex}`}>
+            <div className="px-3 py-1.5 bg-muted/80 border-b flex items-center gap-2">
+              <FileCode className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground font-medium">Code</span>
+            </div>
+            <pre className="p-3 text-xs overflow-x-auto">
+              <code>{codeLines.join('\n')}</code>
+            </pre>
+          </div>
+        );
+        sectionIndex++;
+      } else if (line.startsWith('# ')) {
+        flushSection();
+        result.push(
+          <h3 key={`h-${sectionIndex}`} className="text-base font-semibold mt-3 mb-1">
+            {line.substring(2)}
+          </h3>
+        );
+        sectionIndex++;
+      } else if (line.startsWith('## ')) {
+        flushSection();
+        result.push(
+          <h4 key={`h-${sectionIndex}`} className="text-sm font-semibold mt-2 mb-1">
+            {line.substring(3)}
+          </h4>
+        );
+        sectionIndex++;
+      } else if (line.startsWith('- ') || line.startsWith('* ')) {
+        flushSection();
+        result.push(
+          <div key={`li-${sectionIndex}`} className="flex gap-2 text-sm pl-2">
+            <span className="text-muted-foreground">•</span>
+            <span>{line.substring(2)}</span>
+          </div>
+        );
+        sectionIndex++;
+      } else if (line.match(/^\d+\. /)) {
+        flushSection();
+        const num = line.match(/^(\d+)\. /)?.[1];
+        result.push(
+          <div key={`li-${sectionIndex}`} className="flex gap-2 text-sm pl-2">
+            <span className="text-muted-foreground min-w-[1.25rem]">{num}.</span>
+            <span>{line.replace(/^\d+\. /, '')}</span>
+          </div>
+        );
+        sectionIndex++;
+      } else {
+        currentSection.push(line);
+      }
+    }
+
+    flushSection();
+    return result;
+  }, [content]);
+
+  return <>{elements}</>;
+});
 
 function getStatusFromPhase(phase: string | null | undefined): StatusType {
   if (!phase) return "thinking";
@@ -248,7 +253,7 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
                     )}
                     {message.content && (
                       <div className="pl-9 space-y-2" data-testid={`text-assistant-message-${message.id}`}>
-                        {formatMessageContent(message.content)}
+                        <FormattedMessageContent content={message.content} />
                       </div>
                     )}
                   </div>
