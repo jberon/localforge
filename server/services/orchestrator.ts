@@ -9,20 +9,69 @@ import { z } from "zod";
 // Optimized prompts for Ministral 3 14B Reasoning + Qwen3 Coder 30B stack
 // ============================================================================
 
-// Get model-specific instruction prefix based on detected role
-function getModelInstructions(modelName: string, role: "planner" | "builder"): string {
+type PlannerMode = "planning" | "design" | "review";
+
+// Get model-specific instruction prefix based on detected role and mode
+function getModelInstructions(
+  modelName: string, 
+  role: "planner" | "builder",
+  mode?: PlannerMode
+): string {
   const modelRole = detectModelRole(modelName);
   
   if (role === "planner") {
-    // Instructions for reasoning models (Ministral, etc.)
+    // Design mode instructions for UX/design guidance
+    if (mode === "design") {
+      return `CRITICAL INSTRUCTIONS FOR REASONING MODEL (DESIGN MODE):
+
+- You are providing Design & UX guidance for the planned application.
+- Describe screens, states, and navigation flows.
+- Define empty states, loading states, and error states.
+- Call out accessibility considerations (contrast, keyboard navigation, ARIA for web).
+- Specify design tokens / basic styling principles where appropriate.
+- Propose UX and interaction flows (screens, states, user journeys).
+- Output ONLY valid JSON with a "designNotes" field containing your guidance.
+- No code - design guidance only.
+
+`;
+    }
+    
+    // Review mode instructions for code review and hardening
+    if (mode === "review") {
+      return `CRITICAL INSTRUCTIONS FOR REASONING MODEL (REVIEW MODE):
+
+- You are a Principal Engineer performing a rigorous review.
+- Do NOT write new features; focus on quality, correctness, and maintainability.
+- Review architecture, code organization, tests, error handling, security, performance, and UX.
+- Output a structured review with VALID JSON ONLY:
+  {
+    "summary": "High-level summary of the review",
+    "strengths": ["strength 1", "strength 2"],
+    "issues": [
+      {"severity": "high|medium|low", "file": "optional/path", "description": "issue description"}
+    ],
+    "recommendations": ["specific actionable recommendation 1", "recommendation 2"]
+  }
+- Be honest and critical. Assume this code is going to production.
+- No code - review only.
+
+`;
+    }
+    
+    // Planning mode (default) instructions
     if (modelRole === "reasoning") {
-      return `CRITICAL INSTRUCTIONS FOR REASONING MODEL:
-- You will output a PLAN ONLY, no code.
+      return `CRITICAL INSTRUCTIONS FOR REASONING MODEL (PLANNING MODE):
+
+- You will output a PLAN ONLY, no production code.
 - Break the task into clear, numbered steps.
-- Describe each file needed and its contents.
-- Define APIs, directories, and architecture.
-- Spell out constraints and required styles.
-- Output ONLY valid JSON. No explanations outside JSON.
+- Describe each file needed and its responsibility.
+- Define directory structure, APIs, and data models.
+- Specify quality requirements: tests, error handling, logging, accessibility (when applicable).
+- Identify edge cases, performance concerns, and security considerations.
+- Propose UX and interaction flows where relevant (screens, states, empty states, loading states).
+- Output ONLY valid JSON matching the OrchestratorPlan schema. No text outside JSON.
+- If information is missing or ambiguous, note explicit assumptions in the plan.
+- Include qualityProfile ("prototype", "demo", or "production") based on request context.
 
 `;
     }
@@ -30,6 +79,7 @@ function getModelInstructions(modelName: string, role: "planner" | "builder"): s
     return `INSTRUCTIONS:
 - Output a structured plan in JSON format.
 - Focus on architecture and task breakdown.
+- Include qualityProfile: "prototype", "demo", or "production".
 - No code - planning only.
 
 `;
@@ -38,11 +88,22 @@ function getModelInstructions(modelName: string, role: "planner" | "builder"): s
   // Instructions for coding models (Qwen Coder, etc.)
   if (modelRole === "coding") {
     return `CRITICAL INSTRUCTIONS FOR CODING MODEL:
-- Implement EXACTLY what the plan specifies. Do NOT change the architecture.
-- Generate only valid, executable code. NO explanations.
-- When writing multiple files, respond in tagged blocks.
-- The code must be production-ready and error-free.
-- Follow the plan precisely. Every file, every component as specified.
+
+- Implement EXACTLY what the plan specifies. Do NOT change the architecture or requirements.
+- Generate only valid, executable code. DO NOT include explanations or commentary.
+- When writing multiple files, respond in tagged blocks using this format:
+  [FILE: path/to/file.ext]
+  \`\`\`language
+  // code here
+  \`\`\`
+- Ensure all imports/exports are consistent across files.
+- The code must be production-ready:
+  - Clear separation of concerns
+  - Meaningful naming
+  - Basic error handling and logging
+  - No hard-coded secrets
+- When tests are requested in the plan, include them in a /tests or __tests__ directory.
+- Prefer simplicity and maintainability over cleverness.
 
 `;
   }
@@ -114,21 +175,37 @@ export interface OrchestratorTask {
   id: string;
   title: string;
   description: string;
-  type: "plan" | "build" | "fix" | "search" | "validate";
+  type: "plan" | "build" | "fix" | "search" | "validate" | "review";
   status: "pending" | "in_progress" | "completed" | "failed";
   result?: string;
   error?: string;
 }
 
+export type QualityProfile = "prototype" | "demo" | "production";
+
 export interface OrchestratorPlan {
   summary: string;
   tasks: OrchestratorTask[];
   architecture?: string;
+  qualityProfile: QualityProfile;
+  stackProfile?: string;
+  designNotes?: string;
   searchQueries?: string[];
 }
 
+export interface ReviewSummary {
+  summary: string;
+  strengths: string[];
+  issues: Array<{
+    severity: "high" | "medium" | "low";
+    file?: string;
+    description: string;
+  }>;
+  recommendations: string[];
+}
+
 export interface OrchestratorState {
-  phase: "planning" | "searching" | "building" | "validating" | "fixing" | "complete" | "failed";
+  phase: "planning" | "designing" | "searching" | "building" | "validating" | "fixing" | "reviewing" | "complete" | "failed";
   plan?: OrchestratorPlan;
   currentTaskIndex: number;
   generatedCode: string;
@@ -137,6 +214,7 @@ export interface OrchestratorState {
   maxFixAttempts: number;
   webSearchResults: string;
   messages: Array<{ role: "planner" | "builder" | "system"; content: string }>;
+  reviewSummary?: ReviewSummary;
 }
 
 export type OrchestratorEvent = 
@@ -150,7 +228,8 @@ export type OrchestratorEvent =
   | { type: "search_result"; query: string; resultCount: number }
   | { type: "validation"; valid: boolean; errors: string[] }
   | { type: "fix_attempt"; attempt: number; maxAttempts: number }
-  | { type: "complete"; code: string; summary: string }
+  | { type: "review"; summary: string; issueCount: number; severityCounts: { high: number; medium: number; low: number } }
+  | { type: "complete"; code: string; summary: string; reviewSummary?: ReviewSummary }
   | { type: "status"; message: string }
   | { type: "error"; message: string };
 
@@ -163,10 +242,22 @@ MARTIN'S LENS: What's the simplest architecture that could work? How do we make 
 
 Analyze the user's request. Create a plan that's both user-outcome focused and architecturally sound.
 
+QUALITY PROFILES:
+- "prototype": Fast iteration, minimal tests, quick proof of concept
+- "demo": Stable for demos, core flows tested, reasonable error handling
+- "production": Tests required, no security flaws, clear error handling, no TODOs in critical paths
+
+Infer the appropriate qualityProfile based on the user's request:
+- Explicit mentions of "production", "enterprise", "secure" → "production"
+- Quick prototypes, experiments, learning exercises → "prototype"
+- Default to "demo" for most requests
+
 RESPOND WITH VALID JSON ONLY (no markdown):
 {
   "summary": "What problem this solves and for whom (Marty) + the technical approach (Martin)",
   "architecture": "Clean architecture: components, state management, separation of concerns (Martin's principles)",
+  "qualityProfile": "prototype" | "demo" | "production",
+  "designNotes": "Optional: UX flows, empty states, loading states, accessibility considerations",
   "searchNeeded": true/false,
   "searchQueries": ["query 1", "query 2"] (if searchNeeded),
   "tasks": [
@@ -175,7 +266,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
   ]
 }
 
-Task types: "build" for code, "validate" for testing
+Task types: "build" for code, "validate" for testing, "review" for final review
 Keep tasks focused and implementable. Maximum 5 tasks for simple apps.
 For API integrations, add searchNeeded: true with relevant queries.`;
 
@@ -245,6 +336,44 @@ CODE SNIPPET:
 {codeSnippet}
 
 As Kent Beck, provide a brief, actionable diagnosis:`;
+
+const REVIEW_PROMPT = `You ARE Julie Zhuo, former VP of Design at Facebook, combined with Martin Fowler's architectural rigor. You're performing a Principal Engineer review.
+
+YOUR REVIEW PHILOSOPHY:
+- Quality is not negotiable. Every line of code should be defensible.
+- Look for what could break in production, not just what works in development.
+- Consider the user experience as much as the code quality.
+- Security vulnerabilities are showstoppers.
+
+REVIEW THE FOLLOWING CODE:
+
+PLAN SUMMARY:
+{planSummary}
+
+QUALITY PROFILE: {qualityProfile}
+
+CODE:
+{code}
+
+Perform a comprehensive review covering:
+1. Architecture and code organization
+2. Error handling and edge cases
+3. Security concerns (injection, secrets, unsafe patterns)
+4. Performance hotspots
+5. UX issues (if UI is present)
+6. Code quality and maintainability
+
+RESPOND WITH VALID JSON ONLY:
+{
+  "summary": "High-level assessment of the code quality",
+  "strengths": ["What the code does well"],
+  "issues": [
+    {"severity": "high|medium|low", "file": "optional/path", "description": "Issue description"}
+  ],
+  "recommendations": ["Specific, actionable recommendations for improvement"]
+}
+
+Be honest and critical. This code is going to production.`;
 
 export class AIOrchestrator {
   private settings: LLMSettings;
@@ -511,8 +640,37 @@ export class AIOrchestrator {
         );
       }
 
+      // Review & Hardening phase - Planner reviews the final code
+      if (this.aborted) throw new Error("Aborted");
+      const julie = CORE_DREAM_TEAM.find(m => m.id === "julie");
+      this.emit({ type: "phase_change", phase: "reviewing", message: `${julie?.name || "Principal Engineer"} is reviewing the code...` });
+      
+      if (this.dreamTeam && this.projectId && julie) {
+        await this.dreamTeam.logActivity(this.projectId, {
+          member: julie,
+          action: "reviewing",
+          content: "Performing code review and hardening assessment...",
+        });
+      }
+      
+      const reviewSummary = await this.reviewPhase(this.state.generatedCode, plan);
+      this.state.reviewSummary = reviewSummary;
+      
+      // Emit review event
+      const severityCounts = {
+        high: reviewSummary.issues.filter((i: ReviewSummary["issues"][0]) => i.severity === "high").length,
+        medium: reviewSummary.issues.filter((i: ReviewSummary["issues"][0]) => i.severity === "medium").length,
+        low: reviewSummary.issues.filter((i: ReviewSummary["issues"][0]) => i.severity === "low").length,
+      };
+      this.emit({ 
+        type: "review", 
+        summary: reviewSummary.summary, 
+        issueCount: reviewSummary.issues.length,
+        severityCounts 
+      });
+
       this.emit({ type: "phase_change", phase: "complete", message: "Generation complete!" });
-      this.emit({ type: "complete", code: this.state.generatedCode, summary: plan.summary });
+      this.emit({ type: "complete", code: this.state.generatedCode, summary: plan.summary, reviewSummary });
 
       return { success: true, code: this.state.generatedCode, summary: plan.summary };
     } catch (error: any) {
@@ -570,6 +728,9 @@ export class AIOrchestrator {
       const parseResult = safeParseJSON<{
         summary?: string;
         architecture?: string;
+        qualityProfile?: string;
+        stackProfile?: string;
+        designNotes?: string;
         searchNeeded?: boolean;
         searchQueries?: string[];
         tasks?: Array<{ id?: string; title?: string; description?: string; type?: string }>;
@@ -589,6 +750,9 @@ export class AIOrchestrator {
         return {
           summary: parsed.summary || "Building your application",
           architecture: parsed.architecture || "",
+          qualityProfile: (parsed.qualityProfile as QualityProfile) || "demo",
+          stackProfile: parsed.stackProfile,
+          designNotes: parsed.designNotes,
           searchQueries: parsed.searchNeeded ? (parsed.searchQueries || []) : [],
           tasks,
         };
@@ -612,6 +776,7 @@ export class AIOrchestrator {
   private createSimplePlan(userRequest: string): OrchestratorPlan {
     return {
       summary: `Building: ${userRequest.slice(0, 100)}`,
+      qualityProfile: "demo",
       tasks: [
         { id: "1", title: "Generate App", description: userRequest, type: "build", status: "pending" },
         { id: "2", title: "Validate", description: "Check code quality", type: "validate", status: "pending" },
@@ -815,6 +980,68 @@ export class AIOrchestrator {
       .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
       .replace(/```$/gm, "")
       .trim();
+  }
+
+  private async reviewPhase(code: string, plan: OrchestratorPlan): Promise<ReviewSummary> {
+    const config = this.getPlannerConfig();
+    
+    this.emit({ type: "thinking", model: "planner", content: "Reviewing code quality, architecture, security, and UX..." });
+    
+    // Get review-mode instructions
+    const modelInstructions = getModelInstructions(config.model, "planner", "review");
+    
+    const prompt = modelInstructions + REVIEW_PROMPT
+      .replace("{planSummary}", plan.summary)
+      .replace("{qualityProfile}", plan.qualityProfile)
+      .replace("{code}", code.slice(0, 8000)); // Limit code size for context
+
+    try {
+      const response = await generateCompletion(
+        config,
+        "You are a Principal Engineer performing a rigorous code review.",
+        prompt,
+        LLM_DEFAULTS.maxTokens.analysis
+      );
+
+      // Parse review response
+      const parseResult = safeParseJSON<{
+        summary?: string;
+        strengths?: string[];
+        issues?: Array<{ severity?: string; file?: string; description?: string }>;
+        recommendations?: string[];
+      }>(response);
+
+      if (parseResult.success) {
+        const parsed = parseResult.data;
+        return {
+          summary: parsed.summary || "Review completed",
+          strengths: parsed.strengths || [],
+          issues: (parsed.issues || []).map(i => ({
+            severity: (i.severity as "high" | "medium" | "low") || "medium",
+            file: i.file,
+            description: i.description || "No description provided",
+          })),
+          recommendations: parsed.recommendations || [],
+        };
+      }
+
+      // Fallback if parsing fails
+      console.warn("[Orchestrator] Review JSON parse failed, returning minimal review");
+      return {
+        summary: "Review completed (parsing failed)",
+        strengths: [],
+        issues: [],
+        recommendations: [],
+      };
+    } catch (error) {
+      console.error("[Orchestrator] Review phase error:", error);
+      return {
+        summary: "Review skipped due to error",
+        strengths: [],
+        issues: [],
+        recommendations: [],
+      };
+    }
   }
 }
 

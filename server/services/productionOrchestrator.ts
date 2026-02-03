@@ -1,8 +1,10 @@
 import { createLLMClient, LLM_DEFAULTS, generateCompletion } from "../llm-client";
 import { searchWeb, formatSearchResultsForContext } from "./webSearch";
-import { llmSettingsSchema } from "@shared/schema";
+import { llmSettingsSchema, detectModelRole } from "@shared/schema";
 import { z } from "zod";
 import { classifyAppType, getAppTemplate, getClassificationContext, validateGeneratedContent, type AppType, type AppTemplate } from "./appClassifier";
+
+export type QualityProfile = "prototype" | "demo" | "production";
 
 export interface ProjectFile {
   path: string;
@@ -13,6 +15,8 @@ export interface ProjectFile {
 export interface ProductionPlan {
   summary: string;
   architecture: string;
+  qualityProfile: QualityProfile;
+  designNotes?: string;
   files: Array<{
     path: string;
     purpose: string;
@@ -24,6 +28,17 @@ export interface ProductionPlan {
     tests: string[];
   }>;
   searchQueries?: string[];
+}
+
+export interface ProductionReviewSummary {
+  summary: string;
+  strengths: string[];
+  issues: Array<{
+    severity: "high" | "medium" | "low";
+    file?: string;
+    description: string;
+  }>;
+  recommendations: string[];
 }
 
 export interface QualityReport {
@@ -38,12 +53,13 @@ export interface QualityReport {
 }
 
 export interface ProductionState {
-  phase: "planning" | "searching" | "building" | "testing" | "quality_check" | "validating_content" | "documenting" | "complete" | "failed";
+  phase: "planning" | "searching" | "building" | "testing" | "quality_check" | "validating_content" | "reviewing" | "documenting" | "complete" | "failed";
   plan?: ProductionPlan;
   files: ProjectFile[];
   testResults?: { passed: number; failed: number; errors: string[] };
   qualityReport?: QualityReport;
   contentValidation?: { valid: boolean; issues: string[] };
+  reviewSummary?: ProductionReviewSummary;
   fixAttempts: number;
   contentFixAttempts: number;
   maxFixAttempts: number;
@@ -64,7 +80,8 @@ export type ProductionEvent =
   | { type: "search"; query: string }
   | { type: "search_result"; query: string; resultCount: number }
   | { type: "fix_attempt"; attempt: number; maxAttempts: number; reason: string }
-  | { type: "complete"; files: ProjectFile[]; summary: string; qualityScore: number }
+  | { type: "review"; summary: string; issueCount: number; severityCounts: { high: number; medium: number; low: number } }
+  | { type: "complete"; files: ProjectFile[]; summary: string; qualityScore: number; reviewSummary?: ProductionReviewSummary }
   | { type: "error"; message: string };
 
 type LLMSettings = z.infer<typeof llmSettingsSchema>;
@@ -86,10 +103,17 @@ MARTY'S PRODUCT LENS:
 
 CRITICAL: Generate files SPECIFIC to the requested application type. DO NOT generate generic data-fetching templates.
 
+QUALITY PROFILES:
+- "prototype": Fast iteration, minimal validation, basic tests (for exploration)
+- "demo": Balanced quality for stable demos (default)
+- "production": Enterprise-grade with full tests, security audit, accessibility review
+
 RESPOND WITH VALID JSON ONLY (no markdown):
 {
   "summary": "What problem this solves (Marty) + how it's architected (Martin)",
   "architecture": "Clean architecture explanation: why these components, how they interact, what makes this maintainable",
+  "qualityProfile": "prototype|demo|production (choose based on user's implied needs)",
+  "designNotes": "Optional UI/UX guidance: layout approach, color scheme suggestions, interaction patterns",
   "files": [
     {"path": "src/App.tsx", "purpose": "What this file does for THIS app", "type": "component", "dependencies": []},
     {"path": "src/components/FeatureName.tsx", "purpose": "Specific feature component", "type": "component", "dependencies": []},
@@ -329,6 +353,25 @@ export class ProductionOrchestrator {
         throw new Error(`Content validation failed: ${contentValidation.issues.join(", ")}`);
       }
 
+      // Review & Hardening phase - Planner acts as Principal Engineer
+      if (this.aborted) throw new Error("Aborted");
+      this.emit({ type: "phase_change", phase: "reviewing", message: "Principal Engineer reviewing implementation..." });
+      const reviewSummary = await this.reviewPhase(plan, userRequest);
+      this.state.reviewSummary = reviewSummary;
+      
+      // Emit review event with severity counts
+      const severityCounts = {
+        high: reviewSummary.issues.filter(i => i.severity === "high").length,
+        medium: reviewSummary.issues.filter(i => i.severity === "medium").length,
+        low: reviewSummary.issues.filter(i => i.severity === "low").length,
+      };
+      this.emit({
+        type: "review",
+        summary: reviewSummary.summary,
+        issueCount: reviewSummary.issues.length,
+        severityCounts
+      });
+
       if (this.aborted) throw new Error("Aborted");
       this.emit({ type: "phase_change", phase: "documenting", message: "Generating documentation..." });
       await this.documentationPhase(plan);
@@ -340,7 +383,8 @@ export class ProductionOrchestrator {
         type: "complete", 
         files: this.state.files, 
         summary: plan.summary,
-        qualityScore: finalScore
+        qualityScore: finalScore,
+        reviewSummary: this.state.reviewSummary
       });
 
       return { 
@@ -391,6 +435,8 @@ export class ProductionOrchestrator {
       return {
         summary: parsed.summary || template.description,
         architecture: parsed.architecture || `React with TypeScript - ${template.stateManagement}`,
+        qualityProfile: (parsed.qualityProfile as QualityProfile) || "demo",
+        designNotes: parsed.designNotes,
         files: (parsed.files || []).map((f: any) => ({
           path: f.path,
           purpose: f.purpose,
@@ -412,6 +458,7 @@ export class ProductionOrchestrator {
     return {
       summary: t.description,
       architecture: `React with TypeScript - ${t.stateManagement}`,
+      qualityProfile: "demo",
       files: t.suggestedFiles.map(f => ({
         path: f.path,
         purpose: f.purpose,
@@ -693,6 +740,93 @@ Output ONLY the fixed code - no explanations:`;
     });
 
     this.emit({ type: "file_complete", file: "README.md", size: cleaned.length });
+  }
+
+  private async reviewPhase(plan: ProductionPlan, userRequest: string): Promise<ProductionReviewSummary> {
+    const config = this.getPlannerConfig();
+    
+    // Collect file summaries for review
+    const filesSummary = this.state.files
+      .filter(f => f.type !== "readme")
+      .map(f => `### ${f.path}\n\`\`\`typescript\n${f.content.slice(0, 1500)}${f.content.length > 1500 ? "\n// ... truncated ..." : ""}\n\`\`\``)
+      .join("\n\n");
+    
+    const qualityContext = this.state.qualityReport 
+      ? `Quality Score: ${this.state.qualityReport.score}/100\nIssues: ${this.state.qualityReport.issues.map(i => `${i.severity}: ${i.message}`).join(", ")}`
+      : "No quality report available";
+
+    const reviewPrompt = `You ARE a Principal Engineer performing a final code review.
+
+USER REQUEST: ${userRequest}
+QUALITY PROFILE: ${plan.qualityProfile}
+
+ARCHITECTURE PLAN:
+${plan.architecture}
+
+QUALITY CONTEXT:
+${qualityContext}
+
+GENERATED FILES:
+${filesSummary}
+
+Review this implementation as a Principal Engineer. Evaluate:
+1. Does the code fulfill the user's request?
+2. Is the architecture appropriate for the quality profile (${plan.qualityProfile})?
+3. Are there any security, performance, or maintainability concerns?
+4. Is the UX/UI implementation intuitive and accessible?
+
+Respond with a JSON object:
+{
+  "summary": "Brief overall assessment (1-2 sentences)",
+  "strengths": ["List 2-3 strengths"],
+  "issues": [
+    {
+      "severity": "high|medium|low",
+      "file": "optional file path",
+      "description": "Issue description"
+    }
+  ],
+  "recommendations": ["List 1-3 actionable recommendations for future improvements"]
+}`;
+
+    this.emit({ type: "thinking", model: "planner", content: "Principal Engineer reviewing implementation quality..." });
+
+    try {
+      const response = await generateCompletion(
+        config,
+        "You are a Principal Engineer. Review code and output ONLY valid JSON.",
+        reviewPrompt,
+        LLM_DEFAULTS.maxTokens.plan
+      );
+
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return this.createDefaultReviewSummary();
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        summary: parsed.summary || "Review completed",
+        strengths: parsed.strengths || [],
+        issues: (parsed.issues || []).map((i: any) => ({
+          severity: i.severity || "low",
+          file: i.file,
+          description: i.description || "",
+        })),
+        recommendations: parsed.recommendations || [],
+      };
+    } catch {
+      return this.createDefaultReviewSummary();
+    }
+  }
+
+  private createDefaultReviewSummary(): ProductionReviewSummary {
+    return {
+      summary: "Implementation completed. Review pending human inspection.",
+      strengths: ["Files generated successfully", "Basic structure in place"],
+      issues: [],
+      recommendations: ["Consider adding more comprehensive tests", "Review accessibility features"],
+    };
   }
 }
 

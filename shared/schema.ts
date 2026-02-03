@@ -306,6 +306,7 @@ export function detectModelRole(modelName: string): "reasoning" | "coding" | "hy
   if (lowerName.includes("ministral") || 
       lowerName.includes("reasoning") ||
       lowerName.includes("deepseek-r") ||
+      lowerName.includes("r1") ||
       lowerName.includes("gemma-2") ||
       lowerName.includes("phi-3")) {
     return "reasoning";
@@ -324,6 +325,7 @@ export function detectModelRole(modelName: string): "reasoning" | "coding" | "hy
 }
 
 // Get optimal temperature for detected model type
+// Updated for production-grade consistency (0.2-0.3 for builder per new spec)
 export function getOptimalTemperature(modelName: string, role: "planner" | "builder"): number {
   const modelRole = detectModelRole(modelName);
   
@@ -332,8 +334,9 @@ export function getOptimalTemperature(modelName: string, role: "planner" | "buil
     return modelRole === "reasoning" ? 0.2 : 0.3;
   }
   
-  // For builder role, use moderate temperatures for creative but accurate code
-  return modelRole === "coding" ? 0.5 : 0.6;
+  // For builder role, use lower temperatures for production-grade consistency
+  // Previous: 0.5/0.6, now: 0.25/0.35 for more reliable multi-file code
+  return modelRole === "coding" ? 0.25 : 0.35;
 }
 
 // Production modules for enterprise-grade applications
