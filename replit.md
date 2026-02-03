@@ -89,11 +89,26 @@ Optimized for Mac M4 Pro, integrating with LM Studio via client connection cachi
 - Coder models hallucinate structure; reasoning models write sloppy code
 - Separating brain from hands gives: cleaner code, stable multi-file scaffolding, fewer hallucinations, better planning, easier refactoring
 
-### LM Studio Settings for M4 Pro
-- GPU Layers: -1 (all layers on GPU for Metal acceleration)
-- Context Length: 32768 (32K context for large applications)
-- Batch Size: 512 (optimal for M4 Pro)
-- Threads: 10 (leave 4 cores for system)
+### LM Studio Settings for M4 Pro (Optimized)
+- **GPU Layers**: -1 (all layers on GPU for Metal acceleration)
+- **Context Length**: 65536 (64K context for very large applications)
+- **Batch Size**: 1024 (optimized for M4 Pro GPU)
+- **Threads**: 10 (leave 4 cores for system on 14-core CPU)
+- **Flash Attention**: Enable if supported (faster attention computation)
+- **Memory Map**: Enable mmap for efficient model loading
+
+### Memory Allocation (48GB Unified Memory)
+- **Model Weights**: 32GB (fits 30B+ parameter models)
+- **Context Buffer**: 12GB (supports 64K+ context)
+- **System Reserve**: 4GB (OS + application overhead)
+
+### Connection Resilience
+LocalForge includes a Circuit Breaker pattern for LLM connection resilience:
+- **Failure Threshold**: Opens after 3 consecutive failures
+- **Recovery Timeout**: Retries after 30 seconds
+- **Success Threshold**: Closes after 2 consecutive successes
+- **Monitoring**: Circuit breaker status exposed via `/api/llm/queue-status`
+- **Manual Reset**: Available via `/api/llm/reset-circuit-breaker`
 
 ## External Dependencies
 - **LM Studio**: Local LLM inference.
