@@ -4,6 +4,15 @@ import { resilienceService } from "../services/resilience.service";
 import { healthAlertsService } from "../services/health-alerts.service";
 import { smartRetryService } from "../services/smart-retry.service";
 import { generationCheckpointService } from "../services/generation-checkpoint.service";
+import { autoDocumentationService } from "../services/auto-documentation.service";
+import { securityScanningService } from "../services/security-scanning.service";
+import { bundleOptimizerService } from "../services/bundle-optimizer.service";
+import { testCoverageService } from "../services/test-coverage.service";
+import { accessibilityCheckerService } from "../services/accessibility-checker.service";
+import { codeDeduplicationService } from "../services/code-deduplication.service";
+import { apiContractValidationService } from "../services/api-contract-validation.service";
+import { importOptimizerService } from "../services/import-optimizer.service";
+import { performanceProfilerService } from "../services/performance-profiler.service";
 import logger from "../lib/logger";
 
 const router = Router();
@@ -283,6 +292,324 @@ router.delete("/checkpoints/:projectId/auto-saves", (req, res) => {
   } catch (error) {
     logger.error("Failed to clear auto-saves", { error });
     res.status(500).json({ error: "Failed to clear auto-saves" });
+  }
+});
+
+// ==================== AUTO-DOCUMENTATION ====================
+
+// Generate documentation for project files
+router.post("/documentation/generate", async (req, res) => {
+  try {
+    const { files, projectName } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await autoDocumentationService.generateDocumentation(files, projectName);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to generate documentation", { error });
+    res.status(500).json({ error: "Failed to generate documentation" });
+  }
+});
+
+// Generate quick README
+router.post("/documentation/quick-readme", (req, res) => {
+  try {
+    const { projectName, description, features } = req.body;
+    const readme = autoDocumentationService.generateQuickReadme(
+      projectName || "Project",
+      description || "A generated project",
+      features || []
+    );
+    res.json({ readme });
+  } catch (error) {
+    logger.error("Failed to generate quick README", { error });
+    res.status(500).json({ error: "Failed to generate README" });
+  }
+});
+
+// ==================== SECURITY SCANNING ====================
+
+// Scan files for security issues
+router.post("/security/scan", async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await securityScanningService.scanFiles(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to scan for security issues", { error });
+    res.status(500).json({ error: "Failed to scan for security issues" });
+  }
+});
+
+// Scan single file
+router.post("/security/scan-file", (req, res) => {
+  try {
+    const { content, filePath } = req.body;
+    if (!content || !filePath) {
+      return res.status(400).json({ error: "content and filePath are required" });
+    }
+    
+    const issues = securityScanningService.scanSingleFile(content, filePath);
+    res.json({ issues });
+  } catch (error) {
+    logger.error("Failed to scan file", { error });
+    res.status(500).json({ error: "Failed to scan file" });
+  }
+});
+
+// ==================== BUNDLE OPTIMIZER ====================
+
+// Analyze bundle for optimization opportunities
+router.post("/bundle/analyze", async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await bundleOptimizerService.analyzeBundle(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to analyze bundle", { error });
+    res.status(500).json({ error: "Failed to analyze bundle" });
+  }
+});
+
+// Get size breakdown
+router.post("/bundle/size-breakdown", (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const breakdown = bundleOptimizerService.getSizeBreakdown(files);
+    res.json(breakdown);
+  } catch (error) {
+    logger.error("Failed to get size breakdown", { error });
+    res.status(500).json({ error: "Failed to get size breakdown" });
+  }
+});
+
+// Estimate bundle size from dependencies
+router.post("/bundle/estimate-size", (req, res) => {
+  try {
+    const { dependencies } = req.body;
+    if (!dependencies || !Array.isArray(dependencies)) {
+      return res.status(400).json({ error: "dependencies array is required" });
+    }
+    
+    const estimatedSize = bundleOptimizerService.estimateBundleSize(dependencies);
+    res.json({ estimatedSize, estimatedKB: Math.round(estimatedSize / 1024) });
+  } catch (error) {
+    logger.error("Failed to estimate bundle size", { error });
+    res.status(500).json({ error: "Failed to estimate bundle size" });
+  }
+});
+
+// ==================== TEST COVERAGE ====================
+
+// Analyze test coverage
+router.post("/coverage/analyze", async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await testCoverageService.analyzeCoverage(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to analyze test coverage", { error });
+    res.status(500).json({ error: "Failed to analyze test coverage" });
+  }
+});
+
+// Generate test template
+router.post("/coverage/generate-template", (req, res) => {
+  try {
+    const { functionName, isAsync, isComponent, importPath } = req.body;
+    if (!functionName || !importPath) {
+      return res.status(400).json({ error: "functionName and importPath are required" });
+    }
+    
+    const template = testCoverageService.generateTestTemplate(
+      functionName,
+      isAsync || false,
+      isComponent || false,
+      importPath
+    );
+    res.json({ template });
+  } catch (error) {
+    logger.error("Failed to generate test template", { error });
+    res.status(500).json({ error: "Failed to generate test template" });
+  }
+});
+
+// ==================== ACCESSIBILITY CHECKER ====================
+
+// Check accessibility
+router.post("/accessibility/check", async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await accessibilityCheckerService.checkAccessibility(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to check accessibility", { error });
+    res.status(500).json({ error: "Failed to check accessibility" });
+  }
+});
+
+// Check single file
+router.post("/accessibility/check-file", (req, res) => {
+  try {
+    const { content, filePath } = req.body;
+    if (!content || !filePath) {
+      return res.status(400).json({ error: "content and filePath are required" });
+    }
+    
+    const issues = accessibilityCheckerService.checkSingleFile(content, filePath);
+    res.json({ issues });
+  } catch (error) {
+    logger.error("Failed to check file accessibility", { error });
+    res.status(500).json({ error: "Failed to check file accessibility" });
+  }
+});
+
+// ==================== CODE DEDUPLICATION ====================
+
+// Find duplicate code
+router.post("/deduplication/analyze", async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await codeDeduplicationService.findDuplicates(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to analyze duplicates", { error });
+    res.status(500).json({ error: "Failed to analyze duplicates" });
+  }
+});
+
+// ==================== API CONTRACT VALIDATION ====================
+
+// Validate API contracts
+router.post("/contracts/validate", async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await apiContractValidationService.validateContracts(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to validate contracts", { error });
+    res.status(500).json({ error: "Failed to validate contracts" });
+  }
+});
+
+// ==================== IMPORT OPTIMIZER ====================
+
+// Optimize imports
+router.post("/imports/optimize", async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await importOptimizerService.optimizeImports(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to optimize imports", { error });
+    res.status(500).json({ error: "Failed to optimize imports" });
+  }
+});
+
+// ==================== PERFORMANCE PROFILER ====================
+
+// Get performance stats
+router.get("/performance/stats", (req, res) => {
+  try {
+    const timeWindow = req.query.timeWindow 
+      ? parseInt(req.query.timeWindow as string) 
+      : 3600000;
+    
+    const stats = performanceProfilerService.getStats(timeWindow);
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get performance stats", { error });
+    res.status(500).json({ error: "Failed to get performance stats" });
+  }
+});
+
+// Get category-specific stats
+router.get("/performance/category/:category", (req, res) => {
+  try {
+    const { category } = req.params;
+    const timeWindow = req.query.timeWindow 
+      ? parseInt(req.query.timeWindow as string) 
+      : 3600000;
+    
+    const stats = performanceProfilerService.getCategoryStats(category as any, timeWindow);
+    res.json(stats || { message: "No data for this category" });
+  } catch (error) {
+    logger.error("Failed to get category stats", { error });
+    res.status(500).json({ error: "Failed to get category stats" });
+  }
+});
+
+// Get active operations
+router.get("/performance/active", (_req, res) => {
+  try {
+    const operations = performanceProfilerService.getActiveOperations();
+    res.json(operations);
+  } catch (error) {
+    logger.error("Failed to get active operations", { error });
+    res.status(500).json({ error: "Failed to get active operations" });
+  }
+});
+
+// Export metrics
+router.get("/performance/export", (req, res) => {
+  try {
+    const format = (req.query.format as "json" | "csv") || "json";
+    const data = performanceProfilerService.exportMetrics(format);
+    
+    if (format === "csv") {
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=performance-metrics.csv");
+    }
+    
+    res.send(data);
+  } catch (error) {
+    logger.error("Failed to export metrics", { error });
+    res.status(500).json({ error: "Failed to export metrics" });
+  }
+});
+
+// Clear metrics
+router.delete("/performance/metrics", (_req, res) => {
+  try {
+    performanceProfilerService.clearMetrics();
+    res.json({ success: true, message: "Metrics cleared" });
+  } catch (error) {
+    logger.error("Failed to clear metrics", { error });
+    res.status(500).json({ error: "Failed to clear metrics" });
   }
 });
 

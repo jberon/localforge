@@ -58,7 +58,9 @@ Recommended settings include GPU Layers: -1, Context Length: 65536, Batch Size: 
 ### Connection Resilience
 A Circuit Breaker pattern is implemented for LLM connection resilience with configurable failure thresholds, recovery timeouts, and monitoring.
 
-### Automation Services
+### Automation Services (16 Total)
+
+**Core Automation:**
 - **Auto-Validation Pipeline**: Integrates ESLint, TypeScript checking, and test runners (Vitest/Jest) with auto-fix support.
 - **Intelligent Context Pruning**: Manages LLM context window efficiently through token estimation, auto-summarization, and code block compression.
 - **Model Hot-Swapping**: Automatically detects memory pressure and switches to lighter models (e.g., Qwen2.5 14B) when necessary.
@@ -66,6 +68,17 @@ A Circuit Breaker pattern is implemented for LLM connection resilience with conf
 - **Auto-Dependency Resolution**: Detects and suggests installs for missing npm packages and validates local file imports.
 - **Generation Checkpoints**: Auto-saves progress during long generations and allows manual checkpoints with recovery capabilities.
 - **Smart Retry Strategies**: Implements intelligent error recovery by reducing context, simplifying prompts, and adjusting temperature.
+
+**Advanced Automation (New):**
+- **Auto-Documentation Generator**: Generates README.md and JSDoc comments for projects, analyzes tech stack and features.
+- **Security Scanning**: Detects XSS, SQL injection, exposed secrets, command injection, and other vulnerabilities with severity ratings.
+- **Bundle Size Optimizer**: Analyzes bundle size, identifies large dependencies, suggests code splitting/tree-shaking/lazy loading.
+- **Test Coverage Analyzer**: Tracks test coverage, identifies untested functions, generates test templates for components and utilities.
+- **Accessibility Checker**: Validates WCAG compliance including alt text, labels, keyboard accessibility, heading structure, and color contrast.
+- **Code Deduplication**: Detects duplicate code patterns, suggests refactoring into hooks/components/utilities.
+- **API Contract Validation**: Ensures frontend API calls match backend endpoints, detects method/path mismatches.
+- **Import Optimizer**: Identifies unused imports, duplicate imports, namespace imports that block tree-shaking.
+- **Performance Profiler**: Tracks LLM generation times, database queries, API requests with percentiles and trend analysis.
 
 ### In-Browser Bundler
 Uses esbuild-wasm for in-browser bundling of multi-file TypeScript/React projects, featuring a virtual file system, hot refresh, React/ReactDOM support, and an error overlay.
