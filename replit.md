@@ -111,6 +111,17 @@ LocalForge is specifically optimized for MacBook Pro M4 Pro (14-core CPU, 20-cor
 - Connection health tracking with consecutive failure detection
 - Performance telemetry: tokens/sec monitoring with M4 Pro threshold validation
 
+**Database Connection Pooling (server/db.ts):**
+- Pool size: min 2, max 10 connections for balanced resource usage
+- Idle timeout: 30 seconds to release unused connections
+- Connection timeout: 5 seconds with error event handling
+- Connection event logging for debugging and monitoring
+
+**Dream Team Service Guards (server/services/dreamTeam.ts):**
+- `getRequiredMemberById()` method for safe team member lookups
+- Explicit error messages with valid IDs when member not found
+- Prevents undefined member errors during orchestration
+
 **Recommended LM Studio Settings:**
 - GPU Layers: -1 (all layers on GPU for Metal acceleration)
 - Context Length: 32768 (32K context for large applications)
