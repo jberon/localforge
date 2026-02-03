@@ -6,10 +6,30 @@ interface UseLLMConnectionOptions {
   pollInterval?: number;
 }
 
+interface QueueStatus {
+  pending: number;
+  active: number;
+}
+
+interface ConnectionHealth {
+  isHealthy: boolean;
+  consecutiveFailures: number;
+  lastError?: string;
+}
+
+interface Telemetry {
+  avgTokensPerSecond: number;
+  lastTokensPerSecond: number;
+  warnings: string[];
+}
+
 interface UseLLMConnectionReturn {
   isConnected: boolean | null;
   loadedModel: string | null;
   availableModels: string[];
+  queueStatus: QueueStatus | null;
+  health: ConnectionHealth | null;
+  telemetry: Telemetry | null;
   isChecking: boolean;
   checkConnection: () => Promise<void>;
 }
@@ -22,6 +42,9 @@ export function useLLMConnection({
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [loadedModel, setLoadedModel] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
+  const [health, setHealth] = useState<ConnectionHealth | null>(null);
+  const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
   const checkConnection = useCallback(async () => {
@@ -34,6 +57,7 @@ export function useLLMConnection({
       });
       const data = await response.json();
       setIsConnected(data.connected);
+      
       if (data.connected && data.models?.length > 0) {
         setAvailableModels(data.models);
         const activeModel = model || data.models[0];
@@ -42,10 +66,27 @@ export function useLLMConnection({
         setAvailableModels([]);
         setLoadedModel(null);
       }
+      
+      if (data.queueStatus) {
+        setQueueStatus(data.queueStatus);
+      }
+      if (data.health) {
+        setHealth(data.health);
+      }
+      if (data.telemetry) {
+        setTelemetry({
+          avgTokensPerSecond: data.telemetry.avgTokensPerSecond,
+          lastTokensPerSecond: data.telemetry.lastTokensPerSecond,
+          warnings: data.telemetry.warnings || [],
+        });
+      }
     } catch {
       setIsConnected(false);
       setAvailableModels([]);
       setLoadedModel(null);
+      setQueueStatus(null);
+      setHealth(null);
+      setTelemetry(null);
     } finally {
       setIsChecking(false);
     }
@@ -61,6 +102,9 @@ export function useLLMConnection({
     isConnected,
     loadedModel,
     availableModels,
+    queueStatus,
+    health,
+    telemetry,
     isChecking,
     checkConnection,
   };

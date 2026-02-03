@@ -32,7 +32,7 @@ import { useProjectMutations } from "@/hooks/use-project-mutations";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Users, Globe, Settings, PanelRight, PanelRightClose, FolderTree } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree } from "lucide-react";
 import { FileExplorer } from "@/components/file-explorer";
 import {
   AlertDialog,
@@ -178,6 +178,8 @@ export default function Home() {
     isConnected: llmConnected,
     loadedModel,
     availableModels,
+    queueStatus,
+    telemetry,
     isChecking: isCheckingConnection,
     checkConnection,
   } = useLLMConnection({
@@ -1180,7 +1182,17 @@ export default function Home() {
               )}
               {llmConnected === true && (
                 <div className="flex items-center gap-1.5" data-testid="indicator-connected">
-                  <div className="w-2 h-2 bg-green-500 rounded-full" title="LM Studio connected" />
+                  <div 
+                    className={`w-2 h-2 rounded-full ${
+                      queueStatus && queueStatus.pending > 0 
+                        ? 'bg-amber-500 animate-pulse' 
+                        : 'bg-green-500'
+                    }`} 
+                    title={queueStatus 
+                      ? `LM Studio connected${queueStatus.pending > 0 ? ` (${queueStatus.pending} queued)` : ''}${telemetry?.lastTokensPerSecond ? ` - ${telemetry.lastTokensPerSecond.toFixed(0)} tok/s` : ''}`
+                      : 'LM Studio connected'
+                    } 
+                  />
                   {settings.useDualModels && (settings.plannerModel || settings.builderModel) ? (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       {settings.plannerModel && (
