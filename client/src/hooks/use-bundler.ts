@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { bundleProject, generatePreviewHtml, generateErrorHtml, type VirtualFile, type BundleResult } from '@/lib/bundler';
 
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash;
+}
+
 interface UseBundlerOptions {
   files: VirtualFile[];
   enabled: boolean;
@@ -84,7 +94,7 @@ export function useBundler({ files, enabled, nonce }: UseBundlerOptions): UseBun
   useEffect(() => {
     if (!enabled) return;
     
-    const filesKey = files.map(f => `${f.path}:${f.content.length}`).join('|');
+    const filesKey = files.map(f => `${f.path}:${simpleHash(f.content)}`).join('|');
     if (filesKey === lastFilesRef.current) return;
     lastFilesRef.current = filesKey;
     

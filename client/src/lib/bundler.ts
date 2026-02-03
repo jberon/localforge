@@ -63,15 +63,66 @@ function createVirtualFilePlugin(files: Map<string, string>): esbuild.Plugin {
   return {
     name: 'virtual-file-system',
     setup(build) {
-      build.onResolve({ filter: /^react$|^react-dom$|^react\/jsx-runtime$/ }, (args) => ({
+      build.onResolve({ filter: /^react$|^react-dom$|^react-dom\/client$|^react\/jsx-runtime$/ }, (args) => ({
         path: args.path,
         namespace: 'external',
+        sideEffects: false,
       }));
       
-      build.onLoad({ filter: /.*/, namespace: 'external' }, (args) => ({
-        contents: `module.exports = window.${args.path === 'react' ? 'React' : args.path === 'react-dom' ? 'ReactDOM' : 'React'}`,
-        loader: 'js',
-      }));
+      build.onLoad({ filter: /.*/, namespace: 'external' }, (args) => {
+        const getGlobalExport = (path: string) => {
+          if (path === 'react') {
+            return `
+              var React = window.React;
+              module.exports = React;
+              module.exports.default = React;
+              module.exports.useState = React.useState;
+              module.exports.useEffect = React.useEffect;
+              module.exports.useCallback = React.useCallback;
+              module.exports.useMemo = React.useMemo;
+              module.exports.useRef = React.useRef;
+              module.exports.useContext = React.useContext;
+              module.exports.useReducer = React.useReducer;
+              module.exports.createElement = React.createElement;
+              module.exports.Fragment = React.Fragment;
+              module.exports.createContext = React.createContext;
+              module.exports.forwardRef = React.forwardRef;
+              module.exports.memo = React.memo;
+              module.exports.lazy = React.lazy;
+              module.exports.Suspense = React.Suspense;
+              module.exports.Children = React.Children;
+              module.exports.cloneElement = React.cloneElement;
+              module.exports.isValidElement = React.isValidElement;
+            `;
+          } else if (path === 'react-dom' || path === 'react-dom/client') {
+            return `
+              var ReactDOM = window.ReactDOM;
+              module.exports = ReactDOM;
+              module.exports.default = ReactDOM;
+              module.exports.createRoot = ReactDOM.createRoot;
+              module.exports.createPortal = ReactDOM.createPortal;
+              module.exports.render = ReactDOM.render;
+              module.exports.hydrate = ReactDOM.hydrate;
+              module.exports.flushSync = ReactDOM.flushSync;
+            `;
+          } else if (path === 'react/jsx-runtime') {
+            return `
+              var React = window.React;
+              module.exports = {
+                jsx: React.createElement,
+                jsxs: React.createElement,
+                Fragment: React.Fragment
+              };
+            `;
+          }
+          return `module.exports = window.${path.replace(/[^a-zA-Z]/g, '')} || {};`;
+        };
+        
+        return {
+          contents: getGlobalExport(args.path),
+          loader: 'js',
+        };
+      });
 
       build.onResolve({ filter: /.*/ }, (args) => {
         if (args.kind === 'entry-point') {
