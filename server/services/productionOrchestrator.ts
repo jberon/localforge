@@ -2,6 +2,7 @@ import { createLLMClient, LLM_DEFAULTS, generateCompletion } from "../llm-client
 import { searchWeb, formatSearchResultsForContext } from "./webSearch";
 import { llmSettingsSchema } from "@shared/schema";
 import { z } from "zod";
+import { classifyAppType, getAppTemplate, getClassificationContext, validateGeneratedContent, type AppType, type AppTemplate } from "./appClassifier";
 
 export interface ProjectFile {
   path: string;
@@ -37,14 +38,18 @@ export interface QualityReport {
 }
 
 export interface ProductionState {
-  phase: "planning" | "searching" | "building" | "testing" | "quality_check" | "documenting" | "complete" | "failed";
+  phase: "planning" | "searching" | "building" | "testing" | "quality_check" | "validating_content" | "documenting" | "complete" | "failed";
   plan?: ProductionPlan;
   files: ProjectFile[];
   testResults?: { passed: number; failed: number; errors: string[] };
   qualityReport?: QualityReport;
+  contentValidation?: { valid: boolean; issues: string[] };
   fixAttempts: number;
+  contentFixAttempts: number;
   maxFixAttempts: number;
   webSearchResults: string;
+  userRequest?: string;
+  appType?: AppType;
 }
 
 export type ProductionEvent =
@@ -66,34 +71,38 @@ type LLMSettings = z.infer<typeof llmSettingsSchema>;
 
 const PRODUCTION_PLANNING_PROMPT = `You are a senior software architect creating production-ready TypeScript React applications.
 
+{appTypeGuidance}
+
+CRITICAL: Generate files SPECIFIC to the requested application type. DO NOT generate generic data-fetching templates.
+
 RESPOND WITH VALID JSON ONLY (no markdown):
 {
-  "summary": "Brief description of the application",
-  "architecture": "Technical architecture decisions (state management, API patterns, styling approach)",
+  "summary": "Brief description of what THIS SPECIFIC app does",
+  "architecture": "Technical architecture for THIS app type",
   "files": [
-    {"path": "src/App.tsx", "purpose": "Main application entry point", "type": "component", "dependencies": []},
-    {"path": "src/components/Header.tsx", "purpose": "Navigation header", "type": "component", "dependencies": ["App.tsx"]},
-    {"path": "src/hooks/useData.ts", "purpose": "Data fetching hook", "type": "hook", "dependencies": []},
-    {"path": "src/services/api.ts", "purpose": "API service layer", "type": "service", "dependencies": []},
-    {"path": "src/__tests__/App.test.tsx", "purpose": "App component tests", "type": "test", "dependencies": ["App.tsx"]}
+    {"path": "src/App.tsx", "purpose": "What this file does for THIS app", "type": "component", "dependencies": []},
+    {"path": "src/components/FeatureName.tsx", "purpose": "Specific feature component", "type": "component", "dependencies": []},
+    {"path": "src/hooks/useFeature.ts", "purpose": "App-specific logic hook", "type": "hook", "dependencies": []}
   ],
   "testPlan": [
-    {"file": "src/__tests__/App.test.tsx", "tests": ["renders main heading", "handles user interaction", "displays data correctly"]},
-    {"file": "src/__tests__/Header.test.tsx", "tests": ["renders navigation links", "highlights active page"]}
+    {"file": "src/__tests__/Feature.test.tsx", "tests": ["app-specific test 1", "app-specific test 2"]}
   ],
   "searchNeeded": false,
   "searchQueries": []
 }
 
 REQUIREMENTS:
+- Files must be SPECIFIC to the requested app (calculator = Calculator.tsx, useCalculator.ts, etc.)
 - Use TypeScript with proper types
 - Follow React best practices (functional components, hooks)
-- Include comprehensive test files for each component
-- Use proper file structure (components/, hooks/, services/, __tests__/)
-- Keep files focused and single-responsibility
-- Maximum 8 files for simple apps, 15 for complex apps`;
+- Include tests that verify app-specific functionality
+- Use proper file structure (components/, hooks/, __tests__/)
+- DO NOT include generic Header.tsx, Navigation, or API fetching unless the app actually needs it
+- Maximum 8 files for simple apps`;
 
 const FILE_GENERATION_PROMPT = `You are a senior TypeScript React developer generating production-ready code.
+
+{appTypeContext}
 
 CRITICAL RULES:
 1. Output ONLY the file content - no explanations, no markdown code blocks
@@ -102,7 +111,8 @@ CRITICAL RULES:
 4. Include proper imports and exports
 5. Write clean, maintainable code with meaningful variable names
 6. Add JSDoc comments for functions and components
-7. Handle loading and error states properly
+7. IMPORTANT: Generate code that implements the SPECIFIC app functionality, not generic templates
+8. DO NOT use placeholder comments like "// Add more here" - implement complete functionality
 
 CONTEXT:
 {context}
@@ -113,7 +123,7 @@ Purpose: {purpose}
 Type: {fileType}
 Dependencies: {dependencies}
 
-Generate the complete file content now:`;
+Generate the complete, functional file content that implements the specific app features:`;
 
 const TEST_GENERATION_PROMPT = `You are a senior QA engineer writing comprehensive React component tests.
 
@@ -170,6 +180,7 @@ export class ProductionOrchestrator {
       phase: "planning",
       files: [],
       fixAttempts: 0,
+      contentFixAttempts: 0,
       maxFixAttempts: 3,
       webSearchResults: "",
     };
@@ -212,6 +223,10 @@ export class ProductionOrchestrator {
   async run(userRequest: string): Promise<{ success: boolean; files: ProjectFile[]; summary: string; qualityScore: number }> {
     this.state = this.createInitialState();
     this.aborted = false;
+    
+    // Store request and classify app type for validation
+    this.state.userRequest = userRequest;
+    this.state.appType = classifyAppType(userRequest);
 
     try {
       this.emit({ type: "phase_change", phase: "planning", message: "Architect is designing your application..." });
@@ -239,6 +254,44 @@ export class ProductionOrchestrator {
 
       if (!qualityReport.passed && this.state.fixAttempts < this.state.maxFixAttempts) {
         await this.fixQualityIssues(qualityReport);
+      }
+
+      // Content validation - check if generated code matches the request
+      if (this.aborted) throw new Error("Aborted");
+      this.emit({ type: "phase_change", phase: "validating_content", message: "Validating generated content matches request..." });
+      let contentValidation = this.validateContent();
+      this.state.contentValidation = contentValidation;
+      
+      // Content validation is a hard gate - regenerate until valid or max attempts reached
+      // Uses separate contentFixAttempts so quality fixes don't consume content validation retries
+      while (!contentValidation.valid && this.state.contentFixAttempts < this.state.maxFixAttempts) {
+        this.emit({ type: "thinking", model: "planner", content: `Content validation failed (attempt ${this.state.contentFixAttempts + 1}/${this.state.maxFixAttempts}): ${contentValidation.issues.join(", ")}. Regenerating all app files...` });
+        
+        // Clear ALL files and regenerate from scratch with app-specific context
+        this.state.contentFixAttempts++;
+        this.state.files = []; // Full reset - no stale files
+        
+        // Rebuild source files
+        await this.buildingPhase(plan, userRequest);
+        if (this.aborted) throw new Error("Aborted");
+        
+        // Re-run tests for new source files
+        await this.testingPhase(plan);
+        if (this.aborted) throw new Error("Aborted");
+        
+        // Re-run quality check
+        const newQualityReport = await this.qualityCheckPhase();
+        this.state.qualityReport = newQualityReport;
+        
+        // Re-validate after full rebuild
+        contentValidation = this.validateContent();
+        this.state.contentValidation = contentValidation;
+      }
+      
+      // If still invalid after all attempts, fail the build
+      if (!contentValidation.valid) {
+        this.emit({ type: "error", message: `Generated code doesn't match request after ${this.state.maxFixAttempts} attempts: ${contentValidation.issues.join(", ")}` });
+        throw new Error(`Content validation failed: ${contentValidation.issues.join(", ")}`);
       }
 
       if (this.aborted) throw new Error("Aborted");
@@ -278,11 +331,16 @@ export class ProductionOrchestrator {
   private async planningPhase(userRequest: string): Promise<ProductionPlan> {
     const config = this.getPlannerConfig();
     
-    this.emit({ type: "thinking", model: "planner", content: "Analyzing requirements and designing architecture..." });
+    // Classify the app type and get template guidance
+    const { appType, template, guidancePrompt } = getClassificationContext(userRequest);
+    this.emit({ type: "thinking", model: "planner", content: `Detected app type: ${template.name}. Designing architecture...` });
+
+    // Inject app-specific guidance into the prompt
+    const enhancedPrompt = PRODUCTION_PLANNING_PROMPT.replace("{appTypeGuidance}", guidancePrompt);
 
     const response = await generateCompletion(
       config,
-      PRODUCTION_PLANNING_PROMPT,
+      enhancedPrompt,
       userRequest,
       LLM_DEFAULTS.maxTokens.plan
     );
@@ -290,14 +348,14 @@ export class ProductionOrchestrator {
     try {
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        return this.createDefaultPlan(userRequest);
+        return this.createDefaultPlan(userRequest, appType, template);
       }
       
       const parsed = JSON.parse(jsonMatch[0]);
       
       return {
-        summary: parsed.summary || "Building your application",
-        architecture: parsed.architecture || "React with TypeScript",
+        summary: parsed.summary || template.description,
+        architecture: parsed.architecture || `React with TypeScript - ${template.stateManagement}`,
         files: (parsed.files || []).map((f: any) => ({
           path: f.path,
           purpose: f.purpose,
@@ -308,23 +366,29 @@ export class ProductionOrchestrator {
         searchQueries: parsed.searchNeeded ? (parsed.searchQueries || []) : [],
       };
     } catch {
-      return this.createDefaultPlan(userRequest);
+      return this.createDefaultPlan(userRequest, appType, template);
     }
   }
 
-  private createDefaultPlan(userRequest: string): ProductionPlan {
+  private createDefaultPlan(userRequest: string, appType?: AppType, template?: AppTemplate): ProductionPlan {
+    // Use the detected template if available, otherwise classify again
+    const t = template || getAppTemplate(appType || classifyAppType(userRequest));
+    
     return {
-      summary: `Building: ${userRequest.slice(0, 100)}`,
-      architecture: "React with TypeScript, functional components, custom hooks",
-      files: [
-        { path: "src/App.tsx", purpose: "Main application component", type: "component", dependencies: [] },
-        { path: "src/components/Main.tsx", purpose: "Primary content component", type: "component", dependencies: [] },
-        { path: "src/hooks/useAppState.ts", purpose: "Application state hook", type: "hook", dependencies: [] },
-        { path: "src/__tests__/App.test.tsx", purpose: "App component tests", type: "test", dependencies: ["App.tsx"] },
-      ],
-      testPlan: [
-        { file: "src/__tests__/App.test.tsx", tests: ["renders without crashing", "displays main content"] },
-      ],
+      summary: t.description,
+      architecture: `React with TypeScript - ${t.stateManagement}`,
+      files: t.suggestedFiles.map(f => ({
+        path: f.path,
+        purpose: f.purpose,
+        type: f.type,
+        dependencies: f.dependencies,
+      })),
+      testPlan: t.suggestedFiles
+        .filter(f => f.type === "test")
+        .map(f => ({
+          file: f.path,
+          tests: t.keyFeatures.slice(0, 3).map(feature => `tests ${feature}`),
+        })),
     };
   }
 
@@ -350,7 +414,10 @@ export class ProductionOrchestrator {
   private async buildingPhase(plan: ProductionPlan, userRequest: string) {
     const config = this.getBuilderConfig();
     const sourceFiles = plan.files.filter(f => f.type !== "test");
-    const generatedFiles: Map<string, string> = new Map();
+    const generatedFilesMap: Map<string, string> = new Map();
+    
+    // Get app-specific guidance for file generation
+    const { guidancePrompt } = getClassificationContext(userRequest);
 
     for (const fileSpec of sourceFiles) {
       if (this.aborted) break;
@@ -364,13 +431,14 @@ export class ProductionOrchestrator {
       }
       
       for (const dep of fileSpec.dependencies) {
-        const depContent = generatedFiles.get(dep);
+        const depContent = generatedFilesMap.get(dep);
         if (depContent) {
           context += `\nDEPENDENCY (${dep}):\n${depContent.slice(0, 1000)}\n`;
         }
       }
 
       const prompt = FILE_GENERATION_PROMPT
+        .replace("{appTypeContext}", guidancePrompt)
         .replace("{context}", context)
         .replace("{filePath}", fileSpec.path)
         .replace("{purpose}", fileSpec.purpose)
@@ -389,7 +457,7 @@ export class ProductionOrchestrator {
         .replace(/```$/gm, "")
         .trim();
 
-      generatedFiles.set(fileSpec.path, cleanedContent);
+      generatedFilesMap.set(fileSpec.path, cleanedContent);
       
       this.state.files.push({
         path: fileSpec.path,
@@ -399,6 +467,19 @@ export class ProductionOrchestrator {
 
       this.emit({ type: "file_complete", file: fileSpec.path, size: cleanedContent.length });
     }
+  }
+
+  private validateContent(): { valid: boolean; issues: string[] } {
+    if (!this.state.userRequest) {
+      return { valid: true, issues: [] };
+    }
+    
+    // Only validate source files (not tests) to avoid false positives from test content
+    const sourceFiles = this.state.files
+      .filter(f => f.type !== "test")
+      .map(f => ({ path: f.path, content: f.content }));
+    
+    return validateGeneratedContent(this.state.userRequest, sourceFiles);
   }
 
   private async testingPhase(plan: ProductionPlan) {

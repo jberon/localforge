@@ -60,6 +60,17 @@ All generated applications are production-grade by default - no toggle required.
 
 The production orchestrator is in `server/services/productionOrchestrator.ts` and uses `/api/projects/:id/production`.
 
+### App Classification & Content Validation (v1.3.0+)
+LocalForge includes intelligent app classification to ensure generated code matches user requests:
+- **App Type Detection**: Classifies requests into 12+ app types (calculator, todo, dashboard, form, ecommerce, blog, chat, portfolio, landing, game, utility, data_display)
+- **Template-Based Guidance**: Each app type has specific templates with suggestedFiles, keyFeatures, stateManagement patterns, and uiPatterns
+- **Prompt Injection**: App-specific guidance is injected into both planning and building prompts
+- **Content Validation**: After generation, validates that code implements required features (e.g., calculator needs buttons, operators, display)
+- **Auto-Fix Loop**: If validation fails, full rebuild with stronger guidance (up to 3 attempts)
+- **Hard Gate**: Build fails explicitly if validation cannot pass after all attempts
+
+The app classifier is in `server/services/appClassifier.ts`.
+
 ### Frontend
 The frontend is built with React + TypeScript using Vite, styled with Tailwind CSS and Shadcn UI components. It integrates the Monaco Editor for code interaction and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, and a modular generation wizard. UX design principles focus on quick start, progressive disclosure, polished animations, and contextual error recovery. Features include a command palette, voice input, and keyboard shortcuts. The file explorer provides a Replit-like tree view, file operations, and real-time synchronization.
 
