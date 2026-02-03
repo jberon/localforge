@@ -54,7 +54,8 @@ export function PreviewPanel({
   const [copied, setCopied] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(generatedFiles[0] || null);
+  const safeGeneratedFiles = generatedFiles ?? [];
+  const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(safeGeneratedFiles[0] || null);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState("");
   const [localCode, setLocalCode] = useState(code);
@@ -232,7 +233,7 @@ export function PreviewPanel({
     };
   }, []);
   
-  const hasFullStackProject = generatedFiles.length > 0;
+  const hasFullStackProject = safeGeneratedFiles.length > 0;
   const canRegenerate = hasFullStackProject && onRegenerate && !isGenerating;
   
   // Reset feedback panel when new generation starts or lastPrompt changes
@@ -297,8 +298,8 @@ export function PreviewPanel({
   };
   
   // Auto-select first file when generatedFiles change
-  if (hasFullStackProject && !selectedFile && generatedFiles.length > 0) {
-    setSelectedFile(generatedFiles[0]);
+  if (hasFullStackProject && !selectedFile && safeGeneratedFiles.length > 0) {
+    setSelectedFile(safeGeneratedFiles[0]);
   }
 
   const handleCopy = async () => {

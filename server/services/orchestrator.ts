@@ -527,7 +527,7 @@ export class AIOrchestrator {
   }
 
   private async searchPhase(queries: string[]) {
-    if (!this.settings.serperApiKey) return;
+    if (!this.settings.serperApiKey || queries.length === 0) return;
 
     this.emit({ type: "thinking", model: "web_search", content: `Searching the web for relevant information: "${queries[0]}"...` });
 
