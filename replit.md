@@ -1,7 +1,7 @@
 # LocalForge - AI App Builder
 
 ## Overview
-LocalForge is an AI-powered web application builder that generates working React code from natural language descriptions using local Large Language Models (LLMs) via LM Studio. It aims to accelerate web development by providing rapid prototyping and full-stack application generation, enabling users to preview, modify, and download applications directly. The platform simplifies complex web development workflows into an intuitive chat-based interface.
+LocalForge is an AI-powered web application builder that generates working React code from natural language descriptions using local Large Language Models (LLMs) via LM Studio. Its core purpose is to accelerate web development by providing rapid prototyping and full-stack application generation, enabling users to preview, modify, and download applications. The platform aims to simplify complex web development workflows into an intuitive chat-based interface.
 
 ## User Preferences
 - Uses dark mode by default
@@ -12,186 +12,58 @@ LocalForge is an AI-powered web application builder that generates working React
 ## System Architecture
 
 ### Core Functionality
-LocalForge provides a chat-based interface with streaming responses for real-time code generation. It includes project management, live preview, and code validation. An AI-powered prompt enhancement and iterative refinement system allows users to evolve applications through follow-up requests. The system intelligently routes requests, automatically detecting intent (plan/build/refine/question) and optimizing LLM configurations for each task.
+LocalForge provides a chat-based interface with streaming responses for real-time code generation, project management, live preview, and code validation. It includes an AI-powered prompt enhancement and iterative refinement system. The system intelligently routes requests, automatically detecting intent (plan/build/refine/question) and optimizing LLM configurations.
 
 ### AI Dream Team (Autonomous Dual-Model Orchestration)
-When dual models are configured (planner + builder), LocalForge activates the AI Dream Team mode with expert personas inspired by real thought leaders:
+When dual models are configured (planner + builder), LocalForge activates an AI Dream Team mode with expert personas (e.g., Marty Cagan for product vision, Martin Fowler for architecture, Julie Zhuo for design, Kent Beck for quality). This team collectively handles project planning, business case generation, task tracking, specialist recruitment, web search integration, code generation, validation, and documentation (including README auto-generation). All team member actions are logged in a Project Team Panel UI.
 
-**Core Team Members** (always present):
-- **Marty Cagan** (Product Visionary): Product discovery, outcome-driven development, customer obsession. Inspired by his books "Inspired" and "Empowered".
-- **Martin Fowler** (Chief Architect): Clean architecture, refactoring, design patterns, TypeScript. Writes code for humans first.
-- **Julie Zhuo** (Design Director): User-centered design, design systems, accessibility. Scaled design at Facebook.
-- **Ben Thompson** (Strategic Analyst): Aggregation theory, platform strategy, market dynamics. Author of Stratechery.
-- **Kent Beck** (Quality Craftsman): Test-driven development, extreme programming, continuous testing. Creator of TDD.
+### Production-Grade Output
+Generated applications are production-grade by default, featuring:
+- **Multi-File Architecture**: Organized project structure (components/, hooks/, services/, __tests__/).
+- **TypeScript by Default**: Strict typing with interfaces and generics.
+- **Automated Test Generation**: Vitest/React Testing Library tests for components.
+- **Quality Analysis**: Code quality scoring with auto-fix capabilities.
+- **Documentation**: Auto-generated README.md.
+- **File-by-File Progress**: Real-time streaming of file generation.
 
-**Dynamic Specialists**: The reasoning model analyzes each project's business case and automatically recruits industry-specific specialists (healthcare expert, finance advisor, etc.) when needed.
+### App Classification & Content Validation
+LocalForge classifies requests into 12+ app types (e.g., calculator, todo, dashboard). Each app type uses specific templates with suggested files, key features, state management, and UI patterns. App-specific guidance is injected into prompts. After generation, the system validates that the code implements required features and attempts auto-fixes if validation fails.
 
-**Business Case Generation**: For each project, Marty Cagan automatically generates a comprehensive business case including:
-- App name, tagline, and problem statement (focused on customer problems)
-- Target audience and value proposition (outcome-driven)
-- Core features with priorities (must-have, should-have, nice-to-have)
-- Industry analysis, competitors, and differentiators
-- Monetization and pricing model suggestions
-
-**README Auto-Generation**: Martin Fowler automatically generates a professional README.md with clean documentation principles.
-
-**Activity Logging**: All team member actions (thinking, deciding, building, reviewing, etc.) are logged and visible in the Project Team Panel UI.
-
-**Workflow**:
-- **Planning Phase**: Marty Cagan analyzes the request and creates business case + implementation plan
-- **Task Progress Tracking**: Real-time TaskProgressPanel shows planning-generated tasks with X/Y completion counter
-- **Specialist Recruitment**: Marty Cagan evaluates if domain experts are needed for the project
-- **Web Search Integration**: Ben Thompson searches Serper.dev when external information is needed
-- **Building Phase**: Martin Fowler generates complete applications based on the plan
-- **Validation & Auto-Fix Loop**: Kent Beck validates code; Martin Fowler fixes any issues (up to 3 retries)
-- **Documentation**: Martin Fowler generates README after successful build
-- **Progress Streaming**: Real-time SSE events show current phase, team member actions, tasks_updated, and task completion
-
-The orchestrator is implemented in `server/services/orchestrator.ts` and the Dream Team service in `server/services/dreamTeam.ts`. Exposed via `/api/projects/:id/dream-team` and `/api/dream-team/*` endpoints.
-
-### Production-Grade Output (Default)
-All generated applications are production-grade by default - no toggle required. LocalForge generates sellable, enterprise-grade applications:
-- **Multi-File Architecture**: Proper project structure (components/, hooks/, services/, __tests__/)
-- **TypeScript by Default**: Strict typing with proper interfaces and generics
-- **Automated Test Generation**: Vitest/React Testing Library tests for each component
-- **Quality Analysis**: Code quality scoring (0-100) with auto-fix for issues
-- **Documentation**: Auto-generated README.md with project overview and usage
-- **File-by-File Progress**: Real-time streaming of each file being generated
-
-The production orchestrator is in `server/services/productionOrchestrator.ts` and uses `/api/projects/:id/production`.
-
-### App Classification & Content Validation (v1.3.0+)
-LocalForge includes intelligent app classification to ensure generated code matches user requests:
-- **App Type Detection**: Classifies requests into 12+ app types (calculator, todo, dashboard, form, ecommerce, blog, chat, portfolio, landing, game, utility, data_display)
-- **Template-Based Guidance**: Each app type has specific templates with suggestedFiles, keyFeatures, stateManagement patterns, and uiPatterns
-- **Prompt Injection**: App-specific guidance is injected into both planning and building prompts
-- **Content Validation**: After generation, validates that code implements required features (e.g., calculator needs buttons, operators, display)
-- **Auto-Fix Loop**: If validation fails, full rebuild with stronger guidance (up to 3 attempts)
-- **Hard Gate**: Build fails explicitly if validation cannot pass after all attempts
-
-The app classifier is in `server/services/appClassifier.ts`.
-
-### Production-Grade Security & Infrastructure (v1.4.0)
-LocalForge includes production-grade security and infrastructure improvements:
-
-**Security Headers** (`server/middleware/security.ts`):
-- X-Content-Type-Options: nosniff
-- X-Frame-Options: SAMEORIGIN
-- X-XSS-Protection: 1; mode=block
-- Referrer-Policy: strict-origin-when-cross-origin
-- Permissions-Policy: geolocation=(), microphone=(), camera=()
-- HSTS in production environments
-
-**Rate Limiting** (`server/middleware/rate-limit.ts`):
-- Generation endpoints: 5 requests/minute (chat, refine, dream-team, production)
-- LLM endpoints: 10 requests/minute (status, enhance-prompt, fix-code, assist)
-- Proper 429 responses with Retry-After headers
-
-**Structured Logging** (`server/lib/logger.ts`):
-- Log levels: debug, info, warn, error
-- Context objects and error stack traces
-- Specialized methods: request(), llm(), db()
-- Integrated in server/index.ts, server/routes/llm.ts, server/routes/projects.ts
-
-**Input Validation** (`server/lib/validation.ts`):
-- Zod schemas for projects, settings, files, versions
-- validateBody, validateParams, validateQuery middleware
-- Routes use inline Zod safeParse validation
-
-**Request Size Limits**: 10MB for JSON and urlencoded bodies
-
-**Error Boundary** (`client/src/components/error-boundary.tsx`):
-- Graceful error handling with retry/reload options
-- Preview-specific error fallback for generated code
+### Production-Grade Security & Infrastructure
+- **Security Headers**: Implements standard security headers (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, HSTS).
+- **Rate Limiting**: Applies rate limits to generation and LLM endpoints.
+- **Structured Logging**: Provides detailed logging with context objects and error stack traces.
+- **Input Validation**: Uses Zod schemas for robust validation of project, settings, files, and versions.
+- **Request Size Limits**: Sets limits for JSON and urlencoded bodies.
+- **Error Boundary**: Graceful error handling with retry/reload options for the frontend.
 
 ### Frontend
-The frontend is built with React + TypeScript using Vite, styled with Tailwind CSS and Shadcn UI components. It integrates the Monaco Editor for code interaction and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, and a modular generation wizard. UX design principles focus on quick start, progressive disclosure, polished animations, and contextual error recovery. Features include a command palette, voice input, and keyboard shortcuts. The file explorer provides a Replit-like tree view, file operations, and real-time synchronization.
-
-**Custom Hooks** (client/src/hooks/):
-- `use-llm-connection.ts`: LLM connection state with queue status, health metrics, and telemetry (tokens/sec)
-- `use-sse-stream.ts`: Reusable SSE streaming with exponential backoff reconnection and AbortController cancellation
-- `use-project-mutations.ts`: Project CRUD operations (create, delete, rename)
-- `use-generation.ts`: Code generation state and handlers with cancellation support
-
-**Header Status Indicators**:
-- Connection indicator: Green dot (connected) / Amber pulsing (requests queued)
-- Dual model display: Brain icon (planner) + Hammer icon (builder) when configured
-- Tooltip shows queue depth and tokens/second performance
-
-**Bundle Optimization**:
-- Lazy loading for routes via `React.lazy()` and `Suspense`
-- Memoized panel components to prevent unnecessary re-renders
+Built with React + TypeScript, Vite, Tailwind CSS, and Shadcn UI. It uses Monaco Editor for code and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, generation wizard, command palette, voice input, and a Replit-like file explorer. Custom hooks manage LLM connections, SSE streaming, project mutations, and generation state. Header status indicators provide real-time feedback on connection, queue status, and model configuration.
 
 ### Backend
-The backend is an Express.js API server with a modular route architecture for projects, files, versions, packaging, LLM interactions, analytics, and code generation. It uses the OpenAI SDK configured for LM Studio, implements Server-Sent Events (SSE) for streaming LLM responses, and uses PostgreSQL with Drizzle ORM for persistent storage. The backend includes modular code generators for various application components and supports production-grade features like authentication, testing suites, CI/CD pipelines, Docker support, and API documentation.
+An Express.js API server with modular routes for projects, files, versions, packaging, LLM interactions, analytics, and code generation. It uses the OpenAI SDK for LM Studio interaction, Server-Sent Events (SSE) for streaming, and PostgreSQL with Drizzle ORM for persistence.
 
 ### Code Generation & Quality
-LocalForge generates full-stack applications including database schemas, API routes, and React components. It features agentic auto-fix capabilities for generated code, automatically detecting and correcting syntax errors with LLM retries. It also surfaces LLM limitation messages in the chat rather than embedding them in the code.
+Generates full-stack applications including database schemas, API routes, and React components. Features agentic auto-fix capabilities for syntax errors with LLM retries and surfaces LLM limitation messages directly in the chat.
 
 ### Version Control
-The system includes built-in version control with checkpoints, allowing users to save project snapshots, view history, and rollback to previous states. Auto-save supports automatic checkpoints during key operations.
+Includes built-in version control with checkpoints, allowing users to save snapshots, view history, and rollback. Auto-save provides automatic checkpoints.
 
 ### Publishing & Packaging
-Users can download complete projects as ZIP files, with configurable options to include Docker configurations, environment templates, and CI/CD pipelines. It supports various deployment options and ensures security through path sanitization.
+Supports downloading complete projects as ZIP files with options for Docker configurations, environment templates, and CI/CD pipelines, ensuring secure path sanitization.
 
 ### Local LLM Optimization
-Optimized for Mac M4 Pro, LocalForge integrates with LM Studio for local LLM inference, featuring client connection caching, extended timeouts, automatic retry logic, and array-based streaming for efficiency. It supports configurable temperature presets and token limits optimized for different generation phases and hardware capabilities.
-
-### M4 Pro Performance Configuration
-LocalForge is specifically optimized for MacBook Pro M4 Pro (14-core CPU, 20-core GPU, 16-core Neural Engine, 48GB unified memory):
-
-**Electron Desktop App (electron/main.cjs):**
-- GPU acceleration: Metal, zero-copy, GPU rasterization, Canvas OOP rasterization for macOS
-- 2D canvas acceleration and VSync optimization for high refresh rate displays
-- V8 heap: 8GB (--max-old-space-size=8192) with exposed GC for large code generation
-- Renderer backgrounding disabled to maintain performance during code generation
-- Traffic light positioning optimized for macOS titlebar
-
-**LLM Client Configuration (server/llm-client.ts):**
-- Memory allocation: 16GB for context, 24GB for model weights, 8GB system reserved
-- Concurrency: Single request at a time (LM Studio limitation) with 20-request queue
-- Streaming chunk size: 1024 bytes with 50ms SSE throttling to prevent UI flooding
-- Timeouts: 120s per request, 30s warning threshold
-- Connection health tracking with consecutive failure detection
-- Performance telemetry: tokens/sec monitoring with M4 Pro threshold validation
-
-**Database Connection Pooling (server/db.ts):**
-- Pool size: min 2, max 10 connections for balanced resource usage
-- Idle timeout: 30 seconds to release unused connections
-- Connection timeout: 5 seconds with error event handling
-- Connection event logging for debugging and monitoring
-
-**Dream Team Service Guards (server/services/dreamTeam.ts):**
-- `getRequiredMemberById()` method for safe team member lookups
-- Explicit error messages with valid IDs when member not found
-- Prevents undefined member errors during orchestration
-
-**Recommended LM Studio Settings:**
-- GPU Layers: -1 (all layers on GPU for Metal acceleration)
-- Context Length: 32768 (32K context for large applications)
-- Batch Size: 512 (optimal for M4 Pro)
-- Threads: 10 (leave 4 cores for system)
-
-**Token Limits by Generation Type:**
-- Quick App: 8,192 tokens
-- Full Stack: 16,384 tokens
-- Production: 32,768 tokens
-- Planning: 4,096 tokens
-
-**Recommended Models for 48GB Memory:**
-- Coding: qwen2.5-coder-32b-instruct, deepseek-coder-v2-lite-instruct
-- General: qwen2.5-32b-instruct, llama-3.1-70b-instruct-q4
-- Fast: qwen2.5-coder-7b-instruct, codellama-7b-instruct
+Optimized for Mac M4 Pro, integrating with LM Studio via client connection caching, extended timeouts, automatic retry logic, and array-based streaming. Supports configurable temperature presets and token limits. Environment variables allow tuning LLM client configuration. Backpressure UX provides queue status and warnings. Database connection pooling is configured for performance. Dream Team service includes guards for safe member lookups. Recommended LM Studio settings and model configurations are provided for optimal performance on M4 Pro.
 
 ## External Dependencies
-- **LM Studio**: For local LLM inference via its OpenAI-compatible API.
-- **PostgreSQL**: Primary database for persistent project storage.
+- **LM Studio**: Local LLM inference.
+- **PostgreSQL**: Primary database.
 - **OpenAI SDK**: Backend interaction with LM Studio.
-- **React**: Frontend UI library.
+- **React**: Frontend UI.
 - **Vite**: Frontend build tool.
-- **Tailwind CSS**: Utility-first CSS framework.
-- **Shadcn UI**: UI component library.
-- **Monaco Editor**: Code editor component.
-- **TanStack Query**: Data fetching library for React.
-- **Express.js**: Backend web application framework.
-- **Drizzle ORM**: TypeScript ORM for PostgreSQL.
+- **Tailwind CSS**: Styling.
+- **Shadcn UI**: UI components.
+- **Monaco Editor**: Code editing.
+- **TanStack Query**: Data fetching.
+- **Express.js**: Backend framework.
+- **Drizzle ORM**: PostgreSQL ORM.
