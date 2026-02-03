@@ -197,6 +197,7 @@ export default function Home() {
     loadedModel,
     availableModels,
     queueStatus,
+    health,
     telemetry,
     isChecking: isCheckingConnection,
     checkConnection,
@@ -1269,13 +1270,24 @@ export default function Home() {
                 <div className="flex items-center gap-1.5" data-testid="indicator-connected">
                   <div 
                     className={`w-2 h-2 rounded-full ${
-                      queueStatus && queueStatus.pending > 0 
+                      health && !health.isHealthy && health.consecutiveFailures > 0
                         ? 'bg-amber-500 animate-pulse' 
-                        : 'bg-green-500'
+                        : queueStatus && queueStatus.pending > 0 
+                          ? 'bg-amber-500 animate-pulse' 
+                          : queueStatus?.isOverloaded
+                            ? 'bg-amber-500'
+                            : 'bg-green-500'
                     }`} 
-                    title={queueStatus 
-                      ? `LM Studio connected${queueStatus.pending > 0 ? ` (${queueStatus.pending} queued)` : ''}${telemetry?.lastTokensPerSecond ? ` - ${telemetry.lastTokensPerSecond.toFixed(0)} tok/s` : ''}`
-                      : 'LM Studio connected'
+                    title={
+                      health && !health.isHealthy && health.consecutiveFailures > 0
+                        ? `Connection degraded (${health.consecutiveFailures} failures)${health.lastError ? ` - ${health.lastError}` : ''}`
+                        : queueStatus?.isFull
+                          ? 'Queue full - please wait'
+                          : queueStatus?.isOverloaded
+                            ? `Queue ${queueStatus.utilizationPercent}% full`
+                            : queueStatus 
+                              ? `LM Studio connected${queueStatus.pending > 0 ? ` (${queueStatus.pending} queued)` : ''}${telemetry?.lastTokensPerSecond ? ` - ${telemetry.lastTokensPerSecond.toFixed(0)} tok/s` : ''}`
+                              : 'LM Studio connected'
                     } 
                   />
                   {settings.useDualModels && (settings.plannerModel || settings.builderModel) ? (
@@ -1395,6 +1407,7 @@ export default function Home() {
                         onSendMessage={handleIntelligentGenerate}
                         llmConnected={llmConnected}
                         onCheckConnection={checkConnection}
+                        queueStatus={queueStatus}
                       />
                     </div>
                   </div>

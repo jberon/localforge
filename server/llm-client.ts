@@ -402,13 +402,34 @@ export function resetTelemetry(): void {
   telemetry.warnings = [];
 }
 
+// Extended queue status for backpressure UX
+interface ExtendedQueueStatus {
+  pending: number;
+  active: number;
+  maxQueueSize: number;
+  utilizationPercent: number;
+  isOverloaded: boolean;
+  isFull: boolean;
+}
+
+function getFullQueueStatus(): ExtendedQueueStatus {
+  const extended = getExtendedQueueTelemetry();
+  return {
+    ...getLLMQueueStatus(),
+    maxQueueSize: extended.maxQueueSize,
+    utilizationPercent: extended.utilizationPercent,
+    isOverloaded: extended.isOverloaded,
+    isFull: extended.pending >= extended.maxQueueSize,
+  };
+}
+
 export async function checkConnection(endpoint: string): Promise<{
   connected: boolean;
   models?: string[];
   error?: string;
   telemetry?: PerformanceTelemetry;
   health?: ConnectionHealth;
-  queueStatus?: { pending: number; active: number };
+  queueStatus?: ExtendedQueueStatus;
 }> {
   try {
     const client = createLLMClient({ endpoint });
@@ -422,7 +443,7 @@ export async function checkConnection(endpoint: string): Promise<{
       models: modelIds,
       telemetry: getTelemetry(),
       health: getConnectionHealth(),
-      queueStatus: getLLMQueueStatus(),
+      queueStatus: getFullQueueStatus(),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -443,7 +464,7 @@ export async function checkConnection(endpoint: string): Promise<{
       connected: false,
       error: friendlyError,
       health: getConnectionHealth(),
-      queueStatus: getLLMQueueStatus(),
+      queueStatus: getFullQueueStatus(),
     };
   }
 }

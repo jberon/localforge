@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../storage";
-import { createLLMClient, checkConnection, LLM_DEFAULTS, getLLMQueueStatus, getConnectionHealth, getTelemetry } from "../llm-client";
+import { createLLMClient, checkConnection, LLM_DEFAULTS, getLLMQueueStatus, getConnectionHealth, getTelemetry, getExtendedQueueTelemetry } from "../llm-client";
 import { llmSettingsSchema } from "@shared/schema";
 import { z } from "zod";
 import { llmRateLimiter } from "../middleware/rate-limit";
@@ -85,8 +85,15 @@ router.post("/status", llmRateLimiter, async (req, res) => {
 
 // Queue status endpoint for UI backpressure indicator
 router.get("/queue-status", (_req, res) => {
+  const extendedQueue = getExtendedQueueTelemetry();
   res.json({
-    queue: getLLMQueueStatus(),
+    queue: {
+      ...getLLMQueueStatus(),
+      maxQueueSize: extendedQueue.maxQueueSize,
+      utilizationPercent: extendedQueue.utilizationPercent,
+      isOverloaded: extendedQueue.isOverloaded,
+      isFull: extendedQueue.pending >= extendedQueue.maxQueueSize,
+    },
     health: getConnectionHealth(),
     telemetry: getTelemetry(),
   });

@@ -9,6 +9,10 @@ interface UseLLMConnectionOptions {
 interface QueueStatus {
   pending: number;
   active: number;
+  maxQueueSize?: number;
+  utilizationPercent?: number;
+  isOverloaded?: boolean;
+  isFull?: boolean;
 }
 
 interface ConnectionHealth {

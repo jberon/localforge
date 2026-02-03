@@ -11,6 +11,15 @@ import { AttachmentPreview, DropZoneOverlay } from "./attachment-preview";
 import { ActionGroupRow, type Action } from "./action-group-row";
 import { StatusIndicator, type StatusType } from "./status-indicator";
 
+interface QueueStatus {
+  pending: number;
+  active: number;
+  maxQueueSize?: number;
+  utilizationPercent?: number;
+  isOverloaded?: boolean;
+  isFull?: boolean;
+}
+
 interface ChatPanelProps {
   messages: Message[];
   isLoading: boolean;
@@ -19,6 +28,7 @@ interface ChatPanelProps {
   onSendMessage: (content: string, dataModel?: DataModel, attachments?: Attachment[], temperature?: number) => void;
   llmConnected: boolean | null;
   onCheckConnection: () => void;
+  queueStatus?: QueueStatus | null;
 }
 
 // Memoized message content formatter - prevents re-parsing unchanged content
@@ -124,7 +134,7 @@ function getStatusFromPhase(phase: string | null | undefined): StatusType {
   return "thinking";
 }
 
-export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection }: ChatPanelProps) {
+export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection, queueStatus }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -352,8 +362,9 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={(!input.trim() && !hasAttachments) || isLoading}
+                    disabled={(!input.trim() && !hasAttachments) || isLoading || queueStatus?.isFull}
                     data-testid="button-send"
+                    title={queueStatus?.isFull ? "Queue is full - please wait" : queueStatus?.isOverloaded ? `Queue ${queueStatus.utilizationPercent}% full` : "Send message"}
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -375,6 +386,13 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
               )}
               {attachmentError && (
                 <p className="text-xs text-destructive mt-1 text-center">{attachmentError}</p>
+              )}
+              {queueStatus?.isOverloaded && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 text-center" data-testid="text-queue-warning">
+                  {queueStatus.isFull 
+                    ? "Request queue is full - please wait before sending more"
+                    : `Queue ${queueStatus.utilizationPercent}% full (${queueStatus.pending}/${queueStatus.maxQueueSize})`}
+                </p>
               )}
             </form>
           </div>

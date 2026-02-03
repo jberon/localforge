@@ -115,6 +115,7 @@ export function useSSEStream({
                       onComplete?.();
                     } else if (data.type === "error") {
                       onError?.(new Error(data.error || data.message));
+                      onComplete?.(); // Also call onComplete on error to clear loading state
                     }
                   } catch (parseError) {
                     // Log parse errors in development for debugging
