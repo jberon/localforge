@@ -13,6 +13,18 @@ import { codeDeduplicationService } from "../services/code-deduplication.service
 import { apiContractValidationService } from "../services/api-contract-validation.service";
 import { importOptimizerService } from "../services/import-optimizer.service";
 import { performanceProfilerService } from "../services/performance-profiler.service";
+import { userPreferenceLearningService } from "../services/user-preference-learning.service";
+import { styleMemoryService } from "../services/style-memory.service";
+import { feedbackLoopService } from "../services/feedback-loop.service";
+import { semanticCodeSearchService } from "../services/semantic-code-search.service";
+import { autoContextInjectionService } from "../services/auto-context-injection.service";
+import { errorPreventionService } from "../services/error-prevention.service";
+import { proactiveRefactoringService } from "../services/proactive-refactoring.service";
+import { dependencyHealthService } from "../services/dependency-health.service";
+import { patternLibraryService } from "../services/pattern-library.service";
+import { smartTemplatesService } from "../services/smart-templates.service";
+import { multiStepReasoningService } from "../services/multi-step-reasoning.service";
+import { selfValidationService } from "../services/self-validation.service";
 import logger from "../lib/logger";
 
 const router = Router();
@@ -652,6 +664,599 @@ router.delete("/performance/metrics", (_req, res) => {
   } catch (error) {
     logger.error("Failed to clear metrics", { error });
     res.status(500).json({ error: "Failed to clear metrics" });
+  }
+});
+
+// ============================================
+// USER PREFERENCE LEARNING ENDPOINTS
+// ============================================
+
+// Track code modification
+router.post("/preferences/track", (req, res) => {
+  try {
+    const { projectId, originalCode, modifiedCode, filePath, changeType } = req.body;
+    userPreferenceLearningService.trackModification(projectId, {
+      originalCode,
+      modifiedCode,
+      filePath,
+      changeType
+    });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to track modification", { error });
+    res.status(500).json({ error: "Failed to track modification" });
+  }
+});
+
+// Get learned preferences
+router.get("/preferences/:projectId", (req, res) => {
+  try {
+    const preferences = userPreferenceLearningService.getPreferences(req.params.projectId);
+    res.json(preferences);
+  } catch (error) {
+    logger.error("Failed to get preferences", { error });
+    res.status(500).json({ error: "Failed to get preferences" });
+  }
+});
+
+// Get prompt enhancements based on preferences
+router.get("/preferences/:projectId/prompt-enhancements", (req, res) => {
+  try {
+    const enhancements = userPreferenceLearningService.getPromptEnhancements(req.params.projectId);
+    res.json({ enhancements });
+  } catch (error) {
+    logger.error("Failed to get prompt enhancements", { error });
+    res.status(500).json({ error: "Failed to get enhancements" });
+  }
+});
+
+// ============================================
+// STYLE MEMORY ENDPOINTS
+// ============================================
+
+// Analyze and remember style
+router.post("/style-memory/analyze", (req, res) => {
+  try {
+    const { projectId, files } = req.body;
+    const analysis = styleMemoryService.analyzeAndRemember(projectId, files);
+    res.json(analysis);
+  } catch (error) {
+    logger.error("Failed to analyze style", { error });
+    res.status(500).json({ error: "Failed to analyze style" });
+  }
+});
+
+// Get style profile
+router.get("/style-memory/:projectId", (req, res) => {
+  try {
+    const profile = styleMemoryService.getProfile(req.params.projectId);
+    res.json(profile || { message: "No profile found" });
+  } catch (error) {
+    logger.error("Failed to get style profile", { error });
+    res.status(500).json({ error: "Failed to get profile" });
+  }
+});
+
+// Get style guide
+router.get("/style-memory/:projectId/guide", (req, res) => {
+  try {
+    const guide = styleMemoryService.getStyleGuide(req.params.projectId);
+    res.json({ guide });
+  } catch (error) {
+    logger.error("Failed to get style guide", { error });
+    res.status(500).json({ error: "Failed to get guide" });
+  }
+});
+
+// ============================================
+// FEEDBACK LOOP ENDPOINTS
+// ============================================
+
+// Record feedback
+router.post("/feedback", (req, res) => {
+  try {
+    const { projectId, generationId, rating, originalPrompt, generatedCode, userComment } = req.body;
+    const entry = feedbackLoopService.recordFeedback(
+      projectId,
+      generationId,
+      rating,
+      originalPrompt,
+      generatedCode,
+      userComment
+    );
+    res.json(entry);
+  } catch (error) {
+    logger.error("Failed to record feedback", { error });
+    res.status(500).json({ error: "Failed to record feedback" });
+  }
+});
+
+// Get feedback stats
+router.get("/feedback/stats", (req, res) => {
+  try {
+    const projectId = req.query.projectId as string | undefined;
+    const stats = feedbackLoopService.getStats(projectId);
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get feedback stats", { error });
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+
+// Refine prompt based on feedback
+router.post("/feedback/refine-prompt", (req, res) => {
+  try {
+    const { prompt, context } = req.body;
+    const refinedPrompt = feedbackLoopService.refinePrompt(prompt, context);
+    res.json({ refinedPrompt });
+  } catch (error) {
+    logger.error("Failed to refine prompt", { error });
+    res.status(500).json({ error: "Failed to refine prompt" });
+  }
+});
+
+// ============================================
+// SEMANTIC CODE SEARCH ENDPOINTS
+// ============================================
+
+// Index project for search
+router.post("/semantic-search/index", (req, res) => {
+  try {
+    const { projectId, files } = req.body;
+    const chunkCount = semanticCodeSearchService.indexProject(projectId, files);
+    res.json({ success: true, chunkCount });
+  } catch (error) {
+    logger.error("Failed to index project", { error });
+    res.status(500).json({ error: "Failed to index project" });
+  }
+});
+
+// Search code
+router.get("/semantic-search/:projectId", (req, res) => {
+  try {
+    const query = req.query.q as string;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const results = semanticCodeSearchService.search(req.params.projectId, query, limit);
+    res.json(results);
+  } catch (error) {
+    logger.error("Failed to search code", { error });
+    res.status(500).json({ error: "Failed to search" });
+  }
+});
+
+// Find similar code
+router.post("/semantic-search/:projectId/similar", (req, res) => {
+  try {
+    const { code, limit } = req.body;
+    const results = semanticCodeSearchService.findSimilar(req.params.projectId, code, limit);
+    res.json(results);
+  } catch (error) {
+    logger.error("Failed to find similar code", { error });
+    res.status(500).json({ error: "Failed to find similar" });
+  }
+});
+
+// Get search stats
+router.get("/semantic-search/:projectId/stats", (req, res) => {
+  try {
+    const stats = semanticCodeSearchService.getStats(req.params.projectId);
+    res.json(stats || { message: "No index found" });
+  } catch (error) {
+    logger.error("Failed to get search stats", { error });
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+
+// ============================================
+// AUTO CONTEXT INJECTION ENDPOINTS
+// ============================================
+
+// Build dependency graph
+router.post("/context/build-graph", (req, res) => {
+  try {
+    const { projectId, files } = req.body;
+    autoContextInjectionService.buildDependencyGraph(projectId, files);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to build dependency graph", { error });
+    res.status(500).json({ error: "Failed to build graph" });
+  }
+});
+
+// Inject context
+router.post("/context/inject", (req, res) => {
+  try {
+    const { projectId, targetFile, files, maxTokens } = req.body;
+    const result = autoContextInjectionService.injectContext(projectId, targetFile, files, maxTokens);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to inject context", { error });
+    res.status(500).json({ error: "Failed to inject context" });
+  }
+});
+
+// Get related files
+router.get("/context/:projectId/related", (req, res) => {
+  try {
+    const filePath = req.query.file as string;
+    const depth = parseInt(req.query.depth as string) || 2;
+    const related = autoContextInjectionService.getRelatedFiles(req.params.projectId, filePath, depth);
+    res.json({ relatedFiles: related });
+  } catch (error) {
+    logger.error("Failed to get related files", { error });
+    res.status(500).json({ error: "Failed to get related files" });
+  }
+});
+
+// ============================================
+// ERROR PREVENTION ENDPOINTS
+// ============================================
+
+// Analyze code for potential errors
+router.post("/error-prevention/analyze", (req, res) => {
+  try {
+    const { projectId, files } = req.body;
+    const result = errorPreventionService.analyzeCode(projectId, files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to analyze for errors", { error });
+    res.status(500).json({ error: "Failed to analyze" });
+  }
+});
+
+// Record an error occurrence
+router.post("/error-prevention/record", (req, res) => {
+  try {
+    const { projectId, error, filePath } = req.body;
+    errorPreventionService.recordError(projectId, error, filePath);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to record error", { error });
+    res.status(500).json({ error: "Failed to record error" });
+  }
+});
+
+// Get pattern statistics
+router.get("/error-prevention/stats", (_req, res) => {
+  try {
+    const stats = errorPreventionService.getPatternStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get error stats", { error });
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+
+// ============================================
+// PROACTIVE REFACTORING ENDPOINTS
+// ============================================
+
+// Analyze for refactoring opportunities
+router.post("/refactoring/analyze", (req, res) => {
+  try {
+    const { files } = req.body;
+    const result = proactiveRefactoringService.analyzeForRefactoring(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to analyze for refactoring", { error });
+    res.status(500).json({ error: "Failed to analyze" });
+  }
+});
+
+// Get/set thresholds
+router.get("/refactoring/thresholds", (_req, res) => {
+  try {
+    const thresholds = proactiveRefactoringService.getThresholds();
+    res.json(thresholds);
+  } catch (error) {
+    logger.error("Failed to get thresholds", { error });
+    res.status(500).json({ error: "Failed to get thresholds" });
+  }
+});
+
+router.put("/refactoring/thresholds", (req, res) => {
+  try {
+    proactiveRefactoringService.setThresholds(req.body);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to set thresholds", { error });
+    res.status(500).json({ error: "Failed to set thresholds" });
+  }
+});
+
+// ============================================
+// DEPENDENCY HEALTH ENDPOINTS
+// ============================================
+
+// Analyze package.json
+router.post("/dependency-health/analyze", async (req, res) => {
+  try {
+    const { packageJson } = req.body;
+    const report = await dependencyHealthService.analyzePackageJson(packageJson);
+    res.json(report);
+  } catch (error) {
+    logger.error("Failed to analyze dependencies", { error });
+    res.status(500).json({ error: "Failed to analyze" });
+  }
+});
+
+// ============================================
+// PATTERN LIBRARY ENDPOINTS
+// ============================================
+
+// Add pattern
+router.post("/patterns", (req, res) => {
+  try {
+    const pattern = patternLibraryService.addPattern(req.body);
+    res.status(201).json(pattern);
+  } catch (error) {
+    logger.error("Failed to add pattern", { error });
+    res.status(500).json({ error: "Failed to add pattern" });
+  }
+});
+
+// Search patterns
+router.get("/patterns/search", (req, res) => {
+  try {
+    const query = req.query.q as string;
+    const category = req.query.category as any;
+    const results = patternLibraryService.findPatterns(query, category);
+    res.json(results);
+  } catch (error) {
+    logger.error("Failed to search patterns", { error });
+    res.status(500).json({ error: "Failed to search" });
+  }
+});
+
+// Get patterns by category
+router.get("/patterns/category/:category", (req, res) => {
+  try {
+    const patterns = patternLibraryService.getByCategory(req.params.category as any);
+    res.json(patterns);
+  } catch (error) {
+    logger.error("Failed to get patterns", { error });
+    res.status(500).json({ error: "Failed to get patterns" });
+  }
+});
+
+// Get top patterns
+router.get("/patterns/top", (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const patterns = patternLibraryService.getTopPatterns(limit);
+    res.json(patterns);
+  } catch (error) {
+    logger.error("Failed to get top patterns", { error });
+    res.status(500).json({ error: "Failed to get patterns" });
+  }
+});
+
+// Suggest patterns for code
+router.post("/patterns/suggest", (req, res) => {
+  try {
+    const { code, filePath } = req.body;
+    const suggestions = patternLibraryService.suggestPatterns(code, filePath);
+    res.json(suggestions);
+  } catch (error) {
+    logger.error("Failed to suggest patterns", { error });
+    res.status(500).json({ error: "Failed to suggest" });
+  }
+});
+
+// Record pattern usage
+router.post("/patterns/:patternId/usage", (req, res) => {
+  try {
+    const { successful } = req.body;
+    patternLibraryService.recordUsage(req.params.patternId, successful);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to record usage", { error });
+    res.status(500).json({ error: "Failed to record" });
+  }
+});
+
+// ============================================
+// SMART TEMPLATES ENDPOINTS
+// ============================================
+
+// Add template
+router.post("/templates", (req, res) => {
+  try {
+    const template = smartTemplatesService.addTemplate(req.body);
+    res.status(201).json(template);
+  } catch (error) {
+    logger.error("Failed to add template", { error });
+    res.status(500).json({ error: "Failed to add template" });
+  }
+});
+
+// Search templates
+router.get("/templates/search", (req, res) => {
+  try {
+    const query = req.query.q as string;
+    const category = req.query.category as any;
+    const templates = smartTemplatesService.findTemplates(query, category);
+    res.json(templates);
+  } catch (error) {
+    logger.error("Failed to search templates", { error });
+    res.status(500).json({ error: "Failed to search" });
+  }
+});
+
+// Get templates by category
+router.get("/templates/category/:category", (req, res) => {
+  try {
+    const templates = smartTemplatesService.getByCategory(req.params.category as any);
+    res.json(templates);
+  } catch (error) {
+    logger.error("Failed to get templates", { error });
+    res.status(500).json({ error: "Failed to get templates" });
+  }
+});
+
+// Get popular templates
+router.get("/templates/popular", (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const templates = smartTemplatesService.getPopularTemplates(limit);
+    res.json(templates);
+  } catch (error) {
+    logger.error("Failed to get popular templates", { error });
+    res.status(500).json({ error: "Failed to get templates" });
+  }
+});
+
+// Generate from template
+router.post("/templates/:templateId/generate", (req, res) => {
+  try {
+    const { variables, projectId } = req.body;
+    const result = smartTemplatesService.generateFromTemplate(
+      req.params.templateId,
+      variables,
+      projectId
+    );
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to generate from template", { error });
+    res.status(500).json({ error: "Failed to generate" });
+  }
+});
+
+// Analyze project for template adaptation
+router.post("/templates/analyze-project", (req, res) => {
+  try {
+    const { projectId, files } = req.body;
+    const analysis = smartTemplatesService.analyzeProject(projectId, files);
+    res.json(analysis);
+  } catch (error) {
+    logger.error("Failed to analyze project", { error });
+    res.status(500).json({ error: "Failed to analyze" });
+  }
+});
+
+// ============================================
+// MULTI-STEP REASONING ENDPOINTS
+// ============================================
+
+// Decompose task
+router.post("/reasoning/decompose", (req, res) => {
+  try {
+    const { projectId, objective, context } = req.body;
+    const result = multiStepReasoningService.decomposeTask(projectId, objective, context);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to decompose task", { error });
+    res.status(500).json({ error: "Failed to decompose" });
+  }
+});
+
+// Get chain
+router.get("/reasoning/chains/:chainId", (req, res) => {
+  try {
+    const chain = multiStepReasoningService.getChain(req.params.chainId);
+    res.json(chain || { error: "Chain not found" });
+  } catch (error) {
+    logger.error("Failed to get chain", { error });
+    res.status(500).json({ error: "Failed to get chain" });
+  }
+});
+
+// Get chain progress
+router.get("/reasoning/chains/:chainId/progress", (req, res) => {
+  try {
+    const progress = multiStepReasoningService.getChainProgress(req.params.chainId);
+    res.json(progress);
+  } catch (error) {
+    logger.error("Failed to get progress", { error });
+    res.status(500).json({ error: "Failed to get progress" });
+  }
+});
+
+// Skip step
+router.post("/reasoning/chains/:chainId/steps/:stepId/skip", (req, res) => {
+  try {
+    const { reason } = req.body;
+    const success = multiStepReasoningService.skipStep(
+      req.params.chainId,
+      req.params.stepId,
+      reason
+    );
+    res.json({ success });
+  } catch (error) {
+    logger.error("Failed to skip step", { error });
+    res.status(500).json({ error: "Failed to skip" });
+  }
+});
+
+// Abort chain
+router.post("/reasoning/chains/:chainId/abort", (req, res) => {
+  try {
+    const success = multiStepReasoningService.abortChain(req.params.chainId);
+    res.json({ success });
+  } catch (error) {
+    logger.error("Failed to abort chain", { error });
+    res.status(500).json({ error: "Failed to abort" });
+  }
+});
+
+// ============================================
+// SELF-VALIDATION ENDPOINTS
+// ============================================
+
+// Validate code
+router.post("/validation/validate", (req, res) => {
+  try {
+    const { code, filePath } = req.body;
+    const result = selfValidationService.validate(code, filePath);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to validate code", { error });
+    res.status(500).json({ error: "Failed to validate" });
+  }
+});
+
+// Get validation config
+router.get("/validation/config", (_req, res) => {
+  try {
+    const config = selfValidationService.getConfig();
+    res.json(config);
+  } catch (error) {
+    logger.error("Failed to get config", { error });
+    res.status(500).json({ error: "Failed to get config" });
+  }
+});
+
+// Set validation config
+router.put("/validation/config", (req, res) => {
+  try {
+    selfValidationService.setConfig(req.body);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to set config", { error });
+    res.status(500).json({ error: "Failed to set config" });
+  }
+});
+
+// Get validation rules
+router.get("/validation/rules", (_req, res) => {
+  try {
+    const rules = selfValidationService.getRules();
+    res.json(rules);
+  } catch (error) {
+    logger.error("Failed to get rules", { error });
+    res.status(500).json({ error: "Failed to get rules" });
+  }
+});
+
+// Enable/disable rule
+router.put("/validation/rules/:ruleId", (req, res) => {
+  try {
+    const { enabled } = req.body;
+    selfValidationService.enableRule(req.params.ruleId, enabled);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to update rule", { error });
+    res.status(500).json({ error: "Failed to update rule" });
   }
 });
 
