@@ -64,10 +64,15 @@ The production orchestrator is in `server/services/productionOrchestrator.ts` an
 The frontend is built with React + TypeScript using Vite, styled with Tailwind CSS and Shadcn UI components. It integrates the Monaco Editor for code interaction and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, and a modular generation wizard. UX design principles focus on quick start, progressive disclosure, polished animations, and contextual error recovery. Features include a command palette, voice input, and keyboard shortcuts. The file explorer provides a Replit-like tree view, file operations, and real-time synchronization.
 
 **Custom Hooks** (client/src/hooks/):
-- `use-llm-connection.ts`: LLM connection state management with configurable polling
+- `use-llm-connection.ts`: LLM connection state with queue status, health metrics, and telemetry (tokens/sec)
 - `use-sse-stream.ts`: Reusable SSE streaming with exponential backoff reconnection and AbortController cancellation
 - `use-project-mutations.ts`: Project CRUD operations (create, delete, rename)
 - `use-generation.ts`: Code generation state and handlers with cancellation support
+
+**Header Status Indicators**:
+- Connection indicator: Green dot (connected) / Amber pulsing (requests queued)
+- Dual model display: Brain icon (planner) + Hammer icon (builder) when configured
+- Tooltip shows queue depth and tokens/second performance
 
 **Bundle Optimization**:
 - Lazy loading for routes via `React.lazy()` and `Suspense`
