@@ -1162,6 +1162,308 @@ export const queueTelemetrySchema = z.object({
 
 export type QueueTelemetry = z.infer<typeof queueTelemetrySchema>;
 
+// ============================================================================
+// ENHANCED SCHEMA FOR MASSIVE CODE GENERATION (100K+ lines support)
+// ============================================================================
+
+// Individual file storage - replaces JSONB array for scalability
+export const projectFilesSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  path: z.string(), // e.g., "src/components/Button.tsx"
+  content: z.string(),
+  language: z.string().optional(), // e.g., "typescript", "css"
+  size: z.number(), // bytes
+  lineCount: z.number(),
+  hash: z.string(), // content hash for change detection
+  summary: z.string().optional(), // AI-generated summary for context
+  imports: z.array(z.string()).optional(), // parsed import paths
+  exports: z.array(z.string()).optional(), // parsed export names
+  dependencies: z.array(z.string()).optional(), // files this depends on
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export const projectFiles = pgTable("project_files", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  path: text("path").notNull(),
+  content: text("content").notNull(),
+  language: varchar("language", { length: 50 }),
+  size: bigint("size", { mode: "number" }).notNull().default(0),
+  lineCount: bigint("line_count", { mode: "number" }).notNull().default(0),
+  hash: varchar("hash", { length: 64 }).notNull(),
+  summary: text("summary"),
+  imports: jsonb("imports").default([]),
+  exports: jsonb("exports").default([]),
+  dependencies: jsonb("dependencies").default([]),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+// Generation chunks - break large projects into LLM-sized tasks
+export const generationChunkStatuses = ["pending", "in_progress", "completed", "failed", "skipped"] as const;
+export const generationChunkTypes = ["architecture", "schema", "component", "api", "styling", "testing", "documentation", "integration", "refactor"] as const;
+
+export const generationChunkSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  pipelineId: z.string().optional(), // parent pipeline
+  parentChunkId: z.string().optional(), // for hierarchical tasks
+  type: z.enum(generationChunkTypes),
+  title: z.string(),
+  description: z.string(),
+  prompt: z.string(), // the actual prompt sent to LLM
+  targetFiles: z.array(z.string()), // files this chunk will create/modify
+  dependencies: z.array(z.string()), // chunk IDs this depends on
+  contextFiles: z.array(z.string()).optional(), // files needed for context
+  status: z.enum(generationChunkStatuses),
+  priority: z.number().default(0), // higher = execute first
+  estimatedTokens: z.number().optional(), // estimated context tokens
+  actualTokens: z.number().optional(), // actual tokens used
+  output: z.string().optional(), // raw LLM output
+  result: z.object({
+    filesCreated: z.array(z.string()),
+    filesModified: z.array(z.string()),
+    errors: z.array(z.string()),
+  }).optional(),
+  retryCount: z.number().default(0),
+  maxRetries: z.number().default(3),
+  startedAt: z.number().optional(),
+  completedAt: z.number().optional(),
+  createdAt: z.number(),
+});
+
+export const generationChunks = pgTable("generation_chunks", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  pipelineId: varchar("pipeline_id", { length: 36 }),
+  parentChunkId: varchar("parent_chunk_id", { length: 36 }),
+  type: varchar("type", { length: 30 }).notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  prompt: text("prompt").notNull(),
+  targetFiles: jsonb("target_files").notNull().default([]),
+  dependencies: jsonb("dependencies").notNull().default([]),
+  contextFiles: jsonb("context_files").default([]),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  priority: bigint("priority", { mode: "number" }).notNull().default(0),
+  estimatedTokens: bigint("estimated_tokens", { mode: "number" }),
+  actualTokens: bigint("actual_tokens", { mode: "number" }),
+  output: text("output"),
+  result: jsonb("result"),
+  retryCount: bigint("retry_count", { mode: "number" }).notNull().default(0),
+  maxRetries: bigint("max_retries", { mode: "number" }).notNull().default(3),
+  startedAt: bigint("started_at", { mode: "number" }),
+  completedAt: bigint("completed_at", { mode: "number" }),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+// Generation pipelines - multi-step workflows for complex projects
+export const pipelineStatuses = ["pending", "running", "paused", "completed", "failed", "cancelled"] as const;
+
+export const generationPipelineSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  originalPrompt: z.string(), // user's original request
+  status: z.enum(pipelineStatuses),
+  totalChunks: z.number(),
+  completedChunks: z.number(),
+  failedChunks: z.number(),
+  currentChunkId: z.string().optional(),
+  config: z.object({
+    parallelism: z.number().default(1), // how many chunks to run in parallel
+    stopOnError: z.boolean().default(false),
+    autoRetry: z.boolean().default(true),
+    maxContextTokens: z.number().default(32000),
+  }),
+  stats: z.object({
+    totalTokensUsed: z.number(),
+    totalFilesGenerated: z.number(),
+    totalLinesGenerated: z.number(),
+    durationMs: z.number().optional(),
+  }).optional(),
+  startedAt: z.number().optional(),
+  completedAt: z.number().optional(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export const generationPipelines = pgTable("generation_pipelines", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  originalPrompt: text("original_prompt").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  totalChunks: bigint("total_chunks", { mode: "number" }).notNull().default(0),
+  completedChunks: bigint("completed_chunks", { mode: "number" }).notNull().default(0),
+  failedChunks: bigint("failed_chunks", { mode: "number" }).notNull().default(0),
+  currentChunkId: varchar("current_chunk_id", { length: 36 }),
+  config: jsonb("config").notNull().default({}),
+  stats: jsonb("stats"),
+  startedAt: bigint("started_at", { mode: "number" }),
+  completedAt: bigint("completed_at", { mode: "number" }),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+// Code index - for semantic search and smart context selection
+export const codeIndexSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  fileId: z.string(),
+  filePath: z.string(),
+  symbolType: z.enum(["function", "class", "interface", "type", "variable", "component", "hook", "api", "schema"]),
+  symbolName: z.string(),
+  signature: z.string().optional(), // e.g., function signature
+  description: z.string().optional(), // AI-generated description
+  startLine: z.number(),
+  endLine: z.number(),
+  references: z.array(z.string()).optional(), // files that reference this
+  embedding: z.array(z.number()).optional(), // for vector search (optional)
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export const codeIndex = pgTable("code_index", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  fileId: varchar("file_id", { length: 36 }).notNull(),
+  filePath: text("file_path").notNull(),
+  symbolType: varchar("symbol_type", { length: 30 }).notNull(),
+  symbolName: text("symbol_name").notNull(),
+  signature: text("signature"),
+  description: text("description"),
+  startLine: bigint("start_line", { mode: "number" }).notNull(),
+  endLine: bigint("end_line", { mode: "number" }).notNull(),
+  references: jsonb("references").default([]),
+  embedding: jsonb("embedding"), // array of floats for vector search
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+// Schema migrations - track data model evolution
+export const schemaMigrationSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  version: z.number(),
+  name: z.string(),
+  description: z.string().optional(),
+  changes: z.array(z.object({
+    type: z.enum(["add_entity", "remove_entity", "add_field", "remove_field", "modify_field", "add_relation", "remove_relation"]),
+    entity: z.string(),
+    field: z.string().optional(),
+    before: z.any().optional(),
+    after: z.any().optional(),
+  })),
+  migrationSql: z.string().optional(), // generated SQL
+  appliedAt: z.number().optional(),
+  rolledBackAt: z.number().optional(),
+  status: z.enum(["pending", "applied", "rolled_back", "failed"]),
+  createdAt: z.number(),
+});
+
+export const schemaMigrations = pgTable("schema_migrations_log", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  version: bigint("version", { mode: "number" }).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  changes: jsonb("changes").notNull(),
+  migrationSql: text("migration_sql"),
+  appliedAt: bigint("applied_at", { mode: "number" }),
+  rolledBackAt: bigint("rolled_back_at", { mode: "number" }),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+// Context budget tracking - for smart LLM context management
+export const contextBudgetSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  chunkId: z.string().optional(),
+  maxTokens: z.number(),
+  usedTokens: z.number(),
+  breakdown: z.object({
+    systemPrompt: z.number(),
+    userMessage: z.number(),
+    codeContext: z.number(),
+    chatHistory: z.number(),
+    fileContents: z.number(),
+  }),
+  selectedFiles: z.array(z.object({
+    path: z.string(),
+    tokens: z.number(),
+    relevanceScore: z.number(),
+    reason: z.string(),
+  })),
+  truncatedFiles: z.array(z.string()).optional(),
+  createdAt: z.number(),
+});
+
+export const contextBudgets = pgTable("context_budgets", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  chunkId: varchar("chunk_id", { length: 36 }),
+  maxTokens: bigint("max_tokens", { mode: "number" }).notNull(),
+  usedTokens: bigint("used_tokens", { mode: "number" }).notNull(),
+  breakdown: jsonb("breakdown").notNull(),
+  selectedFiles: jsonb("selected_files").notNull(),
+  truncatedFiles: jsonb("truncated_files").default([]),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+// Insert schemas and types
+export const insertProjectFileSchema = createInsertSchema(projectFiles).omit({ id: true });
+export const insertGenerationChunkSchema = createInsertSchema(generationChunks).omit({ id: true });
+export const insertGenerationPipelineSchema = createInsertSchema(generationPipelines).omit({ id: true });
+export const insertCodeIndexSchema = createInsertSchema(codeIndex).omit({ id: true });
+export const insertSchemaMigrationSchema = createInsertSchema(schemaMigrations).omit({ id: true });
+export const insertContextBudgetSchema = createInsertSchema(contextBudgets).omit({ id: true });
+
+export type ProjectFile = z.infer<typeof projectFilesSchema>;
+export type GenerationChunk = z.infer<typeof generationChunkSchema>;
+export type GenerationPipeline = z.infer<typeof generationPipelineSchema>;
+export type CodeIndexEntry = z.infer<typeof codeIndexSchema>;
+export type SchemaMigration = z.infer<typeof schemaMigrationSchema>;
+export type ContextBudget = z.infer<typeof contextBudgetSchema>;
+
+export type ProjectFileDb = typeof projectFiles.$inferSelect;
+export type GenerationChunkDb = typeof generationChunks.$inferSelect;
+export type GenerationPipelineDb = typeof generationPipelines.$inferSelect;
+export type CodeIndexDb = typeof codeIndex.$inferSelect;
+export type SchemaMigrationDb = typeof schemaMigrations.$inferSelect;
+export type ContextBudgetDb = typeof contextBudgets.$inferSelect;
+
+// ============================================================================
+// CONTEXT MANAGEMENT UTILITIES
+// ============================================================================
+
+// Token estimation (rough: 1 token ≈ 4 chars for code)
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+// Max context tokens for different model tiers
+export const CONTEXT_LIMITS = {
+  small: 8192,    // Smaller models
+  medium: 32768,  // 32K context (Qwen, Mistral)
+  large: 65536,   // 64K context (optimized)
+  xlarge: 131072, // 128K+ context (GPT-OSS, Claude)
+};
+
+// Recommended context allocation
+export const CONTEXT_ALLOCATION = {
+  systemPrompt: 0.05,  // 5% for system prompt
+  userMessage: 0.10,   // 10% for current request
+  codeContext: 0.60,   // 60% for relevant code
+  chatHistory: 0.15,   // 15% for conversation history
+  outputBuffer: 0.10,  // 10% reserved for output
+};
+
 export const users = {} as any;
 export type InsertUser = { username: string; password: string };
 export type User = { id: string; username: string; password: string };

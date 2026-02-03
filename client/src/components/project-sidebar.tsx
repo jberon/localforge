@@ -160,7 +160,7 @@ export function ProjectSidebar({
 
   return (
     <Sidebar className="border-r">
-      <SidebarHeader className="p-4 pt-8 electron-drag-region">
+      <SidebarHeader className="p-4 pt-12 electron-drag-region">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
             <Hammer className="h-4 w-4 text-white" />
