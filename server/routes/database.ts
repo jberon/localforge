@@ -168,17 +168,17 @@ router.post("/query", async (req, res) => {
 
     const startTime = Date.now();
     
-    const wrappedQuery = `
-      SET LOCAL statement_timeout = '10s';
-      ${safeQuery};
-    `;
-    
-    const result = await getDb().execute(sql.raw(wrappedQuery));
+    // Set statement timeout and execute query
+    await getDb().execute(sql`SET LOCAL statement_timeout = '10s'`);
+    const result = await getDb().execute(sql.raw(safeQuery));
     const duration = Date.now() - startTime;
 
+    // Handle both array and object results from Drizzle
+    const rows = Array.isArray(result) ? result : (result.rows || []);
+
     res.json({
-      rows: result.rows,
-      rowCount: result.rows.length,
+      rows,
+      rowCount: rows.length,
       duration,
     });
   } catch (error) {

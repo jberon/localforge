@@ -35,7 +35,8 @@ import { useProjectMutations } from "@/hooks/use-project-mutations";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database } from "lucide-react";
+import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
 import type { Action, ActionType } from "@/components/action-group-row";
 import {
@@ -48,6 +49,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Link } from "wouter";
 import JSZip from "jszip";
 import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion, GeneratedFile } from "@shared/schema";
@@ -90,6 +97,7 @@ export default function Home() {
   const [lastError, setLastError] = useState<{ message: string; prompt?: string } | null>(null);
   const [showQuickUndo, setShowQuickUndo] = useState(false);
   const [showFileExplorer, setShowFileExplorer] = useState(true);
+  const [showDatabasePanel, setShowDatabasePanel] = useState(false);
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
   const generationRequestRef = useRef<string | null>(null);
   const [settings, setSettings] = useState<LLMSettings>({
@@ -1388,6 +1396,15 @@ export default function Home() {
                   }}
                 />
               )}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowDatabasePanel(!showDatabasePanel)}
+                data-testid="button-database"
+              >
+                <Database className="h-4 w-4 mr-1" />
+                Database
+              </Button>
               <Button variant="ghost" size="sm" asChild data-testid="button-analytics">
                 <Link href="/analytics">
                   <BarChart3 className="h-4 w-4 mr-1" />
@@ -1821,6 +1838,21 @@ export default function Home() {
           isGenerating={isDiscussionGenerating}
         />
       )}
+      
+      {/* Database Panel Sheet */}
+      <Sheet open={showDatabasePanel} onOpenChange={setShowDatabasePanel}>
+        <SheetContent side="right" className="w-[90vw] max-w-[1200px] sm:max-w-[1200px] p-0">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Database Explorer
+            </SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(100vh-60px)]">
+            <DatabasePanel />
+          </div>
+        </SheetContent>
+      </Sheet>
     </SidebarProvider>
   );
 }
