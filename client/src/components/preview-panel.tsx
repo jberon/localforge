@@ -50,7 +50,7 @@ export function PreviewPanel({
   onCodeUpdate,
   onFilesUpdate,
 }: PreviewPanelProps) {
-  const [activeTab, setActiveTab] = useState<"preview" | "code" | "files" | "publish" | "console" | "search">("preview");
+  const [activeTab, setActiveTab] = useState<"preview" | "files" | "publish" | "console" | "search">("preview");
   const [copied, setCopied] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -442,15 +442,11 @@ ${localCode}
       )}
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
         <div className="flex items-center gap-3">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "code" | "files" | "publish" | "console" | "search")}>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "files" | "publish" | "console" | "search")}>
             <TabsList className="h-8">
               <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
                 <Eye className="h-3.5 w-3.5" />
                 Preview
-              </TabsTrigger>
-              <TabsTrigger value="code" className="text-xs gap-1.5" data-testid="tab-code">
-                <Code className="h-3.5 w-3.5" />
-                Code
               </TabsTrigger>
               {hasFullStackProject && (
                 <>
@@ -695,74 +691,6 @@ ${localCode}
                     </div>
                   </div>
                 ) : null}
-              </div>
-            ) : activeTab === "code" ? (
-              <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Code className="h-4 w-4" />
-                    <span>Edit code directly - changes update preview instantly</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {hasUnsavedChanges && (
-                      <Badge variant="secondary" className="text-xs">
-                        Unsaved
-                      </Badge>
-                    )}
-                    {isSaving && (
-                      <Badge variant="secondary" className="text-xs gap-1">
-                        <Save className="h-3 w-3 animate-pulse" />
-                        Saving...
-                      </Badge>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleManualSave}
-                      disabled={!hasUnsavedChanges || isSaving || isGenerating}
-                      className="gap-1"
-                      data-testid="button-save-code"
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      Save
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex-1 relative">
-                  <Editor
-                    height="100%"
-                    defaultLanguage="javascript"
-                    value={localCode || "// Your generated code will appear here"}
-                    onChange={handleCodeChange}
-                    onMount={handleEditorMount}
-                    theme="vs-dark"
-                    options={{
-                      readOnly: isGenerating,
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      lineNumbers: "on",
-                      scrollBeyondLastLine: false,
-                      wordWrap: "on",
-                      padding: { top: 16 },
-                    }}
-                  />
-                  {showAssistant && selectedCode && settings && (
-                    <div className="absolute bottom-4 right-4 w-80 z-10">
-                      <CodeAssistant
-                        selectedCode={selectedCode}
-                        fullCode={localCode}
-                        settings={settings}
-                        selectionRange={selectionRange || undefined}
-                        onApplyFix={(newCode) => {
-                          setLocalCode(newCode);
-                          setHasUnsavedChanges(true);
-                          setIframeKey((k) => k + 1);
-                        }}
-                        onClose={() => setShowAssistant(false)}
-                      />
-                    </div>
-                  )}
-                </div>
               </div>
             ) : activeTab === "files" ? (
               <div className="flex h-full">
