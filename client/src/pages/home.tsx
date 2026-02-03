@@ -1142,21 +1142,6 @@ export default function Home() {
                 settings={dreamTeamSettings}
                 onSettingsChange={setDreamTeamSettings}
               />
-              {dreamTeamSettings.enabled && activeProject && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => startDreamTeamDiscussion(
-                    `Project Review: ${activeProject.name}`,
-                    `The current project "${activeProject.name}" needs expert review. ${activeProject.lastPrompt ? `Last request: "${activeProject.lastPrompt}". ` : ""}Please discuss the current approach and provide recommendations.`
-                  )}
-                  disabled={isDiscussionGenerating || !llmConnected}
-                  data-testid="button-consult-dream-team"
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  Consult Team
-                </Button>
-              )}
               {activeProject && showQuickUndo && (
                 <QuickUndo 
                   projectId={activeProject.id} 
@@ -1197,16 +1182,18 @@ export default function Home() {
                 <div className="flex items-center gap-1.5" data-testid="indicator-connected">
                   <div className="w-2 h-2 bg-green-500 rounded-full" title="LM Studio connected" />
                   {settings.useDualModels && (settings.plannerModel || settings.builderModel) ? (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       {settings.plannerModel && (
-                        <span className="truncate max-w-[120px]" title={`Planner: ${settings.plannerModel}`}>
-                          🧠 {settings.plannerModel.split('/').pop()}
+                        <span className="flex items-center gap-1 truncate max-w-[140px]" title={`Planner: ${settings.plannerModel}`}>
+                          <Brain className="h-3 w-3 text-purple-400" />
+                          {settings.plannerModel.split('/').pop()}
                         </span>
                       )}
-                      {settings.plannerModel && settings.builderModel && <span className="text-muted-foreground/50">|</span>}
+                      {settings.plannerModel && settings.builderModel && <span className="text-muted-foreground/30">|</span>}
                       {settings.builderModel && (
-                        <span className="truncate max-w-[120px]" title={`Builder: ${settings.builderModel}`}>
-                          🔧 {settings.builderModel.split('/').pop()}
+                        <span className="flex items-center gap-1 truncate max-w-[140px]" title={`Builder: ${settings.builderModel}`}>
+                          <Hammer className="h-3 w-3 text-amber-400" />
+                          {settings.builderModel.split('/').pop()}
                         </span>
                       )}
                     </div>
