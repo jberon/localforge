@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Clock, Loader2, CheckCircle2, Circle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface TaskItem {
@@ -53,20 +52,19 @@ export function TaskProgressPanel({
     <Card className={cn("border shadow-sm", className)}>
       <CardHeader className="py-3 px-4">
         <div className="flex items-center justify-between gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-0 h-auto hover:bg-transparent"
+          <button
+            type="button"
+            className="flex items-center gap-2 hover-elevate rounded-md px-1 -mx-1"
             onClick={() => setIsExpanded(!isExpanded)}
             data-testid="button-toggle-tasks"
           >
             {isExpanded ? (
-              <ChevronUp className="w-4 h-4 mr-2 text-muted-foreground" />
+              <ChevronUp className="w-4 h-4 text-muted-foreground" />
             ) : (
-              <ChevronDown className="w-4 h-4 mr-2 text-muted-foreground" />
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
             )}
             <CardTitle className="text-sm font-medium">In progress tasks</CardTitle>
-          </Button>
+          </button>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
               {completedCount} / {totalCount}

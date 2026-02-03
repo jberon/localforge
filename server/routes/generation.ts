@@ -1180,6 +1180,9 @@ router.post("/:id/dream-team", async (req, res) => {
         case "task_complete":
           res.write(`data: ${JSON.stringify({ type: "task_complete", task: event.task })}\n\n`);
           break;
+        case "tasks_updated":
+          res.write(`data: ${JSON.stringify({ type: "tasks_updated", tasks: event.tasks, completedCount: event.completedCount, totalCount: event.totalCount })}\n\n`);
+          break;
         case "search_result":
           res.write(`data: ${JSON.stringify({ type: "search", query: event.query, count: event.resultCount })}\n\n`);
           break;
@@ -1188,6 +1191,9 @@ router.post("/:id/dream-team", async (req, res) => {
           break;
         case "fix_attempt":
           res.write(`data: ${JSON.stringify({ type: "fix_attempt", attempt: event.attempt, max: event.maxAttempts })}\n\n`);
+          break;
+        case "status":
+          res.write(`data: ${JSON.stringify({ type: "status", message: event.message })}\n\n`);
           break;
         case "complete":
           break;
