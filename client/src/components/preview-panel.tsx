@@ -334,12 +334,24 @@ export function PreviewPanel({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     setIframeKey((k) => k + 1);
     if (hasFullStackProject && bundlerEnabled) {
       rebundle();
     }
-  };
+  }, [hasFullStackProject, bundlerEnabled, rebundle]);
+
+  // Keyboard shortcut: Cmd/Ctrl+R to refresh preview
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'r' && activeTab === 'preview' && (code || hasFullStackProject)) {
+        e.preventDefault();
+        handleRefresh();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, code, hasFullStackProject, handleRefresh]);
 
   const handleOpenRegenerate = () => {
     setEditedPrompt(lastPrompt || projectName);
@@ -528,6 +540,26 @@ ${localCode}
               <span className="text-xs font-medium text-primary">Building your app...</span>
             </div>
           )}
+          {!isGenerating && hasFullStackProject && (
+            <div className="flex items-center gap-2">
+              {isCompiling ? (
+                <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse" data-testid="badge-compiling">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Compiling...
+                </Badge>
+              ) : bundleErrors.length > 0 ? (
+                <Badge variant="destructive" className="gap-1.5 text-xs" data-testid="badge-build-error">
+                  <AlertTriangle className="h-3 w-3" />
+                  Build failed
+                </Badge>
+              ) : bundledPreviewHtml ? (
+                <Badge variant="secondary" className="gap-1.5 text-xs bg-green-500/10 text-green-700 dark:text-green-400" data-testid="badge-build-success">
+                  <Check className="h-3 w-3" />
+                  {safeGeneratedFiles.length} files
+                </Badge>
+              ) : null}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -539,8 +571,9 @@ ${localCode}
                 onClick={handleRefresh}
                 className="h-8 w-8"
                 data-testid="button-refresh-preview"
+                title="Refresh preview (⌘R / Ctrl+R)"
               >
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className={`h-4 w-4 ${isCompiling ? 'animate-spin' : ''}`} />
               </Button>
               <Button
                 size="icon"
@@ -694,17 +727,34 @@ ${localCode}
                       </div>
                       <div>
                         <h3 className="font-semibold text-lg mb-2">Build Errors</h3>
-                        <div className="text-left max-w-lg mx-auto bg-muted/50 rounded-lg p-4 mt-4">
+                        <p className="text-sm text-muted-foreground mb-4">
+                          {bundleErrors.length} error{bundleErrors.length > 1 ? 's' : ''} found while compiling your project
+                        </p>
+                        <div className="text-left max-w-lg mx-auto bg-muted/50 rounded-lg p-4">
                           <ScrollArea className="max-h-48">
                             {bundleErrors.map((error, i) => (
                               <p key={i} className="text-sm text-red-600 dark:text-red-400 font-mono mb-2">{error}</p>
                             ))}
                           </ScrollArea>
                         </div>
-                        <Button onClick={rebundle} variant="outline" className="mt-4 gap-2">
-                          <RefreshCw className="h-4 w-4" />
-                          Retry Build
-                        </Button>
+                        <div className="flex items-center justify-center gap-2 mt-4">
+                          <Button onClick={rebundle} variant="outline" className="gap-2" data-testid="button-retry-build">
+                            <RefreshCw className="h-4 w-4" />
+                            Retry Build
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            className="gap-2"
+                            onClick={() => {
+                              navigator.clipboard.writeText(bundleErrors.join('\n'));
+                              toast({ title: "Errors copied to clipboard" });
+                            }}
+                            data-testid="button-copy-errors"
+                          >
+                            <Copy className="h-4 w-4" />
+                            Copy Errors
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ) : bundledPreviewHtml ? (
