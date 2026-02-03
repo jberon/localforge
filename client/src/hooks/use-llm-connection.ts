@@ -9,6 +9,7 @@ interface UseLLMConnectionOptions {
 interface UseLLMConnectionReturn {
   isConnected: boolean | null;
   loadedModel: string | null;
+  availableModels: string[];
   isChecking: boolean;
   checkConnection: () => Promise<void>;
 }
@@ -20,6 +21,7 @@ export function useLLMConnection({
 }: UseLLMConnectionOptions): UseLLMConnectionReturn {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [loadedModel, setLoadedModel] = useState<string | null>(null);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isChecking, setIsChecking] = useState(false);
 
   const checkConnection = useCallback(async () => {
@@ -33,13 +35,16 @@ export function useLLMConnection({
       const data = await response.json();
       setIsConnected(data.connected);
       if (data.connected && data.models?.length > 0) {
+        setAvailableModels(data.models);
         const activeModel = model || data.models[0];
         setLoadedModel(activeModel);
       } else {
+        setAvailableModels([]);
         setLoadedModel(null);
       }
     } catch {
       setIsConnected(false);
+      setAvailableModels([]);
       setLoadedModel(null);
     } finally {
       setIsChecking(false);
@@ -55,6 +60,7 @@ export function useLLMConnection({
   return {
     isConnected,
     loadedModel,
+    availableModels,
     isChecking,
     checkConnection,
   };

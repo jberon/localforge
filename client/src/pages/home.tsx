@@ -177,6 +177,7 @@ export default function Home() {
   const {
     isConnected: llmConnected,
     loadedModel,
+    availableModels,
     isChecking: isCheckingConnection,
     checkConnection,
   } = useLLMConnection({
@@ -1195,11 +1196,29 @@ export default function Home() {
               {llmConnected === true && (
                 <div className="flex items-center gap-1.5" data-testid="indicator-connected">
                   <div className="w-2 h-2 bg-green-500 rounded-full" title="LM Studio connected" />
-                  {loadedModel && (
+                  {settings.useDualModels && (settings.plannerModel || settings.builderModel) ? (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {settings.plannerModel && (
+                        <span className="truncate max-w-[120px]" title={`Planner: ${settings.plannerModel}`}>
+                          🧠 {settings.plannerModel.split('/').pop()}
+                        </span>
+                      )}
+                      {settings.plannerModel && settings.builderModel && <span className="text-muted-foreground/50">|</span>}
+                      {settings.builderModel && (
+                        <span className="truncate max-w-[120px]" title={`Builder: ${settings.builderModel}`}>
+                          🔧 {settings.builderModel.split('/').pop()}
+                        </span>
+                      )}
+                    </div>
+                  ) : loadedModel ? (
                     <span className="text-xs text-muted-foreground truncate max-w-[180px]" title={`Model: ${loadedModel}`}>
                       {loadedModel}
                     </span>
-                  )}
+                  ) : availableModels.length > 0 ? (
+                    <span className="text-xs text-muted-foreground truncate max-w-[180px]" title={`${availableModels.length} models available`}>
+                      {availableModels.length} models
+                    </span>
+                  ) : null}
                 </div>
               )}
               <ThemeToggle />
