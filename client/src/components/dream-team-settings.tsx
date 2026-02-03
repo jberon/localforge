@@ -37,7 +37,9 @@ import {
   Plus,
   Trash2,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  Shield,
+  Brain
 } from "lucide-react";
 import type { DreamTeamSettings as DreamTeamSettingsType, DreamTeamPersona } from "@shared/schema";
 import { defaultDreamTeamPersonas } from "@shared/schema";
@@ -52,6 +54,8 @@ const iconMap: Record<string, React.ElementType> = {
   layers: Layers,
   heart: Heart,
   target: Target,
+  shield: Shield,
+  brain: Brain,
 };
 
 const colorMap: Record<string, string> = {
