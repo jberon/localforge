@@ -524,6 +524,22 @@ router.post("/contracts/validate", async (req, res) => {
 
 // ==================== IMPORT OPTIMIZER ====================
 
+// Analyze imports (alias for optimize - returns analysis without modifying)
+router.post("/imports/analyze", async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    
+    const result = await importOptimizerService.optimizeImports(files);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to analyze imports", { error });
+    res.status(500).json({ error: "Failed to analyze imports" });
+  }
+});
+
 // Optimize imports
 router.post("/imports/optimize", async (req, res) => {
   try {
@@ -541,6 +557,32 @@ router.post("/imports/optimize", async (req, res) => {
 });
 
 // ==================== PERFORMANCE PROFILER ====================
+
+// Track an operation (for external tracking)
+router.post("/performance/track", async (req, res) => {
+  try {
+    const { name, category, duration, success = true, metadata } = req.body;
+    if (!name || !category || typeof duration !== "number") {
+      return res.status(400).json({ error: "name, category, and duration are required" });
+    }
+    
+    const result = await performanceProfilerService.trackOperation(
+      name,
+      category,
+      async () => new Promise(resolve => setTimeout(resolve, 0)),
+      metadata
+    );
+    
+    // Override the duration with the provided value
+    res.json({ 
+      tracked: true, 
+      operation: { name, category, duration, success, metadata } 
+    });
+  } catch (error) {
+    logger.error("Failed to track operation", { error });
+    res.status(500).json({ error: "Failed to track operation" });
+  }
+});
 
 // Get performance stats
 router.get("/performance/stats", (req, res) => {
