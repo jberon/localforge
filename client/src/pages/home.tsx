@@ -21,6 +21,8 @@ import { AIThinkingPanel } from "@/components/ai-thinking-panel";
 import { ProjectTeamPanel } from "@/components/project-team-panel";
 import { DreamTeamThinkingTab } from "@/components/dream-team-thinking-tab";
 import { TaskProgressPanel, type TaskItem } from "@/components/task-progress-panel";
+import { PlanBuildModeToggle, ModeIndicator, PlanModeInfo, type AgentMode } from "@/components/plan-build-mode-toggle";
+import { PlanModeTaskList, PlanProgress, type PlanTask } from "@/components/plan-mode-task-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -111,8 +113,12 @@ export default function Home() {
     pendingContent: string;
   } | null>(null);
   
-  // Plan & Build mode state
-  const planBuildMode = true; // Always use intelligent mode
+  // Plan & Build mode state (Replit-style)
+  const [agentMode, setAgentMode] = useState<AgentMode>("plan"); // Default to plan mode (Replit-style)
+  const [planTasks, setPlanTasks] = useState<PlanTask[]>([]);
+  const [planSummary, setPlanSummary] = useState<string>("");
+  const [planArchitecture, setPlanArchitecture] = useState<string>("");
+  const [currentPlanTaskIndex, setCurrentPlanTaskIndex] = useState(-1);
   const [isPlanning, setIsPlanning] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -1032,11 +1038,126 @@ export default function Home() {
     }
   }, [activeProjectId, dualModelSettings.builder, toast]);
 
+  // Plan mode handler - generates a task list without building
+  const handlePlanModeGenerate = useCallback(async (content: string) => {
+    if (!activeProjectId) {
+      toast({
+        title: "No Project",
+        description: "Please create or select a project first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsPlanning(true);
+    setStreamingPlan("");
+    setPlanTasks([]);
+    setPlanSummary("");
+    setPlanArchitecture("");
+
+    try {
+      const response = await fetch(`/api/projects/${activeProjectId}/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          settings,
+          planOnly: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate plan");
+      }
+
+      const plan = await response.json();
+      
+      if (plan.tasks && Array.isArray(plan.tasks)) {
+        const planTasks: PlanTask[] = plan.tasks.map((task: any, index: number) => ({
+          id: task.id || `task-${index + 1}`,
+          title: task.title || task.description || `Task ${index + 1}`,
+          description: task.description,
+          fileTarget: task.fileTarget,
+          type: task.type || "build",
+          selected: true,
+        }));
+        setPlanTasks(planTasks);
+      }
+
+      if (plan.summary) {
+        setPlanSummary(plan.summary);
+      }
+
+      if (plan.architecture) {
+        setPlanArchitecture(plan.architecture);
+      }
+
+      toast({
+        title: "Plan Ready",
+        description: `Generated ${plan.tasks?.length || 0} tasks. Review and click 'Start Building' when ready.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Planning Error",
+        description: error.message || "Failed to generate plan",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPlanning(false);
+    }
+  }, [activeProjectId, settings, toast]);
+
+  // Handle starting build from approved plan
+  const handleStartBuildingFromPlan = useCallback(async (selectedTasks: PlanTask[]) => {
+    if (selectedTasks.length === 0) return;
+
+    // Switch to build mode
+    setAgentMode("build");
+    setCurrentPlanTaskIndex(0);
+    setIsBuilding(true);
+
+    try {
+      // Build each task sequentially
+      for (let i = 0; i < selectedTasks.length; i++) {
+        setCurrentPlanTaskIndex(i);
+        const task = selectedTasks[i];
+        
+        // Send the task as a build request
+        await handleSendMessage(
+          `Build task: ${task.title}${task.description ? `\n\nDetails: ${task.description}` : ""}${task.fileTarget ? `\n\nTarget file: ${task.fileTarget}` : ""}`,
+          undefined,
+          undefined,
+          undefined
+        );
+      }
+
+      toast({
+        title: "Build Complete",
+        description: `Successfully completed ${selectedTasks.length} tasks from your plan.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Build Error",
+        description: error.message || "Failed to complete build",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBuilding(false);
+      setCurrentPlanTaskIndex(-1);
+      setPlanTasks([]);
+    }
+  }, [handleSendMessage, toast]);
+
   // Intelligent routing handler - automatically routes to plan or build based on request analysis
   const handleIntelligentGenerate = useCallback(
     async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number) => {
-      if (!planBuildMode || !autoRouting) {
-        // Use standard generation when Plan & Build mode is off
+      // In Plan mode, generate a task list instead of building
+      if (agentMode === "plan") {
+        return handlePlanModeGenerate(content);
+      }
+      
+      if (!autoRouting) {
+        // Use standard generation when auto-routing is off
         return handleSendMessage(content, dataModel, attachments, templateTemperature);
       }
 
@@ -1093,7 +1214,7 @@ export default function Home() {
         await handleSendMessage(content, dataModel, attachments, undefined, builderSettings);
       }
     },
-    [planBuildMode, autoRouting, activeProject, streamingCode, handleSendMessage, handleCreatePlan, toast, dualModelSettings.builder, dreamTeamSettings, startDreamTeamDiscussion, setPendingGeneration]
+    [agentMode, autoRouting, activeProject, streamingCode, handleSendMessage, handleCreatePlan, toast, dualModelSettings.builder, dreamTeamSettings, startDreamTeamDiscussion, setPendingGeneration]
   );
 
   const handleDownload = useCallback(async () => {
@@ -1237,21 +1358,13 @@ export default function Home() {
                   {activeProject.name}
                 </span>
               )}
+              <PlanBuildModeToggle
+                mode={agentMode}
+                onModeChange={setAgentMode}
+                disabled={isGenerating || isPlanning || isBuilding}
+              />
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {detectedIntent && (
-                <Badge 
-                  variant="secondary" 
-                  className="text-xs gap-1"
-                  data-testid="badge-detected-intent"
-                >
-                  {detectedIntent === "plan" && <Brain className="h-3 w-3 text-purple-500" />}
-                  {detectedIntent === "build" && <Hammer className="h-3 w-3 text-orange-500" />}
-                  {detectedIntent === "refine" && <Hammer className="h-3 w-3 text-blue-500" />}
-                  {detectedIntent === "question" && <Brain className="h-3 w-3 text-green-500" />}
-                  {detectedIntent}
-                </Badge>
-              )}
               <DreamTeamSettings
                 settings={dreamTeamSettings}
                 onSettingsChange={setDreamTeamSettings}
@@ -1362,14 +1475,22 @@ export default function Home() {
             {projects.length === 0 && !activeProject ? (
               <EmptyState onCreateProject={() => createProject()} />
             ) : !displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
-              <GenerationWizard
-                onGenerate={handleIntelligentGenerate}
-                isGenerating={isGenerating || isPlanning}
-                llmConnected={llmConnected}
-                onCheckConnection={checkConnection}
-                settings={settings}
-                planBuildMode={planBuildMode}
-              />
+              <div className="h-full flex flex-col">
+                {/* Plan Mode Info in wizard view */}
+                {agentMode === "plan" && (
+                  <div className="p-4 mx-auto max-w-2xl w-full">
+                    <PlanModeInfo />
+                  </div>
+                )}
+                <GenerationWizard
+                  onGenerate={handleIntelligentGenerate}
+                  isGenerating={isGenerating || isPlanning}
+                  llmConnected={llmConnected}
+                  onCheckConnection={checkConnection}
+                  settings={settings}
+                  planBuildMode={agentMode === "build"}
+                />
+              </div>
             ) : activeProject?.plan && !displayCode && !isBuilding ? (
               <div className="h-full max-w-3xl mx-auto">
                 <PlanReviewPanel
@@ -1434,6 +1555,43 @@ export default function Home() {
                           totalCount={orchestratorTasks.totalCount}
                           isVisible={true}
                         />
+                      </div>
+                    )}
+                    
+                    {/* Plan Mode Task List */}
+                    {planTasks.length > 0 && !isBuilding && (
+                      <div className="p-4 border-b bg-muted/30">
+                        <PlanModeTaskList
+                          tasks={planTasks}
+                          onTasksChange={setPlanTasks}
+                          onStartBuilding={handleStartBuildingFromPlan}
+                          onEditPlan={() => {
+                            // Clear plan and let user refine
+                            setPlanTasks([]);
+                            setPlanSummary("");
+                            setPlanArchitecture("");
+                          }}
+                          isBuilding={isBuilding}
+                          summary={planSummary}
+                          architecture={planArchitecture}
+                        />
+                      </div>
+                    )}
+
+                    {/* Plan Progress when building from plan */}
+                    {isBuilding && planTasks.length > 0 && currentPlanTaskIndex >= 0 && (
+                      <div className="p-4 border-b bg-muted/30">
+                        <PlanProgress
+                          tasks={planTasks}
+                          currentTaskIndex={currentPlanTaskIndex}
+                        />
+                      </div>
+                    )}
+
+                    {/* Plan Mode Info when no tasks yet */}
+                    {agentMode === "plan" && planTasks.length === 0 && !isPlanning && (
+                      <div className="p-4 border-b">
+                        <PlanModeInfo />
                       </div>
                     )}
                     

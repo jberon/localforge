@@ -14,6 +14,13 @@ LocalForge is an AI-powered web application builder that generates working React
 ### Core Functionality
 LocalForge provides a chat-based interface with streaming responses for real-time code generation, project management, live preview, and code validation. It includes an AI-powered prompt enhancement and iterative refinement system. The system intelligently routes requests, automatically detecting intent (plan/build/refine/question) and optimizing LLM configurations.
 
+### Plan/Build Mode (Replit-style)
+LocalForge features a Replit-style Plan/Build mode toggle in the header:
+- **Plan Mode (Default)**: AI generates a structured task list without modifying files. Users can review, select/deselect tasks, and approve the plan before building. The PlanModeInfo panel explains the current mode.
+- **Build Mode**: AI directly writes code and implements features in the project.
+- **Task List**: When in Plan mode, generated tasks appear with checkboxes. Users can select which tasks to include, then click "Start Building" to execute the selected tasks sequentially.
+- **Plan Progress**: During build-from-plan, a progress indicator shows which task is currently being executed.
+
 ### AI Dream Team (Autonomous Dual-Model Orchestration)
 When dual models are configured (planner + builder), LocalForge activates an AI Dream Team mode with expert personas (e.g., Marty Cagan for product vision, Martin Fowler for architecture, Julie Zhuo for design, Kent Beck for quality). This team collectively handles project planning, business case generation, task tracking, specialist recruitment, web search integration, code generation, validation, and documentation (including README auto-generation). All team member actions are logged in a Project Team Panel UI.
 
