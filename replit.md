@@ -55,6 +55,46 @@ Supports downloading complete projects as ZIP files with options for Docker conf
 ### Local LLM Optimization
 Optimized for Mac M4 Pro, integrating with LM Studio via client connection caching, extended timeouts, automatic retry logic, and array-based streaming. Supports configurable temperature presets and token limits. Environment variables allow tuning LLM client configuration. Backpressure UX provides queue status and warnings. Database connection pooling is configured for performance. Dream Team service includes guards for safe member lookups. Recommended LM Studio settings and model configurations are provided for optimal performance on M4 Pro.
 
+## Recommended Dual-Model Configuration
+
+### Best Local Stack for M4 Pro (48GB RAM)
+
+**Model A - Reasoning Brain (Planner):**
+- **Recommended**: Ministral 3 14B Reasoning
+- **Role**: System architect, strategist, planner, debugging explainer
+- **Optimal Temperature**: 0.2-0.3 (structured planning)
+- **Strengths**: Multi-step reasoning, decomposition, architecture design, low hallucination
+
+**Model B - Development & Code Execution (Builder):**
+- **Recommended**: Qwen3 Coder 30B (preferred) or Qwen2.5 Coder 14B (lighter)
+- **Role**: Code generator, implementer, refactorer, test writer
+- **Optimal Temperature**: 0.5 (creative but accurate)
+- **Strengths**: Multi-file projects, API integration, production-ready output
+
+### Division of Responsibilities
+
+**Reasoning Model (Model A) Instructions:**
+- "You will output a plan only, no code."
+- "Break the task into steps."
+- "Describe each file needed and its contents."
+- "Define APIs, directories, and architecture."
+- "Spell out constraints and required styles."
+
+**Coding Model (Model B) Instructions:**
+- "Implement exactly what Model A planned. Do not change it."
+- "Generate only valid code; no explanations."
+- "When writing multiple files, respond in tagged blocks."
+
+### Why Dual Models Work
+- Coder models hallucinate structure; reasoning models write sloppy code
+- Separating brain from hands gives: cleaner code, stable multi-file scaffolding, fewer hallucinations, better planning, easier refactoring
+
+### LM Studio Settings for M4 Pro
+- GPU Layers: -1 (all layers on GPU for Metal acceleration)
+- Context Length: 32768 (32K context for large applications)
+- Batch Size: 512 (optimal for M4 Pro)
+- Threads: 10 (leave 4 cores for system)
+
 ## External Dependencies
 - **LM Studio**: Local LLM inference.
 - **PostgreSQL**: Primary database.

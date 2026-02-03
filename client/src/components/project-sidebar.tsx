@@ -405,10 +405,13 @@ export function ProjectSidebar({
                   <div className="space-y-3 p-3 rounded-lg border bg-violet-500/5 border-violet-500/20">
                     <div className="flex items-center gap-2">
                       <Brain className="h-4 w-4 text-violet-500" />
-                      <Label className="text-sm font-medium">Planner Model</Label>
+                      <Label className="text-sm font-medium">Reasoning Model (Planner)</Label>
                     </div>
                     <p className="text-xs text-muted-foreground -mt-1">
-                      Analyzes requests and creates structured plans. Best with reasoning-focused models.
+                      System architect and strategist. Handles planning, decomposition, and constraints.
+                    </p>
+                    <p className="text-xs text-violet-500/80 -mt-1">
+                      Recommended: Ministral 3 14B Reasoning
                     </p>
                     {availableModels.length > 0 ? (
                       <Select
@@ -429,7 +432,7 @@ export function ProjectSidebar({
                       <Input
                         value={tempSettings.plannerModel}
                         onChange={(e) => setTempSettings({ ...tempSettings, plannerModel: e.target.value })}
-                        placeholder="e.g. qwen2.5-32b-instruct"
+                        placeholder="e.g. ministral-3-14b-reasoning"
                         className="font-mono text-sm"
                       />
                     )}
@@ -439,10 +442,13 @@ export function ProjectSidebar({
                   <div className="space-y-3 p-3 rounded-lg border bg-blue-500/5 border-blue-500/20">
                     <div className="flex items-center gap-2">
                       <Code className="h-4 w-4 text-blue-500" />
-                      <Label className="text-sm font-medium">Builder Model</Label>
+                      <Label className="text-sm font-medium">Coding Model (Builder)</Label>
                     </div>
                     <p className="text-xs text-muted-foreground -mt-1">
-                      Generates code from plans. Best with code-specialized models.
+                      Code generator and implementer. Executes plans with production-ready output.
+                    </p>
+                    <p className="text-xs text-blue-500/80 -mt-1">
+                      Recommended: Qwen3 Coder 30B or Qwen2.5 Coder 14B
                     </p>
                     {availableModels.length > 0 ? (
                       <Select
@@ -463,7 +469,7 @@ export function ProjectSidebar({
                       <Input
                         value={tempSettings.builderModel}
                         onChange={(e) => setTempSettings({ ...tempSettings, builderModel: e.target.value })}
-                        placeholder="e.g. qwen2.5-coder-32b-instruct"
+                        placeholder="e.g. qwen3-coder-30b"
                         className="font-mono text-sm"
                       />
                     )}

@@ -1,8 +1,60 @@
 import { createLLMClient, LLM_DEFAULTS, generateCompletion } from "../llm-client";
 import { searchWeb, formatSearchResultsForContext } from "./webSearch";
 import { createDreamTeamService, type DreamTeamService } from "./dreamTeam";
-import { llmSettingsSchema, CORE_DREAM_TEAM } from "@shared/schema";
+import { llmSettingsSchema, CORE_DREAM_TEAM, detectModelRole, getOptimalTemperature } from "@shared/schema";
 import { z } from "zod";
+
+// ============================================================================
+// MODEL-SPECIFIC INSTRUCTIONS
+// Optimized prompts for Ministral 3 14B Reasoning + Qwen3 Coder 30B stack
+// ============================================================================
+
+// Get model-specific instruction prefix based on detected role
+function getModelInstructions(modelName: string, role: "planner" | "builder"): string {
+  const modelRole = detectModelRole(modelName);
+  
+  if (role === "planner") {
+    // Instructions for reasoning models (Ministral, etc.)
+    if (modelRole === "reasoning") {
+      return `CRITICAL INSTRUCTIONS FOR REASONING MODEL:
+- You will output a PLAN ONLY, no code.
+- Break the task into clear, numbered steps.
+- Describe each file needed and its contents.
+- Define APIs, directories, and architecture.
+- Spell out constraints and required styles.
+- Output ONLY valid JSON. No explanations outside JSON.
+
+`;
+    }
+    // Fallback for non-reasoning models doing planning
+    return `INSTRUCTIONS:
+- Output a structured plan in JSON format.
+- Focus on architecture and task breakdown.
+- No code - planning only.
+
+`;
+  }
+  
+  // Instructions for coding models (Qwen Coder, etc.)
+  if (modelRole === "coding") {
+    return `CRITICAL INSTRUCTIONS FOR CODING MODEL:
+- Implement EXACTLY what the plan specifies. Do NOT change the architecture.
+- Generate only valid, executable code. NO explanations.
+- When writing multiple files, respond in tagged blocks.
+- The code must be production-ready and error-free.
+- Follow the plan precisely. Every file, every component as specified.
+
+`;
+  }
+  
+  // Fallback for hybrid models
+  return `INSTRUCTIONS:
+- Generate clean, production-ready code.
+- Follow the plan structure exactly.
+- No explanations - code only.
+
+`;
+}
 
 // Safe JSON parsing with validation and extraction
 function safeParseJSON<T>(
@@ -280,10 +332,13 @@ export class AIOrchestrator {
 
   private getPlannerConfig() {
     if (this.settings.useDualModels) {
+      const model = this.settings.plannerModel || this.settings.model || "";
+      // Use optimal temperature based on model type, fallback to settings or defaults
+      const optimalTemp = getOptimalTemperature(model, "planner");
       return {
         endpoint: this.settings.endpoint || "http://localhost:1234/v1",
-        model: this.settings.plannerModel || this.settings.model || "",
-        temperature: this.settings.plannerTemperature ?? LLM_DEFAULTS.temperature.planner,
+        model,
+        temperature: this.settings.plannerTemperature ?? optimalTemp,
       };
     }
     return {
@@ -295,10 +350,13 @@ export class AIOrchestrator {
 
   private getBuilderConfig() {
     if (this.settings.useDualModels) {
+      const model = this.settings.builderModel || this.settings.model || "";
+      // Use optimal temperature based on model type, fallback to settings or defaults
+      const optimalTemp = getOptimalTemperature(model, "builder");
       return {
         endpoint: this.settings.endpoint || "http://localhost:1234/v1",
-        model: this.settings.builderModel || this.settings.model || "",
-        temperature: this.settings.builderTemperature ?? LLM_DEFAULTS.temperature.builder,
+        model,
+        temperature: this.settings.builderTemperature ?? optimalTemp,
       };
     }
     return {
@@ -489,15 +547,21 @@ export class AIOrchestrator {
       }
     }, 2000);
 
+    // Get model-specific instructions based on detected model role
+    const modelInstructions = getModelInstructions(config.model, "planner");
+    
     // Retry loop for JSON parsing with exponential backoff
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const promptSuffix = attempt > 0 
         ? "\n\nIMPORTANT: Your previous response was not valid JSON. Respond with ONLY valid JSON, no markdown or explanations."
         : "";
 
+      // Prepend model-specific instructions to the planning prompt
+      const fullPrompt = modelInstructions + PLANNING_PROMPT + promptSuffix;
+
       const response = await generateCompletion(
         config,
-        PLANNING_PROMPT + promptSuffix,
+        fullPrompt,
         userRequest + context,
         LLM_DEFAULTS.maxTokens.plan
       );
@@ -589,7 +653,11 @@ export class AIOrchestrator {
       context += `EXISTING CODE:\n${existingCode}\n\n`;
     }
 
-    const prompt = BUILDING_PROMPT
+    // Get model-specific instructions based on detected model role
+    const modelInstructions = getModelInstructions(config.model, "builder");
+    
+    // Prepend model-specific instructions to the building prompt
+    const prompt = modelInstructions + BUILDING_PROMPT
       .replace("{context}", context || "No additional context.")
       .replace("{plan}", JSON.stringify(plan, null, 2));
 

@@ -170,6 +170,172 @@ export const dualModelSettingsSchema = z.object({
   }),
 });
 
+// ============================================================================
+// RECOMMENDED MODEL CONFIGURATIONS
+// Optimized for M4 Pro (48GB RAM) running LM Studio
+// ============================================================================
+
+export interface ModelPreset {
+  id: string;
+  name: string;
+  role: "reasoning" | "coding" | "hybrid";
+  description: string;
+  strengths: string[];
+  optimalTemperature: number;
+  contextLength: number;
+  memoryRequirementGB: number;
+  instructions: string;
+}
+
+// Best dual-model local stack for M4 Pro with 48GB RAM
+export const MODEL_PRESETS: ModelPreset[] = [
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REASONING MODELS (Model A) - System architect, planner, strategy
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: "ministral-3-14b-reasoning",
+    name: "Ministral 3 14B Reasoning",
+    role: "reasoning",
+    description: "Best open-source reasoning model under 20B for multi-step planning, decomposition, and architecture",
+    strengths: [
+      "Multi-step reasoning and decomposition",
+      "System architecture design",
+      "Strategic planning and analysis",
+      "Debugging and logic checking",
+      "Enforcing instructions and constraints",
+      "Low hallucination rate for structure"
+    ],
+    optimalTemperature: 0.3,
+    contextLength: 32768,
+    memoryRequirementGB: 12,
+    instructions: "You will output a plan only, no code. Break the task into steps. Describe each file needed and its contents. Define APIs, directories, and architecture. Spell out constraints and required styles."
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODING MODELS (Model B) - Code generation, implementation, execution
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: "qwen3-coder-30b",
+    name: "Qwen3 Coder 30B",
+    role: "coding",
+    description: "Currently the best open-source local coder, very close to GPT-4 levels for pure code generation",
+    strengths: [
+      "Multi-file project generation",
+      "Code refactoring",
+      "API integration",
+      "Unit test writing",
+      "Following structured plans exactly",
+      "Production-ready output"
+    ],
+    optimalTemperature: 0.5,
+    contextLength: 32768,
+    memoryRequirementGB: 24,
+    instructions: "Implement exactly what the plan specifies. Do not change the architecture. Generate only valid code; no explanations. When writing multiple files, respond in tagged blocks."
+  },
+  {
+    id: "qwen2.5-coder-14b",
+    name: "Qwen2.5 Coder 14B",
+    role: "coding",
+    description: "Lighter alternative coder model, excellent for code generation with lower memory footprint",
+    strengths: [
+      "Fast code generation",
+      "Good multi-file support",
+      "Efficient memory usage",
+      "Strong TypeScript support",
+      "Follows instructions well"
+    ],
+    optimalTemperature: 0.5,
+    contextLength: 32768,
+    memoryRequirementGB: 12,
+    instructions: "Implement exactly what the plan specifies. Do not change the architecture. Generate only valid code; no explanations."
+  },
+  {
+    id: "gpt-oss-20b",
+    name: "GPT-OSS 20B",
+    role: "coding",
+    description: "OpenAI-like behavior with excellent tool-calling and context utilization (131k context)",
+    strengths: [
+      "Tool-calling patterns",
+      "Following structured instructions",
+      "Long context (131k tokens)",
+      "Consistency across many files",
+      "Excellent context utilization"
+    ],
+    optimalTemperature: 0.4,
+    contextLength: 131072,
+    memoryRequirementGB: 16,
+    instructions: "Follow the plan precisely. Use consistent patterns across all files. Leverage full context for coherent multi-file output."
+  }
+];
+
+// Recommended dual-model pairings for different use cases
+export const RECOMMENDED_PAIRINGS = {
+  // Optimal for maximum quality (requires 36GB+ available)
+  quality: {
+    planner: "ministral-3-14b-reasoning",
+    builder: "qwen3-coder-30b",
+    description: "Maximum quality - best reasoning + best coding",
+    totalMemoryGB: 36
+  },
+  // Balanced for M4 Pro with other apps running
+  balanced: {
+    planner: "ministral-3-14b-reasoning",
+    builder: "qwen2.5-coder-14b",
+    description: "Balanced - great reasoning + efficient coding",
+    totalMemoryGB: 24
+  },
+  // For long-context projects
+  longContext: {
+    planner: "ministral-3-14b-reasoning",
+    builder: "gpt-oss-20b",
+    description: "Long context projects - 131k context for large codebases",
+    totalMemoryGB: 28
+  }
+};
+
+// Get model preset by ID
+export function getModelPreset(modelId: string): ModelPreset | undefined {
+  return MODEL_PRESETS.find(m => m.id === modelId);
+}
+
+// Detect model type from LM Studio model name
+export function detectModelRole(modelName: string): "reasoning" | "coding" | "hybrid" {
+  const lowerName = modelName.toLowerCase();
+  
+  // Reasoning model patterns
+  if (lowerName.includes("ministral") || 
+      lowerName.includes("reasoning") ||
+      lowerName.includes("deepseek-r") ||
+      lowerName.includes("gemma-2") ||
+      lowerName.includes("phi-3")) {
+    return "reasoning";
+  }
+  
+  // Coding model patterns
+  if (lowerName.includes("coder") ||
+      lowerName.includes("qwen") ||
+      lowerName.includes("codellama") ||
+      lowerName.includes("starcoder") ||
+      lowerName.includes("deepseek-coder")) {
+    return "coding";
+  }
+  
+  return "hybrid";
+}
+
+// Get optimal temperature for detected model type
+export function getOptimalTemperature(modelName: string, role: "planner" | "builder"): number {
+  const modelRole = detectModelRole(modelName);
+  
+  // For planner role, use lower temperatures for structured output
+  if (role === "planner") {
+    return modelRole === "reasoning" ? 0.2 : 0.3;
+  }
+  
+  // For builder role, use moderate temperatures for creative but accurate code
+  return modelRole === "coding" ? 0.5 : 0.6;
+}
+
 // Production modules for enterprise-grade applications
 export const productionModulesSchema = z.object({
   authentication: z.boolean().default(false),
