@@ -142,6 +142,14 @@ export class DreamTeamService {
     return this.coreTeam.find(m => m.id === id);
   }
 
+  getRequiredMemberById(id: string): DreamTeamMember {
+    const member = this.getMemberById(id);
+    if (!member) {
+      throw new Error(`[DreamTeam] Required team member not found: "${id}". Valid IDs: ${this.coreTeam.map(m => m.id).join(", ")}`);
+    }
+    return member;
+  }
+
   getMemberByRole(role: string): DreamTeamMember | undefined {
     return this.coreTeam.find(m => m.role === role);
   }
@@ -189,7 +197,7 @@ export class DreamTeamService {
     businessCase: BusinessCase,
     onThinking?: (content: string) => void
   ): Promise<DreamTeamMember[]> {
-    const marty = this.getMemberById("marty")!;
+    const marty = this.getRequiredMemberById("marty");
     
     await this.logActivity(projectId, {
       member: marty,
@@ -297,7 +305,7 @@ export class DreamTeamService {
     context?: string,
     onThinking?: (content: string) => void
   ): Promise<BusinessCase | null> {
-    const marty = this.getMemberById("marty")!;
+    const marty = this.getRequiredMemberById("marty");
 
     await this.logActivity(projectId, {
       member: marty,
@@ -418,7 +426,7 @@ export class DreamTeamService {
     businessCase: BusinessCase,
     onThinking?: (content: string) => void
   ): Promise<ProjectReadme | null> {
-    const martin = this.getMemberById("martin")!;
+    const martin = this.getRequiredMemberById("martin");
 
     await this.logActivity(projectId, {
       member: martin,
