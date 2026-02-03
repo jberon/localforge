@@ -122,6 +122,7 @@ export default function Home() {
   const [orchestratorPhase, setOrchestratorPhase] = useState<string | null>(null);
   const [orchestratorThinking, setOrchestratorThinking] = useState<{model: string; content: string} | null>(null);
   const [orchestratorTasks, setOrchestratorTasks] = useState<{ tasks: TaskItem[]; completedCount: number; totalCount: number }>({ tasks: [], completedCount: 0, totalCount: 0 });
+  const [dreamTeamExpanded, setDreamTeamExpanded] = useState(true);
   const [dualModelSettings, setDualModelSettings] = useState<DualModelSettingsType>({
     mode: "auto",
     planner: {
@@ -1382,6 +1383,8 @@ export default function Home() {
                           thinking={orchestratorThinking}
                           phase={orchestratorPhase}
                           isActive={isGenerating || isPlanning}
+                          isExpanded={dreamTeamExpanded}
+                          onToggleExpand={() => setDreamTeamExpanded(prev => !prev)}
                         />
                       </div>
                     )}
