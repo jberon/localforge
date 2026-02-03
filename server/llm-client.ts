@@ -291,6 +291,25 @@ export function getLLMQueueStatus(): { pending: number; active: number } {
   };
 }
 
+// Extended queue telemetry for client-side backpressure handling
+export function getExtendedQueueTelemetry(): {
+  pending: number;
+  active: number;
+  maxQueueSize: number;
+  utilizationPercent: number;
+  isOverloaded: boolean;
+} {
+  const pending = llmRequestQueue.pendingCount;
+  const maxSize = M4_PRO_CONFIG.concurrency.requestQueueSize;
+  return {
+    pending,
+    active: llmRequestQueue.activeCount,
+    maxQueueSize: maxSize,
+    utilizationPercent: Math.round((pending / maxSize) * 100),
+    isOverloaded: pending >= maxSize * 0.8, // 80% threshold
+  };
+}
+
 // Runtime performance telemetry
 interface PerformanceTelemetry {
   requestCount: number;

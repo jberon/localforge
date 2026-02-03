@@ -743,6 +743,101 @@ export const CORE_DREAM_TEAM: DreamTeamMember[] = [
   },
 ];
 
+// ============================================================================
+// Shared SSE Event Schema - Type-safe contract between client and server
+// ============================================================================
+
+export const sseEventBaseSchema = z.object({
+  type: z.string(),
+  timestamp: z.number().optional(),
+});
+
+export const ssePhaseChangeEventSchema = sseEventBaseSchema.extend({
+  type: z.literal("phase_change"),
+  phase: z.enum(["planning", "searching", "building", "validating", "fixing", "complete", "failed"]),
+  message: z.string(),
+});
+
+export const sseThinkingEventSchema = sseEventBaseSchema.extend({
+  type: z.literal("thinking"),
+  model: z.enum(["planner", "builder", "web_search"]),
+  content: z.string(),
+});
+
+export const sseCodeChunkEventSchema = sseEventBaseSchema.extend({
+  type: z.literal("code_chunk"),
+  content: z.string(),
+});
+
+export const sseTaskEventSchema = sseEventBaseSchema.extend({
+  type: z.enum(["task_start", "task_complete", "tasks_updated"]),
+  task: z.object({
+    id: z.string(),
+    title: z.string(),
+    status: z.enum(["pending", "in_progress", "completed", "failed"]),
+  }).optional(),
+  completedCount: z.number().optional(),
+  totalCount: z.number().optional(),
+});
+
+export const sseCompleteEventSchema = sseEventBaseSchema.extend({
+  type: z.literal("complete"),
+  code: z.string().optional(),
+  summary: z.string().optional(),
+});
+
+export const sseErrorEventSchema = sseEventBaseSchema.extend({
+  type: z.literal("error"),
+  message: z.string(),
+  code: z.string().optional(),
+});
+
+export const sseEventSchema = z.union([
+  ssePhaseChangeEventSchema,
+  sseThinkingEventSchema,
+  sseCodeChunkEventSchema,
+  sseTaskEventSchema,
+  sseCompleteEventSchema,
+  sseErrorEventSchema,
+  sseEventBaseSchema, // Fallback for unknown event types
+]);
+
+export type SSEEvent = z.infer<typeof sseEventSchema>;
+export type SSEPhaseChangeEvent = z.infer<typeof ssePhaseChangeEventSchema>;
+export type SSEThinkingEvent = z.infer<typeof sseThinkingEventSchema>;
+export type SSECodeChunkEvent = z.infer<typeof sseCodeChunkEventSchema>;
+export type SSEErrorEvent = z.infer<typeof sseErrorEventSchema>;
+
+// ============================================================================
+// LLM Provider Configuration - Abstraction for multi-provider support
+// ============================================================================
+
+export const llmProviderConfigSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.enum(["lm-studio", "ollama", "openai-compatible"]),
+  endpoint: z.string().url(),
+  apiKey: z.string().optional(),
+  models: z.array(z.string()).optional(),
+  isDefault: z.boolean().default(false),
+});
+
+export type LLMProviderConfig = z.infer<typeof llmProviderConfigSchema>;
+
+// ============================================================================
+// Queue Telemetry - Exposed for client-side backpressure handling
+// ============================================================================
+
+export const queueTelemetrySchema = z.object({
+  pending: z.number(),
+  active: z.number(),
+  maxQueueSize: z.number(),
+  utilizationPercent: z.number(),
+  isOverloaded: z.boolean(),
+});
+
+export type QueueTelemetry = z.infer<typeof queueTelemetrySchema>;
+
 export const users = {} as any;
 export type InsertUser = { username: string; password: string };
 export type User = { id: string; username: string; password: string };

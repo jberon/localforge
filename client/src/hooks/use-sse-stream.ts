@@ -55,9 +55,25 @@ export function useSSEStream({
           });
 
           if (!response.ok) {
-            if (!response.headers.get("content-type")?.includes("text/event-stream")) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || `Server error: ${response.status}`);
+            const contentType = response.headers.get("content-type") || "";
+            if (!contentType.includes("text/event-stream")) {
+              // Safely handle non-JSON error responses
+              let errorMessage = `Server error: ${response.status}`;
+              try {
+                if (contentType.includes("application/json")) {
+                  const errorData = await response.json();
+                  errorMessage = errorData.error || errorData.message || errorMessage;
+                } else {
+                  const text = await response.text();
+                  // Don't expose HTML content, just use status
+                  if (!text.startsWith("<!DOCTYPE") && !text.startsWith("<html")) {
+                    errorMessage = text.slice(0, 200) || errorMessage;
+                  }
+                }
+              } catch {
+                // Use default error message if parsing fails
+              }
+              throw new Error(errorMessage);
             }
           }
 
@@ -88,7 +104,11 @@ export function useSSEStream({
               for (const line of lines) {
                 if (line.startsWith("data: ")) {
                   try {
-                    const data = JSON.parse(line.slice(6));
+                    const rawData = line.slice(6);
+                    // Skip empty or whitespace-only data
+                    if (!rawData.trim()) continue;
+                    
+                    const data = JSON.parse(rawData);
                     onEvent(data);
 
                     if (data.type === "done" || data.type === "complete") {
@@ -96,8 +116,11 @@ export function useSSEStream({
                     } else if (data.type === "error") {
                       onError?.(new Error(data.error || data.message));
                     }
-                  } catch {
-                    // Ignore parse errors for incomplete JSON
+                  } catch (parseError) {
+                    // Log parse errors in development for debugging
+                    if (process.env.NODE_ENV === "development") {
+                      console.warn("[SSE] JSON parse error:", parseError, "Raw:", line.slice(6, 100));
+                    }
                   }
                 }
               }
