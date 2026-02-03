@@ -171,10 +171,11 @@ User-configured temperatures take precedence when explicitly set in settings.
 1. Model-specific instruction injection based on detected role
 2. Dream Team persona activation (Marty Cagan + Martin Fowler)
 3. Plan generation with JSON output
-4. **JSON parse retry loop** (maxRetries=2, up to 3 total attempts)
+4. **JSON parse retry with exponential backoff** (maxRetries=2, up to 3 total attempts)
    - Failed parses trigger stricter prompt: "Your previous response was not valid JSON"
+   - Exponential backoff delay: 500ms, 1000ms between retries
    - Uses `safeParseJSON()` which extracts JSON from markdown if needed
-   - On final failure, returns minimal fallback plan with single "build" task
+   - On final failure, falls back to `createSimplePlan()` with basic "Generate App" + "Validate" tasks
 
 ### Output Schema
 ```typescript
@@ -217,11 +218,6 @@ interface OrchestratorTask {
 - Checks for JavaScript/TypeScript syntax errors
 - Validates JSX structure
 - Ensures proper imports/exports
-
-### Content Validation
-- Verifies required features are implemented
-- Checks app type requirements (e.g., calculator has operations)
-- Validates UI components exist
 
 ### Auto-Fix Pipeline
 1. Diagnose errors using planner model
@@ -310,7 +306,7 @@ shared/
 
 ## Error Handling
 
-1. **Connection errors**: Retry with exponential backoff
-2. **JSON parse failures**: Retry with stricter prompt instructions
-3. **Validation failures**: Auto-fix pipeline with 3 attempts
-4. **Model limitations**: Surface helpful error messages to user
+1. **JSON parse failures**: Retry with exponential backoff (500ms, 1000ms) and stricter prompt
+2. **Validation failures**: Auto-fix pipeline with up to 3 attempts (`maxFixAttempts`)
+3. **Model limitations**: Surface helpful error messages to user via `error` event
+4. **LLM API errors**: Caught and emitted as `error` events with descriptive messages
