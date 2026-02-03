@@ -269,28 +269,51 @@ export default function Home() {
 
   // Generate a smart project name from prompt
   const generateProjectName = (prompt: string): string => {
-    // Common app type patterns
+    const cleaned = prompt.trim();
+    
+    // Extract patterns for different prompt styles
     const patterns = [
-      { regex: /(?:build|create|make)\s+(?:a\s+)?(.+?)(?:\s+app|\s+application|\s+website|\s+tool)?$/i, group: 1 },
+      // "Build a calculator app" -> "Calculator"
+      { regex: /(?:build|create|make|design|develop)\s+(?:a\s+|an\s+)?(.+?)(?:\s+app|\s+application|\s+website|\s+tool|\s+for\s+me)?$/i, group: 1 },
+      // "Calculator app" -> "Calculator"  
       { regex: /^(.+?)(?:\s+app|\s+application|\s+website|\s+tool)$/i, group: 1 },
+      // "A calculator" or "An expense tracker" -> "Calculator" or "Expense Tracker"
+      { regex: /^(?:a\s+|an\s+)(.+)$/i, group: 1 },
+      // "I want a todo list" -> "Todo List"
+      { regex: /(?:i\s+want|i\s+need|give\s+me|can\s+you\s+make)\s+(?:a\s+|an\s+)?(.+?)(?:\s+app|\s+please)?$/i, group: 1 },
     ];
 
     for (const { regex, group } of patterns) {
-      const match = prompt.match(regex);
+      const match = cleaned.match(regex);
       if (match && match[group]) {
         const name = match[group].trim();
-        // Capitalize first letter of each word
-        return name
-          .split(/\s+/)
-          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-          .join(" ")
-          .slice(0, 40);
+        // Remove trailing punctuation and clean up
+        const cleanedName = name.replace(/[.,!?]+$/, '').trim();
+        if (cleanedName.length > 0 && cleanedName.length <= 50) {
+          // Title case each word
+          return cleanedName
+            .split(/\s+/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(" ")
+            .slice(0, 40);
+        }
       }
     }
 
-    // Fallback: use first 40 chars of prompt
-    const truncated = prompt.slice(0, 40);
-    return truncated.charAt(0).toUpperCase() + truncated.slice(1) + (prompt.length > 40 ? "..." : "");
+    // Smart fallback: extract key nouns from short prompts
+    const words = cleaned.split(/\s+/);
+    if (words.length <= 5) {
+      // For short prompts, title case the whole thing
+      return words
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(" ")
+        .replace(/[.,!?]+$/, '')
+        .slice(0, 40);
+    }
+
+    // Longer prompts: use first meaningful words
+    const truncated = words.slice(0, 5).join(" ");
+    return truncated.charAt(0).toUpperCase() + truncated.slice(1).replace(/[.,!?]+$/, '') + "...";
   };
 
   // AI Dream Team Orchestrator - uses dual models autonomously
