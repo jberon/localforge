@@ -8,11 +8,14 @@ import { WorkingIndicator } from "./working-indicator";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { useFileAttachments, type Attachment } from "@/hooks/use-file-attachments";
 import { AttachmentPreview, DropZoneOverlay } from "./attachment-preview";
+import { ActionGroupRow, type Action } from "./action-group-row";
+import { StatusIndicator, type StatusType } from "./status-indicator";
 
 interface ChatPanelProps {
   messages: Message[];
   isLoading: boolean;
   loadingPhase?: string | null;
+  currentActions?: Action[];
   onSendMessage: (content: string, dataModel?: DataModel, attachments?: Attachment[], temperature?: number) => void;
   llmConnected: boolean | null;
   onCheckConnection: () => void;
@@ -103,7 +106,20 @@ function formatMessageContent(content: string): JSX.Element[] {
   return elements;
 }
 
-export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, llmConnected, onCheckConnection }: ChatPanelProps) {
+function getStatusFromPhase(phase: string | null | undefined): StatusType {
+  if (!phase) return "thinking";
+  const lower = phase.toLowerCase();
+  if (lower.includes("build")) return "building";
+  if (lower.includes("generat")) return "generating";
+  if (lower.includes("optimi")) return "optimizing";
+  if (lower.includes("search")) return "searching";
+  if (lower.includes("edit") || lower.includes("writ")) return "editing";
+  if (lower.includes("check") || lower.includes("valid")) return "checking";
+  if (lower.includes("complete") || lower.includes("done")) return "complete";
+  return "thinking";
+}
+
+export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -213,7 +229,7 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <div className="flex-shrink-0 w-7 h-7 rounded-md bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center" data-testid={`avatar-assistant-${message.id}`}>
                         <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -222,31 +238,42 @@ export function ChatPanel({ messages, isLoading, loadingPhase, onSendMessage, ll
                         {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <div className="pl-9 space-y-2" data-testid={`text-assistant-message-${message.id}`}>
-                      {formatMessageContent(message.content)}
-                    </div>
+                    {message.actions && message.actions.length > 0 && (
+                      <div className="pl-9">
+                        <ActionGroupRow 
+                          actions={message.actions as Action[]} 
+                          data-testid={`action-group-${message.id}`}
+                        />
+                      </div>
+                    )}
+                    {message.content && (
+                      <div className="pl-9 space-y-2" data-testid={`text-assistant-message-${message.id}`}>
+                        {formatMessageContent(message.content)}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             ))}
             
             {isLoading && (
-              <div className="animate-in fade-in slide-up" data-testid="message-loading">
-                <div className="flex items-center gap-2 mb-3">
+              <div className="animate-in fade-in slide-up space-y-3" data-testid="message-loading">
+                <div className="flex items-center gap-2">
                   <div className="flex-shrink-0 w-7 h-7 rounded-md bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
                     <Sparkles className="h-3.5 w-3.5 text-primary animate-pulse" />
                   </div>
                 </div>
-                <div className="pl-9">
-                  <WorkingIndicator text={loadingPhase || "Working"} />
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="status-analyzing">
-                      <div className="w-4 h-4 rounded border border-primary/30 flex items-center justify-center">
-                        <div className="w-2 h-2 bg-primary/50 rounded-sm animate-pulse" />
-                      </div>
-                      <span>{loadingPhase || "Analyzing your request..."}</span>
-                    </div>
-                  </div>
+                <div className="pl-9 space-y-2">
+                  {currentActions && currentActions.length > 0 && (
+                    <ActionGroupRow 
+                      actions={currentActions}
+                      data-testid="action-group-current"
+                    />
+                  )}
+                  <StatusIndicator 
+                    status={getStatusFromPhase(loadingPhase)}
+                    text={loadingPhase || undefined}
+                  />
                 </div>
               </div>
             )}

@@ -57,12 +57,22 @@ const MemoizedFileExplorer = memo(FileExplorer);
 const MemoizedProjectTeamPanel = memo(ProjectTeamPanel);
 const MemoizedAIThinkingPanel = memo(AIThinkingPanel);
 
+// Action type for tracking generation actions
+interface GenerationAction {
+  id: string;
+  type: "terminal" | "file_edit" | "file_read" | "code" | "thinking" | "search" | "database" | "refresh" | "check" | "error" | "view" | "settings" | "message" | "generate";
+  label?: string;
+  detail?: string;
+  status?: "pending" | "running" | "completed" | "error";
+}
+
 export default function Home() {
   const { toast } = useToast();
   const { isDarkMode, toggleTheme } = useTheme();
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationPhase, setGenerationPhase] = useState<string | null>(null);
+  const [currentActions, setCurrentActions] = useState<GenerationAction[]>([]);
   const [streamingCode, setStreamingCode] = useState("");
   const [showCelebration, setShowCelebration] = useState(false);
   const [lastError, setLastError] = useState<{ message: string; prompt?: string } | null>(null);
@@ -312,8 +322,20 @@ export default function Home() {
                 if (data.type === "phase") {
                   setOrchestratorPhase(data.phase);
                   setGenerationPhase(data.message);
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: data.phase === "planning" ? "thinking" : "generate",
+                    label: data.message,
+                    status: "running"
+                  }]);
                 } else if (data.type === "thinking") {
                   setOrchestratorThinking({ model: data.model, content: data.content });
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: "thinking",
+                    label: data.content?.slice(0, 50) + (data.content?.length > 50 ? "..." : ""),
+                    status: "completed"
+                  }]);
                 } else if (data.type === "chunk") {
                   accumulatedCode += data.content;
                   const cleaned = accumulatedCode
@@ -323,9 +345,21 @@ export default function Home() {
                 } else if (data.type === "validation") {
                   if (!data.valid) {
                     setGenerationPhase(`Fixing ${data.errors.length} issue(s)...`);
+                    setCurrentActions(prev => [...prev, { 
+                      id: crypto.randomUUID(), 
+                      type: "check",
+                      label: `Fixing ${data.errors.length} issue(s)`,
+                      status: "running"
+                    }]);
                   }
                 } else if (data.type === "fix_attempt") {
                   setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}...`);
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: "refresh",
+                    label: `Fix attempt ${data.attempt}/${data.max}`,
+                    status: "running"
+                  }]);
                 } else if (data.type === "tasks_updated") {
                   setOrchestratorTasks({
                     tasks: data.tasks.map((t: any) => ({
@@ -340,9 +374,16 @@ export default function Home() {
                 } else if (data.type === "search") {
                   setGenerationPhase(`Web search: ${data.query}`);
                   setOrchestratorThinking({ model: "web_search", content: `Searching: ${data.query}` });
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: "search",
+                    label: `Searching: ${data.query}`,
+                    status: "running"
+                  }]);
                 } else if (data.type === "search_result") {
                   setGenerationPhase(`Found ${data.results?.length || 0} results for: ${data.query}`);
                 } else if (data.type === "done") {
+                  setCurrentActions([]);
                   await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                   if (data.success) {
                     setShowCelebration(true);
@@ -409,29 +450,73 @@ export default function Home() {
                 if (data.type === "phase") {
                   setOrchestratorPhase(data.phase);
                   setGenerationPhase(data.message);
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: data.phase === "planning" ? "thinking" : data.phase === "building" ? "code" : "generate",
+                    label: data.message,
+                    status: "running"
+                  }]);
                 } else if (data.type === "thinking") {
                   setOrchestratorThinking({ model: data.model, content: data.content });
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: "thinking",
+                    label: data.content?.slice(0, 50) + (data.content?.length > 50 ? "..." : ""),
+                    status: "completed"
+                  }]);
                 } else if (data.type === "file_start") {
                   setGenerationPhase(`Generating ${data.file}...`);
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: "file_edit",
+                    label: `Creating ${data.file}`,
+                    status: "running"
+                  }]);
                 } else if (data.type === "file_complete") {
                   setGenerationPhase(`Completed ${data.file} (${Math.round(data.size / 1024)}KB)`);
+                  setCurrentActions(prev => prev.map(a => 
+                    a.label?.includes(data.file) ? { ...a, status: "completed" as const } : a
+                  ));
                 } else if (data.type === "quality_score") {
                   qualityScore = data.score;
                   setGenerationPhase(`Quality Score: ${data.score}/100`);
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: "check",
+                    label: `Quality check: ${data.score}/100`,
+                    status: "completed"
+                  }]);
                 } else if (data.type === "test_result") {
                   setGenerationPhase(`Test ${data.passed ? '✓' : '✗'} ${data.file}`);
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: data.passed ? "check" : "error",
+                    label: `Test: ${data.file}`,
+                    status: data.passed ? "completed" : "error"
+                  }]);
                 } else if (data.type === "fix_attempt") {
                   setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}: ${data.reason}`);
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: "refresh",
+                    label: `Fix attempt ${data.attempt}/${data.max}`,
+                    status: "running"
+                  }]);
                 } else if (data.type === "file_chunk") {
-                  // Streaming file content - update progress indicator
                   setGenerationPhase(`Writing ${data.file}... (${Math.round((data.progress || 0) * 100)}%)`);
                 } else if (data.type === "quality_issue") {
-                  // Log quality issues for debugging
                   console.log(`Quality issue in ${data.file}: ${data.issue} (severity: ${data.severity})`);
                 } else if (data.type === "search") {
                   setGenerationPhase(`Web search: ${data.query}`);
                   setOrchestratorThinking({ model: "web_search", content: `Searching: ${data.query}` });
+                  setCurrentActions(prev => [...prev, { 
+                    id: crypto.randomUUID(), 
+                    type: "search",
+                    label: `Searching: ${data.query}`,
+                    status: "running"
+                  }]);
                 } else if (data.type === "done") {
+                  setCurrentActions([]);
                   await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                   if (data.success) {
                     setShowCelebration(true);
@@ -495,6 +580,7 @@ export default function Home() {
       setIsGenerating(true);
       setStreamingCode("");
       setGenerationPhase("Analyzing request...");
+      setCurrentActions([{ id: crypto.randomUUID(), type: "thinking", label: "Analyzing request", status: "running" }]);
       setOrchestratorTasks({ tasks: [], completedCount: 0, totalCount: 0 });
 
       // Track generation started
@@ -552,6 +638,7 @@ export default function Home() {
             } finally {
               setIsGenerating(false);
               setGenerationPhase(null);
+              setCurrentActions([]);
               setOrchestratorPhase(null);
               setOrchestratorThinking(null);
               generationRequestRef.current = null;
@@ -567,6 +654,7 @@ export default function Home() {
             } finally {
               setIsGenerating(false);
               setGenerationPhase(null);
+              setCurrentActions([]);
               setOrchestratorPhase(null);
               setOrchestratorThinking(null);
               generationRequestRef.current = null;
@@ -686,6 +774,7 @@ export default function Home() {
       } finally {
         setIsGenerating(false);
         setGenerationPhase(null);
+        setCurrentActions([]);
         setStreamingCode("");
         generationRequestRef.current = null;
       }
@@ -1306,6 +1395,7 @@ export default function Home() {
                         messages={activeProject?.messages || []}
                         isLoading={isGenerating || isPlanning}
                         loadingPhase={generationPhase}
+                        currentActions={currentActions}
                         onSendMessage={handleIntelligentGenerate}
                         llmConnected={llmConnected}
                         onCheckConnection={checkConnection}

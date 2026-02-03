@@ -10,13 +10,39 @@ export const messageAttachmentSchema = z.object({
   preview: z.string().optional(),
 });
 
+export const messageActionSchema = z.object({
+  id: z.string(),
+  type: z.enum([
+    "terminal",
+    "file_edit",
+    "file_read",
+    "code",
+    "thinking",
+    "search",
+    "database",
+    "refresh",
+    "check",
+    "error",
+    "view",
+    "settings",
+    "message",
+    "generate"
+  ]),
+  label: z.string().optional(),
+  detail: z.string().optional(),
+  status: z.enum(["pending", "running", "completed", "error"]).optional(),
+});
+
 export const messageSchema = z.object({
   id: z.string(),
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   timestamp: z.number(),
   attachments: z.array(messageAttachmentSchema).optional(),
+  actions: z.array(messageActionSchema).optional(),
 });
+
+export type MessageAction = z.infer<typeof messageActionSchema>;
 
 export const dataFieldSchema = z.object({
   id: z.string(),
