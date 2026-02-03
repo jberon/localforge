@@ -553,7 +553,7 @@ ${localCode}
                   Build failed
                 </Badge>
               ) : bundledPreviewHtml ? (
-                <Badge variant="secondary" className="gap-1.5 text-xs bg-green-500/10 text-green-700 dark:text-green-400" data-testid="badge-build-success">
+                <Badge variant="outline" className="gap-1.5 text-xs border-green-500/50 text-green-600 dark:text-green-400" data-testid="badge-build-success">
                   <Check className="h-3 w-3" />
                   {safeGeneratedFiles.length} files
                 </Badge>
@@ -569,11 +569,10 @@ ${localCode}
                 size="icon"
                 variant="ghost"
                 onClick={handleRefresh}
-                className="h-8 w-8"
                 data-testid="button-refresh-preview"
                 title="Refresh preview (⌘R / Ctrl+R)"
               >
-                <RefreshCw className={`h-4 w-4 ${isCompiling ? 'animate-spin' : ''}`} />
+                <RefreshCw className="h-4 w-4" />
               </Button>
               <Button
                 size="icon"
@@ -738,16 +737,26 @@ ${localCode}
                           </ScrollArea>
                         </div>
                         <div className="flex items-center justify-center gap-2 mt-4">
-                          <Button onClick={rebundle} variant="outline" className="gap-2" data-testid="button-retry-build">
-                            <RefreshCw className="h-4 w-4" />
-                            Retry Build
+                          <Button 
+                            onClick={rebundle} 
+                            variant="outline" 
+                            className="gap-2" 
+                            disabled={isCompiling}
+                            data-testid="button-retry-build"
+                          >
+                            <RefreshCw className={`h-4 w-4 ${isCompiling ? 'animate-spin' : ''}`} />
+                            {isCompiling ? 'Building...' : 'Retry Build'}
                           </Button>
                           <Button 
                             variant="ghost" 
                             className="gap-2"
-                            onClick={() => {
-                              navigator.clipboard.writeText(bundleErrors.join('\n'));
-                              toast({ title: "Errors copied to clipboard" });
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(bundleErrors.join('\n'));
+                                toast({ title: "Errors copied to clipboard" });
+                              } catch (err) {
+                                toast({ title: "Failed to copy errors", variant: "destructive" });
+                              }
                             }}
                             data-testid="button-copy-errors"
                           >
