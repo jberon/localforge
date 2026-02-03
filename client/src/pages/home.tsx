@@ -19,6 +19,7 @@ import { ErrorRecovery } from "@/components/error-recovery";
 import { QuickUndo } from "@/components/quick-undo";
 import { AIThinkingPanel } from "@/components/ai-thinking-panel";
 import { ProjectTeamPanel } from "@/components/project-team-panel";
+import { DreamTeamThinkingTab } from "@/components/dream-team-thinking-tab";
 import { TaskProgressPanel, type TaskItem } from "@/components/task-progress-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ const MemoizedPreviewPanel = memo(PreviewPanel);
 const MemoizedFileExplorer = memo(FileExplorer);
 const MemoizedProjectTeamPanel = memo(ProjectTeamPanel);
 const MemoizedAIThinkingPanel = memo(AIThinkingPanel);
+const MemoizedDreamTeamThinkingTab = memo(DreamTeamThinkingTab);
 
 // Helper to update or add an action (consolidates similar actions)
 function updateOrAddAction(prev: Action[], newAction: Omit<Action, "id"> & { id?: string }): Action[] {
@@ -1373,8 +1375,19 @@ export default function Home() {
                       </div>
                     )}
                     
-                    {/* AI Thinking Panel - Shows real-time LLM reasoning */}
-                    {(isGenerating || isPlanning) && (
+                    {/* Dream Team Thinking Tab - Shows team discussion during generation */}
+                    {settings.useDualModels && (
+                      <div className="px-2 py-2 shrink-0">
+                        <MemoizedDreamTeamThinkingTab
+                          thinking={orchestratorThinking}
+                          phase={orchestratorPhase}
+                          isActive={isGenerating || isPlanning}
+                        />
+                      </div>
+                    )}
+                    
+                    {/* AI Thinking Panel - Shows real-time LLM reasoning (fallback when not using dual models) */}
+                    {!settings.useDualModels && (isGenerating || isPlanning) && (
                       <div className="px-2 py-2 shrink-0">
                         <MemoizedAIThinkingPanel
                           phase={orchestratorPhase}
