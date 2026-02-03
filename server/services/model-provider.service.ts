@@ -61,6 +61,11 @@ export class ModelProviderService {
     estimatedWaitMs: 0,
   };
   
+  // Hot-swapping state
+  private hotSwapEnabled = true;
+  private hotSwapThreshold = 0.8; // 80% memory usage triggers hot-swap
+  private hotSwapHistory: Array<{ from: string; to: string; reason: string; timestamp: number }> = [];
+  
   // Concurrency tracking
   private readonly maxConcurrentRequests = M4_PRO_DEFAULTS.maxConcurrentRequests;
 
@@ -179,16 +184,100 @@ export class ModelProviderService {
 
   private selectOptimalModel(candidates: ModelCapabilities[]): ModelCapabilities {
     const availableMemory = this.resourceStatus.gpuMemoryTotalMB - this.resourceStatus.gpuMemoryUsedMB;
+    const memoryUsageRatio = this.resourceStatus.gpuMemoryUsedMB / this.resourceStatus.gpuMemoryTotalMB;
+    
+    // Hot-swap: if memory pressure is high, prefer smaller/faster models
+    if (this.hotSwapEnabled && memoryUsageRatio >= this.hotSwapThreshold) {
+      const preferredModel = this.selectForHotSwap(candidates, availableMemory);
+      if (preferredModel) {
+        logger.info("Hot-swap activated: selecting lighter model", {
+          selectedModel: preferredModel.id,
+          memoryUsage: `${(memoryUsageRatio * 100).toFixed(1)}%`,
+        });
+        return preferredModel;
+      }
+    }
     
     const viableCandidates = candidates.filter(m => m.estimatedVRAM_MB <= availableMemory);
     
     if (viableCandidates.length === 0) {
       // No model fits in available memory, pick smallest
-      return candidates.reduce((a, b) => a.estimatedVRAM_MB < b.estimatedVRAM_MB ? a : b);
+      const smallest = candidates.reduce((a, b) => a.estimatedVRAM_MB < b.estimatedVRAM_MB ? a : b);
+      this.recordHotSwap(candidates[0]?.id || "unknown", smallest.id, "memory_constraint");
+      return smallest;
     }
 
     // Pick the one with best throughput among viable options
     return viableCandidates.reduce((a, b) => a.tokensPerSecond > b.tokensPerSecond ? a : b);
+  }
+
+  private selectForHotSwap(candidates: ModelCapabilities[], availableMemory: number): ModelCapabilities | null {
+    // Sort by VRAM (ascending) then by throughput (descending)
+    const sorted = [...candidates].sort((a, b) => {
+      // First priority: fits in available memory
+      const aFits = a.estimatedVRAM_MB <= availableMemory;
+      const bFits = b.estimatedVRAM_MB <= availableMemory;
+      if (aFits !== bFits) return aFits ? -1 : 1;
+      
+      // Second priority: lower memory usage
+      if (a.estimatedVRAM_MB !== b.estimatedVRAM_MB) {
+        return a.estimatedVRAM_MB - b.estimatedVRAM_MB;
+      }
+      
+      // Third priority: higher throughput
+      return b.tokensPerSecond - a.tokensPerSecond;
+    });
+    
+    return sorted[0] || null;
+  }
+
+  private recordHotSwap(from: string, to: string, reason: string): void {
+    this.hotSwapHistory.push({
+      from,
+      to,
+      reason,
+      timestamp: Date.now(),
+    });
+    
+    // Keep only last 100 entries
+    if (this.hotSwapHistory.length > 100) {
+      this.hotSwapHistory = this.hotSwapHistory.slice(-100);
+    }
+    
+    logger.info("Model hot-swap recorded", { from, to, reason });
+  }
+
+  setHotSwapEnabled(enabled: boolean): void {
+    this.hotSwapEnabled = enabled;
+    logger.info("Hot-swap setting changed", { enabled });
+  }
+
+  setHotSwapThreshold(threshold: number): void {
+    if (threshold >= 0 && threshold <= 1) {
+      this.hotSwapThreshold = threshold;
+      logger.info("Hot-swap threshold changed", { threshold });
+    }
+  }
+
+  getHotSwapHistory(): Array<{ from: string; to: string; reason: string; timestamp: number }> {
+    return [...this.hotSwapHistory];
+  }
+
+  isHotSwapEnabled(): boolean {
+    return this.hotSwapEnabled;
+  }
+
+  getHotSwapThreshold(): number {
+    return this.hotSwapThreshold;
+  }
+
+  getMemoryPressure(): { usage: number; threshold: number; isHighPressure: boolean } {
+    const usage = this.resourceStatus.gpuMemoryUsedMB / this.resourceStatus.gpuMemoryTotalMB;
+    return {
+      usage,
+      threshold: this.hotSwapThreshold,
+      isHighPressure: usage >= this.hotSwapThreshold,
+    };
   }
 
   getOptimalTemperature(taskType: string): number {
@@ -342,7 +431,7 @@ export class ModelProviderService {
   }
 
   clearCache(): void {
-    this.cacheService.clear();
+    this.cacheService.clearCache();
   }
 
   getM4ProRecommendations(): Record<string, any> {

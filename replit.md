@@ -15,43 +15,28 @@ LocalForge is an AI-powered web application builder that generates working React
 LocalForge provides a chat-based interface with streaming responses for real-time code generation, project management, live preview, and code validation. It includes an AI-powered prompt enhancement and iterative refinement system. The system intelligently routes requests, automatically detecting intent (plan/build/refine/question) and optimizing LLM configurations.
 
 ### Plan/Build Mode (Replit-style)
-LocalForge features a Replit-style Plan/Build mode toggle in the header:
-- **Plan Mode (Default)**: AI generates a structured task list without modifying files. Users can review, select/deselect tasks, and approve the plan before building. The PlanModeInfo panel explains the current mode.
-- **Build Mode**: AI directly writes code and implements features in the project.
-- **Task List**: When in Plan mode, generated tasks appear with checkboxes. Users can select which tasks to include, then click "Start Building" to execute the selected tasks sequentially.
-- **Plan Progress**: During build-from-plan, a progress indicator shows which task is currently being executed.
+LocalForge features a Replit-style Plan/Build mode toggle. In **Plan Mode**, AI generates a structured task list for user review and approval before execution. In **Build Mode**, AI directly writes code. A task list with progress indicators is displayed when building from a plan.
 
 ### AI Dream Team (Autonomous Dual-Model Orchestration)
-When dual models are configured (planner + builder), LocalForge activates an AI Dream Team mode with expert personas (e.g., Marty Cagan for product vision, Martin Fowler for architecture, Julie Zhuo for design, Kent Beck for quality). This team collectively handles project planning, business case generation, task tracking, specialist recruitment, web search integration, code generation, validation, and documentation (including README auto-generation). All team member actions are logged in a Project Team Panel UI.
+When dual models (planner + builder) are configured, LocalForge activates an "AI Dream Team" mode. This team, comprised of expert personas, collectively handles project planning, task tracking, code generation, validation, and documentation (including README auto-generation). All team actions are logged in a Project Team Panel UI.
 
 ### Production-Grade Output
-Generated applications are production-grade by default, featuring:
-- **Multi-File Architecture**: Organized project structure (components/, hooks/, services/, __tests__/).
-- **TypeScript by Default**: Strict typing with interfaces and generics.
-- **Automated Test Generation**: Vitest/React Testing Library tests for components.
-- **Quality Analysis**: Code quality scoring with auto-fix capabilities.
-- **Documentation**: Auto-generated README.md.
-- **File-by-File Progress**: Real-time streaming of file generation.
+Generated applications are production-grade, featuring multi-file architecture, TypeScript by default, automated test generation (Vitest/React Testing Library), code quality analysis with auto-fix, and auto-generated `README.md` documentation. Real-time file generation progress is streamed.
 
 ### App Classification & Content Validation
-LocalForge classifies requests into 12+ app types (e.g., calculator, todo, dashboard). Each app type uses specific templates with suggested files, key features, state management, and UI patterns. App-specific guidance is injected into prompts. After generation, the system validates that the code implements required features and attempts auto-fixes if validation fails.
+LocalForge classifies requests into 12+ app types, using specific templates and injecting app-specific guidance into prompts. After generation, the system validates the code against required features and attempts auto-fixes if validation fails.
 
 ### Production-Grade Security & Infrastructure
-- **Security Headers**: Implements standard security headers (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, HSTS).
-- **Rate Limiting**: Applies rate limits to generation and LLM endpoints.
-- **Structured Logging**: Provides detailed logging with context objects and error stack traces.
-- **Input Validation**: Uses Zod schemas for robust validation of project, settings, files, and versions.
-- **Request Size Limits**: Sets limits for JSON and urlencoded bodies.
-- **Error Boundary**: Graceful error handling with retry/reload options for the frontend.
+The system implements standard security headers, rate limiting, structured logging, Zod schema-based input validation, request size limits, and a frontend error boundary for graceful handling.
 
 ### Frontend
-Built with React + TypeScript, Vite, Tailwind CSS, and Shadcn UI. It uses Monaco Editor for code and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, generation wizard, command palette, voice input, and a Replit-like file explorer. Custom hooks manage LLM connections, SSE streaming, project mutations, and generation state. Header status indicators provide real-time feedback on connection, queue status, and model configuration.
+Built with React + TypeScript, Vite, Tailwind CSS, and Shadcn UI. It uses Monaco Editor for code and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, generation wizard, command palette, voice input, and a Replit-like file explorer.
 
 ### Backend
 An Express.js API server with modular routes for projects, files, versions, packaging, LLM interactions, analytics, and code generation. It uses the OpenAI SDK for LM Studio interaction, Server-Sent Events (SSE) for streaming, and PostgreSQL with Drizzle ORM for persistence.
 
 ### Code Generation & Quality
-Generates full-stack applications including database schemas, API routes, and React components. Features agentic auto-fix capabilities for syntax errors with LLM retries and surfaces LLM limitation messages directly in the chat.
+Generates full-stack applications. Features agentic auto-fix capabilities for syntax errors with LLM retries and surfaces LLM limitation messages directly in the chat.
 
 ### Version Control
 Includes built-in version control with checkpoints, allowing users to save snapshots, view history, and rollback. Auto-save provides automatic checkpoints.
@@ -60,100 +45,30 @@ Includes built-in version control with checkpoints, allowing users to save snaps
 Supports downloading complete projects as ZIP files with options for Docker configurations, environment templates, and CI/CD pipelines, ensuring secure path sanitization.
 
 ### Local LLM Optimization
-Optimized for Mac M4 Pro, integrating with LM Studio via client connection caching, extended timeouts, automatic retry logic, and array-based streaming. Supports configurable temperature presets and token limits. Environment variables allow tuning LLM client configuration. Backpressure UX provides queue status and warnings. Database connection pooling is configured for performance. Dream Team service includes guards for safe member lookups. Recommended LM Studio settings and model configurations are provided for optimal performance on M4 Pro.
+Optimized for Mac M4 Pro, integrating with LM Studio via client connection caching, extended timeouts, automatic retry logic, and array-based streaming. Supports configurable temperature presets and token limits. Backpressure UX provides queue status and warnings.
 
-## Recommended Dual-Model Configuration
+### Recommended Dual-Model Configuration for M4 Pro
+- **Model A (Reasoning Brain/Planner)**: Ministral 3 14B Reasoning (Temperature: 0.2-0.3) for planning and architecture.
+- **Model B (Development & Code Execution/Builder)**: Qwen3 Coder 30B or Qwen2.5 Coder 14B (Temperature: 0.5) for code generation.
+This division minimizes hallucinations and improves multi-file scaffolding.
 
-### Best Local Stack for M4 Pro (48GB RAM)
-
-**Model A - Reasoning Brain (Planner):**
-- **Recommended**: Ministral 3 14B Reasoning
-- **Role**: System architect, strategist, planner, debugging explainer
-- **Optimal Temperature**: 0.2-0.3 (structured planning)
-- **Strengths**: Multi-step reasoning, decomposition, architecture design, low hallucination
-
-**Model B - Development & Code Execution (Builder):**
-- **Recommended**: Qwen3 Coder 30B (preferred) or Qwen2.5 Coder 14B (lighter)
-- **Role**: Code generator, implementer, refactorer, test writer
-- **Optimal Temperature**: 0.5 (creative but accurate)
-- **Strengths**: Multi-file projects, API integration, production-ready output
-
-### Division of Responsibilities
-
-**Reasoning Model (Model A) Instructions:**
-- "You will output a plan only, no code."
-- "Break the task into steps."
-- "Describe each file needed and its contents."
-- "Define APIs, directories, and architecture."
-- "Spell out constraints and required styles."
-
-**Coding Model (Model B) Instructions:**
-- "Implement exactly what Model A planned. Do not change it."
-- "Generate only valid code; no explanations."
-- "When writing multiple files, respond in tagged blocks."
-
-### Why Dual Models Work
-- Coder models hallucinate structure; reasoning models write sloppy code
-- Separating brain from hands gives: cleaner code, stable multi-file scaffolding, fewer hallucinations, better planning, easier refactoring
-
-### LM Studio Settings for M4 Pro (Optimized)
-- **GPU Layers**: -1 (all layers on GPU for Metal acceleration)
-- **Context Length**: 65536 (64K context for very large applications)
-- **Batch Size**: 1024 (optimized for M4 Pro GPU)
-- **Threads**: 10 (leave 4 cores for system on 14-core CPU)
-- **Flash Attention**: Enable if supported (faster attention computation)
-- **Memory Map**: Enable mmap for efficient model loading
-
-### Memory Allocation (48GB Unified Memory)
-- **Model Weights**: 32GB (fits 30B+ parameter models)
-- **Context Buffer**: 12GB (supports 64K+ context)
-- **System Reserve**: 4GB (OS + application overhead)
+### LM Studio Settings for M4 Pro
+Recommended settings include GPU Layers: -1, Context Length: 65536, Batch Size: 1024, Threads: 10, Flash Attention enabled, and Memory Map enabled.
 
 ### Connection Resilience
-LocalForge includes a Circuit Breaker pattern for LLM connection resilience:
-- **Failure Threshold**: Opens after 3 consecutive failures
-- **Recovery Timeout**: Retries after 30 seconds
-- **Success Threshold**: Closes after 2 consecutive successes
-- **Monitoring**: Circuit breaker status exposed via `/api/llm/queue-status`
-- **Manual Reset**: Available via `/api/llm/reset-circuit-breaker`
+A Circuit Breaker pattern is implemented for LLM connection resilience with configurable failure thresholds, recovery timeouts, and monitoring.
 
-### Optimization API Endpoints
-LocalForge provides optimization and monitoring endpoints for M4 Pro performance:
-- `GET /api/optimization/m4-pro-recommendations` - Hardware-specific settings for M4 Pro
-- `GET /api/optimization/resource-status` - Current GPU memory, request queue, and wait times
-- `GET /api/optimization/models` - Available models with capabilities and role assignments
-- `GET /api/optimization/resilience-stats` - Circuit breaker and bulkhead status
-- `GET /api/optimization/cache-stats` - LLM response cache hit rates
-- `GET /api/optimization/health` - Comprehensive health check with all metrics
-- `POST /api/optimization/reset-circuit/:key` - Reset specific circuit breaker
-
-### Model Provider Service
-The ModelProviderService provides intelligent model routing:
-- **Capability Registry**: Tracks model strengths, VRAM requirements, and tokens/second
-- **Policy-Based Routing**: Automatically selects planner vs builder based on task type
-- **Resource-Aware Selection**: Chooses optimal model based on available GPU memory
-- **Request Scheduling**: Priority queue with concurrency limits for M4 Pro
-- **Caching & Deduplication**: Avoids redundant LLM calls for identical prompts
-
-### Resilience Service
-The ResilienceService provides enterprise-grade fault tolerance:
-- **Circuit Breaker**: Prevents cascading failures with configurable thresholds
-- **Exponential Backoff**: Automatic retry with jitter to prevent thundering herd
-- **Bulkhead Pattern**: Isolates failures and limits concurrent executions
-- **Timeout Management**: Configurable timeouts with proper cleanup
+### Automation Services
+- **Auto-Validation Pipeline**: Integrates ESLint, TypeScript checking, and test runners (Vitest/Jest) with auto-fix support.
+- **Intelligent Context Pruning**: Manages LLM context window efficiently through token estimation, auto-summarization, and code block compression.
+- **Model Hot-Swapping**: Automatically detects memory pressure and switches to lighter models (e.g., Qwen2.5 14B) when necessary.
+- **Health Monitoring Alerts**: Provides real-time SSE alerts for critical system events like circuit breaker status, memory pressure, and queue backlog.
+- **Auto-Dependency Resolution**: Detects and suggests installs for missing npm packages and validates local file imports.
+- **Generation Checkpoints**: Auto-saves progress during long generations and allows manual checkpoints with recovery capabilities.
+- **Smart Retry Strategies**: Implements intelligent error recovery by reducing context, simplifying prompts, and adjusting temperature.
 
 ### In-Browser Bundler
-LocalForge uses esbuild-wasm for production-grade in-browser bundling of multi-file TypeScript/React projects:
-- **Virtual File System**: Maps generated files to esbuild with proper module resolution
-- **Hot Refresh**: 300ms debounced recompilation on file changes with content hashing
-- **React/ReactDOM Support**: External modules loaded from CDN (React 18)
-- **Error Overlay**: Compilation errors display with line numbers and suggestions
-- **Bundle Telemetry**: Shows compilation time and warnings in preview
-
-Key files:
-- `client/src/lib/bundler.ts` - esbuild-wasm bundling service
-- `client/src/hooks/use-bundler.ts` - React hook for bundler state management
-- Preview runtime injects Tailwind CSS and React from CDN for live preview
+Uses esbuild-wasm for in-browser bundling of multi-file TypeScript/React projects, featuring a virtual file system, hot refresh, React/ReactDOM support, and an error overlay.
 
 ## External Dependencies
 - **LM Studio**: Local LLM inference.
@@ -167,3 +82,4 @@ Key files:
 - **TanStack Query**: Data fetching.
 - **Express.js**: Backend framework.
 - **Drizzle ORM**: PostgreSQL ORM.
+- **esbuild-wasm**: In-browser bundling.
