@@ -1345,6 +1345,57 @@ export const codeIndex = pgTable("code_index", {
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });
 
+// File-level index for aggregate file metadata
+export const fileIndexSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  fileId: z.string(),
+  filePath: z.string(),
+  symbols: z.array(z.object({
+    name: z.string(),
+    kind: z.enum(["function", "class", "interface", "type", "variable", "constant", "enum", "component", "hook", "method", "property"]),
+    exported: z.boolean(),
+    line: z.number().optional(),
+    signature: z.string().optional(),
+  })),
+  imports: z.array(z.object({
+    module: z.string(),
+    isRelative: z.boolean(),
+    imports: z.array(z.string()),
+  })),
+  exports: z.array(z.string()),
+  summary: z.object({
+    description: z.string(),
+    purpose: z.string(),
+    dependencies: z.array(z.string()),
+    exports: z.array(z.string()),
+  }),
+  keywords: z.array(z.string()),
+  contentHash: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export const fileIndex = pgTable("file_index", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull(),
+  fileId: varchar("file_id", { length: 36 }).notNull(),
+  filePath: text("file_path").notNull(),
+  symbols: jsonb("symbols").notNull().default([]),
+  imports: jsonb("imports").notNull().default([]),
+  exports: jsonb("exports").notNull().default([]),
+  summary: jsonb("summary").notNull().default({}),
+  keywords: jsonb("keywords").notNull().default([]),
+  contentHash: text("content_hash").notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+export const insertFileIndexSchema = createInsertSchema(fileIndex).omit({ id: true });
+export type FileIndexEntry = z.infer<typeof fileIndexSchema>;
+export type FileIndexDb = typeof fileIndex.$inferSelect;
+export type InsertFileIndex = z.infer<typeof insertFileIndexSchema>;
+
 // Schema migrations - track data model evolution
 export const schemaMigrationSchema = z.object({
   id: z.string(),

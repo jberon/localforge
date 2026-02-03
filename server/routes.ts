@@ -10,6 +10,7 @@ import analyticsRoutes from "./routes/analytics";
 import generationRoutes from "./routes/generation";
 import dreamTeamRoutes from "./routes/dream-team";
 import healthRoutes from "./routes/health";
+import databaseRoutes from "./routes/database";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -33,6 +34,8 @@ export async function registerRoutes(
   app.use("/api/dream-team", dreamTeamRoutes);
   
   app.use("/api/health", healthRoutes);
+  
+  app.use("/api/database", databaseRoutes);
 
   return httpServer;
 }
