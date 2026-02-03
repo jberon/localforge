@@ -63,6 +63,16 @@ The production orchestrator is in `server/services/productionOrchestrator.ts` an
 ### Frontend
 The frontend is built with React + TypeScript using Vite, styled with Tailwind CSS and Shadcn UI components. It integrates the Monaco Editor for code interaction and TanStack Query for data management. Key UI elements include a chat panel, live preview, project sidebar, and a modular generation wizard. UX design principles focus on quick start, progressive disclosure, polished animations, and contextual error recovery. Features include a command palette, voice input, and keyboard shortcuts. The file explorer provides a Replit-like tree view, file operations, and real-time synchronization.
 
+**Custom Hooks** (client/src/hooks/):
+- `use-llm-connection.ts`: LLM connection state management with configurable polling
+- `use-sse-stream.ts`: Reusable SSE streaming with exponential backoff reconnection and AbortController cancellation
+- `use-project-mutations.ts`: Project CRUD operations (create, delete, rename)
+- `use-generation.ts`: Code generation state and handlers with cancellation support
+
+**Bundle Optimization**:
+- Lazy loading for routes via `React.lazy()` and `Suspense`
+- Memoized panel components to prevent unnecessary re-renders
+
 ### Backend
 The backend is an Express.js API server with a modular route architecture for projects, files, versions, packaging, LLM interactions, analytics, and code generation. It uses the OpenAI SDK configured for LM Studio, implements Server-Sent Events (SSE) for streaming LLM responses, and uses PostgreSQL with Drizzle ORM for persistent storage. The backend includes modular code generators for various application components and supports production-grade features like authentication, testing suites, CI/CD pipelines, Docker support, and API documentation.
 

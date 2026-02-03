@@ -5,12 +5,23 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ThemeProvider } from "@/hooks/use-theme";
-import Home from "@/pages/home";
-import AnalyticsPage from "@/pages/analytics";
-import Preview from "@/pages/preview";
-import NotFound from "@/pages/not-found";
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
+
+const Home = lazy(() => import("@/pages/home"));
+const AnalyticsPage = lazy(() => import("@/pages/analytics"));
+const Preview = lazy(() => import("@/pages/preview"));
+const NotFound = lazy(() => import("@/pages/not-found"));
+
 import type { LLMSettings } from "@shared/schema";
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-screen" data-testid="loader-page">
+      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 function AnalyticsWrapper() {
   const [settings, setSettings] = useState<LLMSettings>({
@@ -43,12 +54,14 @@ function AnalyticsWrapper() {
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/analytics" component={AnalyticsWrapper} />
-      <Route path="/preview/:id" component={Preview} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/analytics" component={AnalyticsWrapper} />
+        <Route path="/preview/:id" component={Preview} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

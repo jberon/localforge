@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef, memo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { ProjectSidebar } from "@/components/project-sidebar";
@@ -27,6 +27,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/hooks/use-theme";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useLLMConnection } from "@/hooks/use-llm-connection";
+import { useProjectMutations } from "@/hooks/use-project-mutations";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
@@ -62,10 +64,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationPhase, setGenerationPhase] = useState<string | null>(null);
   const [streamingCode, setStreamingCode] = useState("");
-  const [llmConnected, setLlmConnected] = useState<boolean | null>(null);
-  const [loadedModel, setLoadedModel] = useState<string | null>(null);
   const [showCelebration, setShowCelebration] = useState(false);
-  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
   const [lastError, setLastError] = useState<{ message: string; prompt?: string } | null>(null);
   const [showQuickUndo, setShowQuickUndo] = useState(false);
   const [showFileExplorer, setShowFileExplorer] = useState(true);
@@ -175,101 +174,42 @@ export default function Home() {
 
   const activeProject = projects.find((p) => p.id === activeProjectId);
 
-  // Check LLM connection status
-  const checkConnection = useCallback(async () => {
-    setIsCheckingConnection(true);
-    try {
-      const response = await fetch("/api/llm/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: settings.endpoint }),
-      });
-      const data = await response.json();
-      setLlmConnected(data.connected);
-      if (data.connected && data.models?.length > 0) {
-        const activeModel = settings.model || data.models[0];
-        setLoadedModel(activeModel);
-        setLastError(null);
-      } else {
-        setLoadedModel(null);
-      }
-    } catch {
-      setLlmConnected(false);
-      setLoadedModel(null);
-    } finally {
-      setIsCheckingConnection(false);
-    }
-  }, [settings.endpoint, settings.model]);
+  const {
+    isConnected: llmConnected,
+    loadedModel,
+    isChecking: isCheckingConnection,
+    checkConnection,
+  } = useLLMConnection({
+    endpoint: settings.endpoint,
+    model: settings.model,
+    pollInterval: 30000,
+  });
 
   useEffect(() => {
-    checkConnection();
-    const interval = setInterval(checkConnection, 30000);
-    return () => clearInterval(interval);
-  }, [checkConnection]);
+    if (llmConnected) {
+      setLastError(null);
+    }
+  }, [llmConnected]);
 
   // Clear quick undo when project changes
   useEffect(() => {
     setShowQuickUndo(false);
   }, [activeProjectId]);
 
-  const createProjectMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/projects", {
-        name: "New Project",
-        messages: [],
-      });
-      return response.json();
-    },
-    onSuccess: (newProject: Project) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      setActiveProjectId(newProject.id);
-      trackEvent("project_created", newProject.id);
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to create project",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteProjectMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/projects/${id}`);
-      return id;
-    },
-    onSuccess: (deletedId: string) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+  const {
+    createProject,
+    deleteProject,
+    renameProject,
+    updateProjectName,
+    isCreating: isCreatingProject,
+  } = useProjectMutations({
+    onProjectCreated: (project) => setActiveProjectId(project.id),
+    onProjectDeleted: (deletedId) => {
       if (activeProjectId === deletedId) {
         setActiveProjectId(null);
       }
-      trackEvent("project_deleted", deletedId);
     },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to delete project",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const renameProjectMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      const response = await apiRequest("PATCH", `/api/projects/${id}/name`, { name });
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to rename project",
-        variant: "destructive",
-      });
-    },
+    activeProjectId,
   });
 
   // Keyboard shortcuts (Cmd on Mac, Ctrl on Windows/Linux)
@@ -277,7 +217,7 @@ export default function Home() {
     {
       key: "n",
       cmdOrCtrl: true,
-      action: () => createProjectMutation.mutate(),
+      action: () => createProject(),
       description: "New project",
     },
     {
@@ -298,7 +238,7 @@ export default function Home() {
       },
       description: "Save project",
     },
-  ], [createProjectMutation, activeProject, toast]);
+  ], [createProject, activeProject, toast]);
 
   useKeyboardShortcuts(shortcuts);
 
@@ -1151,9 +1091,9 @@ export default function Home() {
           activeProjectId={activeProjectId}
           settings={settings}
           onSelectProject={setActiveProjectId}
-          onNewProject={() => createProjectMutation.mutate()}
-          onDeleteProject={(id) => deleteProjectMutation.mutate(id)}
-          onRenameProject={(id, name) => renameProjectMutation.mutate({ id, name })}
+          onNewProject={() => createProject()}
+          onDeleteProject={(id) => deleteProject(id)}
+          onRenameProject={(id, name) => renameProject(id, name)}
           onUpdateSettings={(newSettings) => {
             setSettings(newSettings);
             setDualModelSettings(prev => ({
@@ -1279,7 +1219,7 @@ export default function Home() {
           
           <main className="flex-1 overflow-hidden">
             {projects.length === 0 && !activeProject ? (
-              <EmptyState onCreateProject={() => createProjectMutation.mutate()} />
+              <EmptyState onCreateProject={() => createProject()} />
             ) : !displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
               <GenerationWizard
                 onGenerate={handleIntelligentGenerate}
@@ -1547,7 +1487,7 @@ export default function Home() {
         </AlertDialogContent>
       </AlertDialog>
       <CommandPalette
-        onNewProject={() => createProjectMutation.mutate()}
+        onNewProject={() => createProject()}
         onDownload={activeProject ? handleDownload : undefined}
         onOpenSettings={() => {}}
         onOpenDreamTeam={() => {}}
