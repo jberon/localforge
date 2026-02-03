@@ -34,6 +34,7 @@ import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
 import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree } from "lucide-react";
 import { FileExplorer } from "@/components/file-explorer";
+import type { Action, ActionType } from "@/components/action-group-row";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,13 +58,20 @@ const MemoizedFileExplorer = memo(FileExplorer);
 const MemoizedProjectTeamPanel = memo(ProjectTeamPanel);
 const MemoizedAIThinkingPanel = memo(AIThinkingPanel);
 
-// Action type for tracking generation actions
-interface GenerationAction {
-  id: string;
-  type: "terminal" | "file_edit" | "file_read" | "code" | "thinking" | "search" | "database" | "refresh" | "check" | "error" | "view" | "settings" | "message" | "generate";
-  label?: string;
-  detail?: string;
-  status?: "pending" | "running" | "completed" | "error";
+// Helper to update or add an action (consolidates similar actions)
+function updateOrAddAction(prev: Action[], newAction: Omit<Action, "id"> & { id?: string }): Action[] {
+  const actionId = newAction.id || crypto.randomUUID();
+  
+  // For phase changes, mark previous running actions as completed and add new one
+  if (newAction.type === "generate" || newAction.type === "thinking") {
+    const updated = prev.map(a => 
+      a.status === "running" ? { ...a, status: "completed" as const } : a
+    );
+    return [...updated, { ...newAction, id: actionId } as Action];
+  }
+  
+  // For other actions, just add them
+  return [...prev, { ...newAction, id: actionId } as Action];
 }
 
 export default function Home() {
@@ -72,7 +80,7 @@ export default function Home() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationPhase, setGenerationPhase] = useState<string | null>(null);
-  const [currentActions, setCurrentActions] = useState<GenerationAction[]>([]);
+  const [currentActions, setCurrentActions] = useState<Action[]>([]);
   const [streamingCode, setStreamingCode] = useState("");
   const [showCelebration, setShowCelebration] = useState(false);
   const [lastError, setLastError] = useState<{ message: string; prompt?: string } | null>(null);
@@ -322,20 +330,18 @@ export default function Home() {
                 if (data.type === "phase") {
                   setOrchestratorPhase(data.phase);
                   setGenerationPhase(data.message);
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: data.phase === "planning" ? "thinking" : "generate",
                     label: data.message,
                     status: "running"
-                  }]);
+                  }));
                 } else if (data.type === "thinking") {
                   setOrchestratorThinking({ model: data.model, content: data.content });
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: "thinking",
                     label: data.content?.slice(0, 50) + (data.content?.length > 50 ? "..." : ""),
                     status: "completed"
-                  }]);
+                  }));
                 } else if (data.type === "chunk") {
                   accumulatedCode += data.content;
                   const cleaned = accumulatedCode
@@ -345,21 +351,19 @@ export default function Home() {
                 } else if (data.type === "validation") {
                   if (!data.valid) {
                     setGenerationPhase(`Fixing ${data.errors.length} issue(s)...`);
-                    setCurrentActions(prev => [...prev, { 
-                      id: crypto.randomUUID(), 
+                    setCurrentActions(prev => updateOrAddAction(prev, { 
                       type: "check",
                       label: `Fixing ${data.errors.length} issue(s)`,
                       status: "running"
-                    }]);
+                    }));
                   }
                 } else if (data.type === "fix_attempt") {
                   setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}...`);
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: "refresh",
                     label: `Fix attempt ${data.attempt}/${data.max}`,
                     status: "running"
-                  }]);
+                  }));
                 } else if (data.type === "tasks_updated") {
                   setOrchestratorTasks({
                     tasks: data.tasks.map((t: any) => ({
@@ -374,12 +378,11 @@ export default function Home() {
                 } else if (data.type === "search") {
                   setGenerationPhase(`Web search: ${data.query}`);
                   setOrchestratorThinking({ model: "web_search", content: `Searching: ${data.query}` });
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: "search",
                     label: `Searching: ${data.query}`,
                     status: "running"
-                  }]);
+                  }));
                 } else if (data.type === "search_result") {
                   setGenerationPhase(`Found ${data.results?.length || 0} results for: ${data.query}`);
                 } else if (data.type === "done") {
@@ -450,28 +453,25 @@ export default function Home() {
                 if (data.type === "phase") {
                   setOrchestratorPhase(data.phase);
                   setGenerationPhase(data.message);
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: data.phase === "planning" ? "thinking" : data.phase === "building" ? "code" : "generate",
                     label: data.message,
                     status: "running"
-                  }]);
+                  }));
                 } else if (data.type === "thinking") {
                   setOrchestratorThinking({ model: data.model, content: data.content });
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: "thinking",
                     label: data.content?.slice(0, 50) + (data.content?.length > 50 ? "..." : ""),
                     status: "completed"
-                  }]);
+                  }));
                 } else if (data.type === "file_start") {
                   setGenerationPhase(`Generating ${data.file}...`);
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: "file_edit",
                     label: `Creating ${data.file}`,
                     status: "running"
-                  }]);
+                  }));
                 } else if (data.type === "file_complete") {
                   setGenerationPhase(`Completed ${data.file} (${Math.round(data.size / 1024)}KB)`);
                   setCurrentActions(prev => prev.map(a => 
@@ -480,28 +480,25 @@ export default function Home() {
                 } else if (data.type === "quality_score") {
                   qualityScore = data.score;
                   setGenerationPhase(`Quality Score: ${data.score}/100`);
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: "check",
                     label: `Quality check: ${data.score}/100`,
                     status: "completed"
-                  }]);
+                  }));
                 } else if (data.type === "test_result") {
                   setGenerationPhase(`Test ${data.passed ? '✓' : '✗'} ${data.file}`);
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: data.passed ? "check" : "error",
                     label: `Test: ${data.file}`,
                     status: data.passed ? "completed" : "error"
-                  }]);
+                  }));
                 } else if (data.type === "fix_attempt") {
                   setGenerationPhase(`Auto-fix attempt ${data.attempt}/${data.max}: ${data.reason}`);
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: "refresh",
                     label: `Fix attempt ${data.attempt}/${data.max}`,
                     status: "running"
-                  }]);
+                  }));
                 } else if (data.type === "file_chunk") {
                   setGenerationPhase(`Writing ${data.file}... (${Math.round((data.progress || 0) * 100)}%)`);
                 } else if (data.type === "quality_issue") {
@@ -509,12 +506,11 @@ export default function Home() {
                 } else if (data.type === "search") {
                   setGenerationPhase(`Web search: ${data.query}`);
                   setOrchestratorThinking({ model: "web_search", content: `Searching: ${data.query}` });
-                  setCurrentActions(prev => [...prev, { 
-                    id: crypto.randomUUID(), 
+                  setCurrentActions(prev => updateOrAddAction(prev, { 
                     type: "search",
                     label: `Searching: ${data.query}`,
                     status: "running"
-                  }]);
+                  }));
                 } else if (data.type === "done") {
                   setCurrentActions([]);
                   await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });

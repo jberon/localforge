@@ -45,9 +45,8 @@ export interface Action {
   status?: "pending" | "running" | "completed" | "error";
 }
 
-interface ActionGroupRowProps {
+interface ActionGroupRowProps extends React.HTMLAttributes<HTMLDivElement> {
   actions: Action[];
-  className?: string;
 }
 
 const actionIcons: Record<ActionType, typeof Terminal> = {
@@ -84,7 +83,7 @@ const actionColors: Record<ActionType, string> = {
   generate: "text-violet-500",
 };
 
-export function ActionGroupRow({ actions, className }: ActionGroupRowProps) {
+export function ActionGroupRow({ actions, className, ...props }: ActionGroupRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   if (actions.length === 0) return null;
@@ -94,7 +93,7 @@ export function ActionGroupRow({ actions, className }: ActionGroupRowProps) {
   const hasMore = actions.length > maxVisibleIcons;
 
   return (
-    <div className={cn("space-y-1", className)}>
+    <div className={cn("space-y-1", className)} {...props}>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 py-1.5 px-2 rounded-md hover-elevate transition-colors w-full text-left group"
