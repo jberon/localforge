@@ -39,12 +39,13 @@ When dual models are configured (planner + builder), LocalForge activates the AI
 
 **Workflow**:
 - **Planning Phase**: Aria analyzes the request and creates business case + implementation plan
+- **Task Progress Tracking**: Real-time TaskProgressPanel shows planning-generated tasks with X/Y completion counter
 - **Specialist Recruitment**: Aria evaluates if domain experts are needed for the project
 - **Web Search Integration**: Scout searches Serper.dev when external information is needed
 - **Building Phase**: Forge generates complete applications based on the plan
 - **Validation & Auto-Fix Loop**: Sentinel validates code; Forge fixes any issues (up to 3 retries)
 - **Documentation**: Forge generates README after successful build
-- **Progress Streaming**: Real-time SSE events show current phase, team member actions, and task completion
+- **Progress Streaming**: Real-time SSE events show current phase, team member actions, tasks_updated, and task completion
 
 The orchestrator is implemented in `server/services/orchestrator.ts` and the Dream Team service in `server/services/dreamTeam.ts`. Exposed via `/api/projects/:id/dream-team` and `/api/dream-team/*` endpoints.
 
