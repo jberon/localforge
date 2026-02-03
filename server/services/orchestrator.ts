@@ -295,10 +295,10 @@ export class AIOrchestrator {
     this.state = this.createInitialState();
     this.aborted = false;
 
-    const aria = CORE_DREAM_TEAM.find(m => m.id === "aria")!;
-    const forge = CORE_DREAM_TEAM.find(m => m.id === "forge")!;
-    const sentinel = CORE_DREAM_TEAM.find(m => m.id === "sentinel")!;
-    const scout = CORE_DREAM_TEAM.find(m => m.id === "scout")!;
+    const marty = CORE_DREAM_TEAM.find(m => m.id === "marty")!;
+    const martin = CORE_DREAM_TEAM.find(m => m.id === "martin")!;
+    const kent = CORE_DREAM_TEAM.find(m => m.id === "kent")!;
+    const ben = CORE_DREAM_TEAM.find(m => m.id === "ben")!;
 
     try {
       // Check model availability and handle fallback if needed
@@ -323,11 +323,11 @@ export class AIOrchestrator {
         }
       }
       
-      this.emit({ type: "phase_change", phase: "planning", message: `${aria.name} is analyzing your request...` });
+      this.emit({ type: "phase_change", phase: "planning", message: `${marty.name} is analyzing your request...` });
       
       if (this.dreamTeam && this.projectId) {
         await this.dreamTeam.logActivity(this.projectId, {
-          member: aria,
+          member: marty,
           action: "thinking",
           content: `Analyzing request: "${userRequest.slice(0, 100)}..."`,
         });
@@ -359,11 +359,11 @@ export class AIOrchestrator {
       this.emitTasksUpdated();
 
       if (plan.searchQueries && plan.searchQueries.length > 0 && this.settings.webSearchEnabled && this.settings.serperApiKey) {
-        this.emit({ type: "phase_change", phase: "searching", message: `${scout.name} is searching for relevant information...` });
+        this.emit({ type: "phase_change", phase: "searching", message: `${ben.name} is searching for relevant information...` });
         
         if (this.dreamTeam && this.projectId) {
           await this.dreamTeam.logActivity(this.projectId, {
-            member: scout,
+            member: ben,
             action: "researching",
             content: `Searching for: ${plan.searchQueries.join(", ")}`,
           });
@@ -373,11 +373,11 @@ export class AIOrchestrator {
       }
 
       if (this.aborted) throw new Error("Aborted");
-      this.emit({ type: "phase_change", phase: "building", message: `${forge.name} is generating code...` });
+      this.emit({ type: "phase_change", phase: "building", message: `${martin.name} is generating code...` });
       
       if (this.dreamTeam && this.projectId) {
         await this.dreamTeam.logActivity(this.projectId, {
-          member: forge,
+          member: martin,
           action: "building",
           content: `Building: ${plan.summary}`,
         });
@@ -387,11 +387,11 @@ export class AIOrchestrator {
       this.state.generatedCode = code;
 
       if (this.aborted) throw new Error("Aborted");
-      this.emit({ type: "phase_change", phase: "validating", message: `${sentinel.name} is validating generated code...` });
+      this.emit({ type: "phase_change", phase: "validating", message: `${kent.name} is validating generated code...` });
       
       if (this.dreamTeam && this.projectId) {
         await this.dreamTeam.logActivity(this.projectId, {
-          member: sentinel,
+          member: kent,
           action: "testing",
           content: "Running validation checks on generated code...",
         });
@@ -401,11 +401,11 @@ export class AIOrchestrator {
       this.emit({ type: "validation", valid: validation.valid, errors: validation.errors });
 
       if (!validation.valid) {
-        this.emit({ type: "phase_change", phase: "fixing", message: `${forge.name} is auto-fixing detected issues...` });
+        this.emit({ type: "phase_change", phase: "fixing", message: `${martin.name} is auto-fixing detected issues...` });
         
         if (this.dreamTeam && this.projectId) {
           await this.dreamTeam.logActivity(this.projectId, {
-            member: forge,
+            member: martin,
             action: "fixing",
             content: `Fixing ${validation.errors.length} validation error(s)`,
           });

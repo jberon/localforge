@@ -15,36 +15,36 @@ LocalForge is an AI-powered web application builder that generates working React
 LocalForge provides a chat-based interface with streaming responses for real-time code generation. It includes project management, live preview, and code validation. An AI-powered prompt enhancement and iterative refinement system allows users to evolve applications through follow-up requests. The system intelligently routes requests, automatically detecting intent (plan/build/refine/question) and optimizing LLM configurations for each task.
 
 ### AI Dream Team (Autonomous Dual-Model Orchestration)
-When dual models are configured (planner + builder), LocalForge activates the AI Dream Team mode with named AI agents:
+When dual models are configured (planner + builder), LocalForge activates the AI Dream Team mode with expert personas inspired by real thought leaders:
 
 **Core Team Members** (always present):
-- **Aria** (Product Architect): System design, architecture, planning - analyzes requests and creates business cases
-- **Forge** (Senior Engineer): React/TypeScript implementation - writes and fixes code
-- **Pixel** (UX Designer): Interface design, accessibility, styling
-- **Scout** (Research Analyst): Market research, API documentation, web searches
-- **Sentinel** (Quality Guardian): Testing, code review, security validation
+- **Marty Cagan** (Product Visionary): Product discovery, outcome-driven development, customer obsession. Inspired by his books "Inspired" and "Empowered".
+- **Martin Fowler** (Chief Architect): Clean architecture, refactoring, design patterns, TypeScript. Writes code for humans first.
+- **Julie Zhuo** (Design Director): User-centered design, design systems, accessibility. Scaled design at Facebook.
+- **Ben Thompson** (Strategic Analyst): Aggregation theory, platform strategy, market dynamics. Author of Stratechery.
+- **Kent Beck** (Quality Craftsman): Test-driven development, extreme programming, continuous testing. Creator of TDD.
 
 **Dynamic Specialists**: The reasoning model analyzes each project's business case and automatically recruits industry-specific specialists (healthcare expert, finance advisor, etc.) when needed.
 
-**Business Case Generation**: For each project, Aria automatically generates a comprehensive business case including:
-- App name, tagline, and problem statement
-- Target audience and value proposition
+**Business Case Generation**: For each project, Marty Cagan automatically generates a comprehensive business case including:
+- App name, tagline, and problem statement (focused on customer problems)
+- Target audience and value proposition (outcome-driven)
 - Core features with priorities (must-have, should-have, nice-to-have)
 - Industry analysis, competitors, and differentiators
 - Monetization and pricing model suggestions
 
-**README Auto-Generation**: Forge automatically generates a professional README.md based on the business case.
+**README Auto-Generation**: Martin Fowler automatically generates a professional README.md with clean documentation principles.
 
 **Activity Logging**: All team member actions (thinking, deciding, building, reviewing, etc.) are logged and visible in the Project Team Panel UI.
 
 **Workflow**:
-- **Planning Phase**: Aria analyzes the request and creates business case + implementation plan
+- **Planning Phase**: Marty Cagan analyzes the request and creates business case + implementation plan
 - **Task Progress Tracking**: Real-time TaskProgressPanel shows planning-generated tasks with X/Y completion counter
-- **Specialist Recruitment**: Aria evaluates if domain experts are needed for the project
-- **Web Search Integration**: Scout searches Serper.dev when external information is needed
-- **Building Phase**: Forge generates complete applications based on the plan
-- **Validation & Auto-Fix Loop**: Sentinel validates code; Forge fixes any issues (up to 3 retries)
-- **Documentation**: Forge generates README after successful build
+- **Specialist Recruitment**: Marty Cagan evaluates if domain experts are needed for the project
+- **Web Search Integration**: Ben Thompson searches Serper.dev when external information is needed
+- **Building Phase**: Martin Fowler generates complete applications based on the plan
+- **Validation & Auto-Fix Loop**: Kent Beck validates code; Martin Fowler fixes any issues (up to 3 retries)
+- **Documentation**: Martin Fowler generates README after successful build
 - **Progress Streaming**: Real-time SSE events show current phase, team member actions, tasks_updated, and task completion
 
 The orchestrator is implemented in `server/services/orchestrator.ts` and the Dream Team service in `server/services/dreamTeam.ts`. Exposed via `/api/projects/:id/dream-team` and `/api/dream-team/*` endpoints.
