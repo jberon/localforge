@@ -1401,14 +1401,15 @@ export default function Home() {
                 size="sm" 
                 onClick={() => setShowDatabasePanel(!showDatabasePanel)}
                 data-testid="button-database"
+                title="Database Explorer"
               >
-                <Database className="h-4 w-4 mr-1" />
-                Database
+                <Database className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Database</span>
               </Button>
-              <Button variant="ghost" size="sm" asChild data-testid="button-analytics">
+              <Button variant="ghost" size="sm" asChild data-testid="button-analytics" title="Analytics">
                 <Link href="/analytics">
-                  <BarChart3 className="h-4 w-4 mr-1" />
-                  Analytics
+                  <BarChart3 className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Analytics</span>
                 </Link>
               </Button>
               {llmConnected === false && (
@@ -1417,9 +1418,10 @@ export default function Home() {
                   className="gap-1.5 text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover-elevate electron-no-drag"
                   onClick={checkConnection}
                   data-testid="badge-connection-status"
+                  title="Click to retry connection"
                 >
                   <WifiOff className="h-3 w-3" />
-                  LM Studio offline
+                  <span className="hidden sm:inline">LM Studio offline</span>
                 </Badge>
               )}
               {llmConnected === true && (

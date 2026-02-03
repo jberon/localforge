@@ -133,9 +133,9 @@ export function DreamTeamSettings({ settings, onSettingsChange }: DreamTeamSetti
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" data-testid="button-dream-team-settings">
-          <Users className="w-4 h-4 mr-2" />
-          Dream Team
+        <Button variant="outline" size="sm" data-testid="button-dream-team-settings" title="Dream Team Settings">
+          <Users className="w-4 h-4 sm:mr-2" />
+          <span className="hidden sm:inline">Dream Team</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">

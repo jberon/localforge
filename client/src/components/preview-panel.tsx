@@ -476,8 +476,8 @@ ${localCode}
           Exit Fullscreen
         </Button>
       )}
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-shrink overflow-x-auto">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "files" | "publish" | "console" | "search")}>
             <TabsList className="h-8">
               <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
@@ -562,7 +562,7 @@ ${localCode}
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-shrink-0">
           {activeTab === "preview" && (code || hasFullStackProject) && (
             <>
               <Button
@@ -615,9 +615,10 @@ ${localCode}
                   onClick={handleOpenRegenerate}
                   className="gap-1.5"
                   data-testid="button-regenerate"
+                  title="Regenerate project"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  Regenerate
+                  <span className="hidden sm:inline">Regenerate</span>
                 </Button>
               )}
               <Button
@@ -626,9 +627,10 @@ ${localCode}
                 onClick={onDownload}
                 className="gap-1.5"
                 data-testid="button-download"
+                title="Download project"
               >
                 <Download className="h-4 w-4" />
-                Download
+                <span className="hidden sm:inline">Download</span>
               </Button>
               {projectId && (
                 <Button
@@ -637,9 +639,10 @@ ${localCode}
                   onClick={() => window.open(`/preview/${projectId}`, "_blank")}
                   className="gap-1.5"
                   data-testid="button-open-browser"
+                  title="View in Browser"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  View in Browser
+                  <span className="hidden md:inline">View in Browser</span>
                 </Button>
               )}
             </>
