@@ -1374,4 +1374,26 @@ router.post("/:id/production", async (req, res) => {
   }
 });
 
+// Catch-all handler for unknown project sub-routes
+// Returns proper 404 instead of falling through to Vite
+router.use("/:id/:subpath", async (req, res, next) => {
+  // Only catch routes that haven't been handled
+  if (res.headersSent) {
+    return next();
+  }
+  
+  const projectId = req.params.id;
+  const project = await storage.getProject(projectId);
+  
+  if (!project) {
+    return res.status(404).json({ error: "Project not found", projectId });
+  }
+  
+  return res.status(404).json({ 
+    error: "Unknown endpoint", 
+    message: `No handler for ${req.method} ${req.path}`,
+    projectId 
+  });
+});
+
 export default router;
