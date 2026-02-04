@@ -203,13 +203,27 @@ export function CloudLLMSettings({ settings, onSettingsChange }: CloudLLMSetting
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: "gpt-4o-mini" }),
       });
+      
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+      
       const data = await res.json();
       
       if (data.success) {
-        toast({
-          title: enable ? "Test Mode Enabled" : "Test Mode Disabled",
-          description: data.message,
-        });
+        // Show warning if enabled but not connected
+        if (enable && !data.connected) {
+          toast({
+            title: "Test Mode Enabled (Not Connected)",
+            description: data.error || "Test mode is enabled but cloud connection failed. Check API configuration.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: enable ? "Test Mode Enabled" : "Test Mode Disabled",
+            description: data.message,
+          });
+        }
         await fetchTestModeStatus();
       } else {
         toast({

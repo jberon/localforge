@@ -128,6 +128,7 @@ export default function Home() {
   
   // Test Mode state (Replit AI Integration)
   const [testModeActive, setTestModeActive] = useState(false);
+  const [testModeConnected, setTestModeConnected] = useState(false);
   
   // Plan & Build mode state (Replit-style)
   const [agentMode, setAgentMode] = useState<AgentMode>("plan"); // Default to plan mode (Replit-style)
@@ -251,6 +252,7 @@ export default function Home() {
         if (res.ok) {
           const data = await res.json();
           setTestModeActive(data.active);
+          setTestModeConnected(data.connected);
         }
       } catch {
         // Silently fail
@@ -1446,9 +1448,14 @@ export default function Home() {
                 compact={true}
               />
               {testModeActive && (
-                <Badge variant="default" className="ml-1 bg-emerald-600 hover:bg-emerald-700" data-testid="badge-test-mode">
+                <Badge 
+                  variant="default" 
+                  className={`ml-1 ${testModeConnected ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+                  data-testid="badge-test-mode"
+                  title={testModeConnected ? "Test Mode: Connected to Replit AI" : "Test Mode: Not Connected"}
+                >
                   <FlaskConical className="w-3 h-3 mr-1" />
-                  Test Mode
+                  Test Mode{!testModeConnected && " (!)"}
                 </Badge>
               )}
             </div>
