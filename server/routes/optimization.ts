@@ -25,6 +25,10 @@ import { patternLibraryService } from "../services/pattern-library.service";
 import { smartTemplatesService } from "../services/smart-templates.service";
 import { multiStepReasoningService } from "../services/multi-step-reasoning.service";
 import { selfValidationService } from "../services/self-validation.service";
+import { buildModeService } from "../services/build-mode.service";
+import { autonomyLevelService } from "../services/autonomy-level.service";
+import { extendedThinkingService } from "../services/extended-thinking.service";
+import { designModeService } from "../services/design-mode.service";
 import logger from "../lib/logger";
 
 const router = Router();
@@ -1257,6 +1261,540 @@ router.put("/validation/rules/:ruleId", (req, res) => {
   } catch (error) {
     logger.error("Failed to update rule", { error });
     res.status(500).json({ error: "Failed to update rule" });
+  }
+});
+
+// ============================================
+// BUILD MODE ENDPOINTS (Fast vs Full)
+// ============================================
+
+// Get current build mode
+router.get("/build-mode", (req, res) => {
+  try {
+    const projectId = req.query.projectId as string | undefined;
+    const config = buildModeService.getConfig(projectId);
+    res.json(config);
+  } catch (error) {
+    logger.error("Failed to get build mode", { error });
+    res.status(500).json({ error: "Failed to get build mode" });
+  }
+});
+
+// Set build mode
+router.put("/build-mode", (req, res) => {
+  try {
+    const { mode, projectId, reason } = req.body;
+    buildModeService.setMode(mode, projectId, reason);
+    res.json({ success: true, mode });
+  } catch (error) {
+    logger.error("Failed to set build mode", { error });
+    res.status(500).json({ error: "Failed to set build mode" });
+  }
+});
+
+// Auto-detect build mode from prompt
+router.post("/build-mode/detect", (req, res) => {
+  try {
+    const { prompt } = req.body;
+    const mode = buildModeService.autoDetectMode(prompt);
+    res.json({ suggestedMode: mode });
+  } catch (error) {
+    logger.error("Failed to detect build mode", { error });
+    res.status(500).json({ error: "Failed to detect mode" });
+  }
+});
+
+// Get prompt modifiers for current mode
+router.get("/build-mode/prompt-modifiers", (req, res) => {
+  try {
+    const projectId = req.query.projectId as string | undefined;
+    const modifiers = buildModeService.getPromptModifiers(projectId);
+    res.json(modifiers);
+  } catch (error) {
+    logger.error("Failed to get prompt modifiers", { error });
+    res.status(500).json({ error: "Failed to get modifiers" });
+  }
+});
+
+// Get/set fast mode settings
+router.get("/build-mode/fast-settings", (_req, res) => {
+  try {
+    const settings = buildModeService.getFastSettings();
+    res.json(settings);
+  } catch (error) {
+    logger.error("Failed to get fast settings", { error });
+    res.status(500).json({ error: "Failed to get settings" });
+  }
+});
+
+router.put("/build-mode/fast-settings", (req, res) => {
+  try {
+    buildModeService.setFastSettings(req.body);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to set fast settings", { error });
+    res.status(500).json({ error: "Failed to set settings" });
+  }
+});
+
+// Get/set full build settings
+router.get("/build-mode/full-settings", (_req, res) => {
+  try {
+    const settings = buildModeService.getFullSettings();
+    res.json(settings);
+  } catch (error) {
+    logger.error("Failed to get full settings", { error });
+    res.status(500).json({ error: "Failed to get settings" });
+  }
+});
+
+router.put("/build-mode/full-settings", (req, res) => {
+  try {
+    buildModeService.setFullSettings(req.body);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to set full settings", { error });
+    res.status(500).json({ error: "Failed to set settings" });
+  }
+});
+
+// Get build mode stats
+router.get("/build-mode/stats", (_req, res) => {
+  try {
+    const stats = buildModeService.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get build mode stats", { error });
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+
+// ============================================
+// AUTONOMY LEVEL ENDPOINTS
+// ============================================
+
+// Get all autonomy levels
+router.get("/autonomy/levels", (_req, res) => {
+  try {
+    const levels = autonomyLevelService.getAllLevels();
+    res.json(levels);
+  } catch (error) {
+    logger.error("Failed to get autonomy levels", { error });
+    res.status(500).json({ error: "Failed to get levels" });
+  }
+});
+
+// Get current autonomy level
+router.get("/autonomy", (req, res) => {
+  try {
+    const projectId = req.query.projectId as string | undefined;
+    const config = autonomyLevelService.getConfig(projectId);
+    res.json(config);
+  } catch (error) {
+    logger.error("Failed to get autonomy config", { error });
+    res.status(500).json({ error: "Failed to get config" });
+  }
+});
+
+// Set autonomy level
+router.put("/autonomy", (req, res) => {
+  try {
+    const { level, projectId } = req.body;
+    autonomyLevelService.setLevel(level, projectId);
+    res.json({ success: true, level });
+  } catch (error) {
+    logger.error("Failed to set autonomy level", { error });
+    res.status(500).json({ error: "Failed to set level" });
+  }
+});
+
+// Set custom autonomy config
+router.put("/autonomy/custom", (req, res) => {
+  try {
+    const { projectId, config } = req.body;
+    autonomyLevelService.setCustomConfig(projectId, config);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to set custom config", { error });
+    res.status(500).json({ error: "Failed to set config" });
+  }
+});
+
+// Check if action is allowed
+router.post("/autonomy/can-perform", (req, res) => {
+  try {
+    const { action, projectId } = req.body;
+    const result = autonomyLevelService.canPerformAction(action, projectId);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to check action", { error });
+    res.status(500).json({ error: "Failed to check action" });
+  }
+});
+
+// Get behavior for current level
+router.get("/autonomy/behavior", (req, res) => {
+  try {
+    const projectId = req.query.projectId as string | undefined;
+    const behavior = autonomyLevelService.getBehavior(projectId);
+    res.json(behavior);
+  } catch (error) {
+    logger.error("Failed to get behavior", { error });
+    res.status(500).json({ error: "Failed to get behavior" });
+  }
+});
+
+// Session management
+router.post("/autonomy/session/start", (req, res) => {
+  try {
+    const { projectId } = req.body;
+    autonomyLevelService.startSession(projectId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to start session", { error });
+    res.status(500).json({ error: "Failed to start session" });
+  }
+});
+
+router.post("/autonomy/session/end", (req, res) => {
+  try {
+    const { projectId } = req.body;
+    autonomyLevelService.endSession(projectId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to end session", { error });
+    res.status(500).json({ error: "Failed to end session" });
+  }
+});
+
+router.get("/autonomy/session/status", (req, res) => {
+  try {
+    const projectId = req.query.projectId as string;
+    const active = autonomyLevelService.isSessionActive(projectId);
+    const remaining = autonomyLevelService.getSessionTimeRemaining(projectId);
+    res.json({ active, remainingMinutes: remaining });
+  } catch (error) {
+    logger.error("Failed to get session status", { error });
+    res.status(500).json({ error: "Failed to get status" });
+  }
+});
+
+// Get autonomy stats
+router.get("/autonomy/stats", (_req, res) => {
+  try {
+    const stats = autonomyLevelService.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get autonomy stats", { error });
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+
+// ============================================
+// EXTENDED THINKING ENDPOINTS
+// ============================================
+
+// Get all thinking modes
+router.get("/thinking/modes", (_req, res) => {
+  try {
+    const modes = extendedThinkingService.getAllModes();
+    res.json(modes);
+  } catch (error) {
+    logger.error("Failed to get thinking modes", { error });
+    res.status(500).json({ error: "Failed to get modes" });
+  }
+});
+
+// Get current thinking mode
+router.get("/thinking", (req, res) => {
+  try {
+    const projectId = req.query.projectId as string | undefined;
+    const config = extendedThinkingService.getConfig(projectId);
+    res.json(config);
+  } catch (error) {
+    logger.error("Failed to get thinking config", { error });
+    res.status(500).json({ error: "Failed to get config" });
+  }
+});
+
+// Set thinking mode
+router.put("/thinking", (req, res) => {
+  try {
+    const { mode, projectId } = req.body;
+    extendedThinkingService.setMode(mode, projectId);
+    res.json({ success: true, mode });
+  } catch (error) {
+    logger.error("Failed to set thinking mode", { error });
+    res.status(500).json({ error: "Failed to set mode" });
+  }
+});
+
+// Check if extended thinking should trigger
+router.post("/thinking/should-trigger", (req, res) => {
+  try {
+    const { prompt, projectId } = req.body;
+    const result = extendedThinkingService.shouldTriggerExtended(prompt, projectId);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to check trigger", { error });
+    res.status(500).json({ error: "Failed to check trigger" });
+  }
+});
+
+// Analyze complexity
+router.post("/thinking/analyze-complexity", (req, res) => {
+  try {
+    const { prompt } = req.body;
+    const result = extendedThinkingService.analyzeComplexity(prompt);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to analyze complexity", { error });
+    res.status(500).json({ error: "Failed to analyze" });
+  }
+});
+
+// Start thinking session
+router.post("/thinking/sessions", (req, res) => {
+  try {
+    const { projectId, prompt, mode, triggerReason } = req.body;
+    const session = extendedThinkingService.startSession(projectId, prompt, mode, triggerReason);
+    res.json(session);
+  } catch (error) {
+    logger.error("Failed to start session", { error });
+    res.status(500).json({ error: "Failed to start session" });
+  }
+});
+
+// Get thinking session
+router.get("/thinking/sessions/:sessionId", (req, res) => {
+  try {
+    const session = extendedThinkingService.getSession(req.params.sessionId);
+    res.json(session || { error: "Session not found" });
+  } catch (error) {
+    logger.error("Failed to get session", { error });
+    res.status(500).json({ error: "Failed to get session" });
+  }
+});
+
+// Add step to session
+router.post("/thinking/sessions/:sessionId/steps", (req, res) => {
+  try {
+    const { type, content, insights, questions } = req.body;
+    const step = extendedThinkingService.addStep(
+      req.params.sessionId,
+      type,
+      content,
+      insights,
+      questions
+    );
+    res.json(step || { error: "Failed to add step" });
+  } catch (error) {
+    logger.error("Failed to add step", { error });
+    res.status(500).json({ error: "Failed to add step" });
+  }
+});
+
+// Complete thinking session
+router.post("/thinking/sessions/:sessionId/complete", (req, res) => {
+  try {
+    const { conclusion, confidence } = req.body;
+    const session = extendedThinkingService.completeSession(
+      req.params.sessionId,
+      conclusion,
+      confidence
+    );
+    res.json(session || { error: "Session not found" });
+  } catch (error) {
+    logger.error("Failed to complete session", { error });
+    res.status(500).json({ error: "Failed to complete session" });
+  }
+});
+
+// Generate thinking prompt
+router.get("/thinking/sessions/:sessionId/prompt", (req, res) => {
+  try {
+    const session = extendedThinkingService.getSession(req.params.sessionId);
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+    const prompt = extendedThinkingService.generateThinkingPrompt(session);
+    res.json({ prompt });
+  } catch (error) {
+    logger.error("Failed to generate prompt", { error });
+    res.status(500).json({ error: "Failed to generate prompt" });
+  }
+});
+
+// Get thinking stats
+router.get("/thinking/stats", (_req, res) => {
+  try {
+    const stats = extendedThinkingService.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get thinking stats", { error });
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+
+// ============================================
+// DESIGN MODE ENDPOINTS
+// ============================================
+
+// Get design mode status
+router.get("/design-mode", (_req, res) => {
+  try {
+    const stats = designModeService.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get design mode", { error });
+    res.status(500).json({ error: "Failed to get design mode" });
+  }
+});
+
+// Enable/disable design mode
+router.put("/design-mode", (req, res) => {
+  try {
+    const { enabled } = req.body;
+    designModeService.setEnabled(enabled);
+    res.json({ success: true, enabled });
+  } catch (error) {
+    logger.error("Failed to set design mode", { error });
+    res.status(500).json({ error: "Failed to set design mode" });
+  }
+});
+
+// Get color schemes
+router.get("/design-mode/color-schemes", (_req, res) => {
+  try {
+    const schemes = designModeService.getColorSchemes();
+    res.json(schemes);
+  } catch (error) {
+    logger.error("Failed to get color schemes", { error });
+    res.status(500).json({ error: "Failed to get schemes" });
+  }
+});
+
+// Get design templates
+router.get("/design-mode/templates", (req, res) => {
+  try {
+    const category = req.query.category as any;
+    const templates = designModeService.getTemplates(category);
+    res.json(templates);
+  } catch (error) {
+    logger.error("Failed to get templates", { error });
+    res.status(500).json({ error: "Failed to get templates" });
+  }
+});
+
+// Get single template
+router.get("/design-mode/templates/:templateId", (req, res) => {
+  try {
+    const template = designModeService.getTemplate(req.params.templateId);
+    res.json(template || { error: "Template not found" });
+  } catch (error) {
+    logger.error("Failed to get template", { error });
+    res.status(500).json({ error: "Failed to get template" });
+  }
+});
+
+// Infer design from prompt
+router.post("/design-mode/infer", (req, res) => {
+  try {
+    const { prompt } = req.body;
+    const result = designModeService.inferDesignFromPrompt(prompt);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to infer design", { error });
+    res.status(500).json({ error: "Failed to infer design" });
+  }
+});
+
+// Create mockup
+router.post("/design-mode/mockups", (req, res) => {
+  try {
+    const { projectId, name, description, style, templateId } = req.body;
+    const mockup = designModeService.createMockup(projectId, name, description, style, templateId);
+    res.status(201).json(mockup);
+  } catch (error) {
+    logger.error("Failed to create mockup", { error });
+    res.status(500).json({ error: "Failed to create mockup" });
+  }
+});
+
+// Get mockup
+router.get("/design-mode/mockups/:mockupId", (req, res) => {
+  try {
+    const mockup = designModeService.getMockup(req.params.mockupId);
+    res.json(mockup || { error: "Mockup not found" });
+  } catch (error) {
+    logger.error("Failed to get mockup", { error });
+    res.status(500).json({ error: "Failed to get mockup" });
+  }
+});
+
+// Get project mockups
+router.get("/design-mode/projects/:projectId/mockups", (req, res) => {
+  try {
+    const mockups = designModeService.getProjectMockups(req.params.projectId);
+    res.json(mockups);
+  } catch (error) {
+    logger.error("Failed to get mockups", { error });
+    res.status(500).json({ error: "Failed to get mockups" });
+  }
+});
+
+// Add component to mockup
+router.post("/design-mode/mockups/:mockupId/components", (req, res) => {
+  try {
+    const component = designModeService.addComponent(req.params.mockupId, req.body);
+    res.json(component || { error: "Failed to add component" });
+  } catch (error) {
+    logger.error("Failed to add component", { error });
+    res.status(500).json({ error: "Failed to add component" });
+  }
+});
+
+// Update mockup layout
+router.put("/design-mode/mockups/:mockupId/layout", (req, res) => {
+  try {
+    const success = designModeService.updateLayout(req.params.mockupId, req.body);
+    res.json({ success });
+  } catch (error) {
+    logger.error("Failed to update layout", { error });
+    res.status(500).json({ error: "Failed to update layout" });
+  }
+});
+
+// Update mockup colors
+router.put("/design-mode/mockups/:mockupId/colors", (req, res) => {
+  try {
+    const success = designModeService.updateColorScheme(req.params.mockupId, req.body);
+    res.json({ success });
+  } catch (error) {
+    logger.error("Failed to update colors", { error });
+    res.status(500).json({ error: "Failed to update colors" });
+  }
+});
+
+// Approve mockup
+router.post("/design-mode/mockups/:mockupId/approve", (req, res) => {
+  try {
+    const success = designModeService.approveMockup(req.params.mockupId);
+    res.json({ success });
+  } catch (error) {
+    logger.error("Failed to approve mockup", { error });
+    res.status(500).json({ error: "Failed to approve mockup" });
+  }
+});
+
+// Generate code from mockup
+router.post("/design-mode/mockups/:mockupId/generate", (req, res) => {
+  try {
+    const code = designModeService.generateCodeFromMockup(req.params.mockupId);
+    res.json({ code: code || null });
+  } catch (error) {
+    logger.error("Failed to generate code", { error });
+    res.status(500).json({ error: "Failed to generate code" });
   }
 });
 

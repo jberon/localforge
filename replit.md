@@ -17,6 +17,39 @@ LocalForge provides a chat-based interface with streaming responses for real-tim
 ### Plan/Build Mode (Replit-style)
 LocalForge features a Replit-style Plan/Build mode toggle. In **Plan Mode**, AI generates a structured task list for user review and approval before execution. In **Build Mode**, AI directly writes code. A task list with progress indicators is displayed when building from a plan.
 
+### Fast Mode vs Full Build Mode
+Two build speed options for different needs:
+- **Fast Mode** (10-60 seconds): Quick, targeted edits with minimal overhead. Skips non-essential services like documentation generation and bundle optimization. Best for small fixes, tweaks, and single-file edits.
+- **Full Build Mode** (5-15 minutes): Comprehensive full-stack generation with all 28 automation services enabled. Generates tests, documentation, runs validation, and produces production-grade output.
+
+The system auto-detects the appropriate mode based on prompt analysis (short prompts with keywords like "fix", "change", "update" suggest Fast Mode).
+
+### Autonomy Levels
+Four-tier autonomy control system:
+- **Low**: Confirms every action. Maximum user control. 5-minute sessions.
+- **Medium** (default): Confirms destructive actions only. Auto-runs tests. 15-minute sessions.
+- **High**: Auto-fixes errors, self-testing loops enabled. Minimal confirmations. 60-minute sessions.
+- **Max**: Full autonomy with extended 200-minute sessions. Self-supervised development with auto-fix and testing loops.
+
+### Extended Thinking Mode
+Deep reasoning capabilities for complex tasks:
+- **Standard**: Quick assessment and direct solutions (3 steps max)
+- **Extended**: Multi-step analysis with decomposition, synthesis, and validation (7 steps)
+- **Deep**: Comprehensive analysis with research, multiple synthesis passes, and high-confidence conclusions (15 steps)
+
+Auto-triggers when:
+- Complex prompts detected (multiple technical concepts, multi-step requests)
+- Loop patterns detected (stuck in retry cycles)
+- Ambiguous requirements need clarification
+
+### Design Mode
+Rapid mockup and wireframe generation before full code builds:
+- Create visual mockups in ~2 minutes
+- Choose from 5 design styles: Minimal, Modern, Playful, Corporate, Creative
+- Pre-built templates for landing pages, dashboards, and forms
+- Approve mockups before generating full code
+- Automatic code generation from approved designs
+
 ### AI Dream Team (Autonomous Dual-Model Orchestration)
 When dual models (planner + builder) are configured, LocalForge activates an "AI Dream Team" mode. This team, comprised of expert personas, collectively handles project planning, task tracking, code generation, validation, and documentation (including README auto-generation). All team actions are logged in a Project Team Panel UI.
 

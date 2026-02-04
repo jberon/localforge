@@ -38,6 +38,10 @@ import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIn
 import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database } from "lucide-react";
 import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
+import { BuildSpeedToggle } from "@/components/build-speed-toggle";
+import { AutonomySlider } from "@/components/autonomy-slider";
+import { ExtendedThinkingIndicator } from "@/components/extended-thinking-indicator";
+import { DesignModePanel } from "@/components/design-mode-panel";
 import type { Action, ActionType } from "@/components/action-group-row";
 import {
   AlertDialog,
@@ -1370,6 +1374,13 @@ export default function Home() {
                 mode={agentMode}
                 onModeChange={setAgentMode}
                 disabled={isGenerating || isPlanning || isBuilding}
+              />
+              <BuildSpeedToggle 
+                projectId={activeProjectId || undefined}
+              />
+              <AutonomySlider 
+                projectId={activeProjectId || undefined}
+                compact={true}
               />
             </div>
             <div className="flex items-center gap-2 shrink-0">
