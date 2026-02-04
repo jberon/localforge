@@ -8,7 +8,7 @@ async function initializeEsbuild(): Promise<void> {
   if (initPromise) return initPromise;
   
   initPromise = esbuild.initialize({
-    wasmURL: 'https://unpkg.com/esbuild-wasm@0.20.1/esbuild.wasm',
+    wasmURL: 'https://unpkg.com/esbuild-wasm@0.27.2/esbuild.wasm',
   });
   
   await initPromise;
