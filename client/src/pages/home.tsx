@@ -1051,7 +1051,7 @@ export default function Home() {
     }
   }, [activeProjectId, dualModelSettings.builder, toast]);
 
-  // Plan mode handler - generates a task list without building
+  // Plan mode handler - generates a task list without building (uses SSE streaming)
   const handlePlanModeGenerate = useCallback(async (content: string) => {
     if (!activeProjectId) {
       toast({
@@ -1067,47 +1067,86 @@ export default function Home() {
     setPlanTasks([]);
     setPlanSummary("");
     setPlanArchitecture("");
+    setGenerationPhase("Creating plan...");
 
     try {
       const response = await fetch(`/api/projects/${activeProjectId}/plan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content,
+          prompt: content,
           settings,
-          planOnly: true,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to generate plan");
+      if (!response.ok && !response.headers.get("content-type")?.includes("text/event-stream")) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server error: ${response.status}`);
       }
 
-      const plan = await response.json();
-      
-      if (plan.tasks && Array.isArray(plan.tasks)) {
-        const planTasks: PlanTask[] = plan.tasks.map((task: any, index: number) => ({
-          id: task.id || `task-${index + 1}`,
-          title: task.title || task.description || `Task ${index + 1}`,
-          description: task.description,
-          fileTarget: task.fileTarget,
-          type: task.type || "build",
-          selected: true,
-        }));
-        setPlanTasks(planTasks);
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("No response body");
       }
 
-      if (plan.summary) {
-        setPlanSummary(plan.summary);
-      }
+      let buffer = "";
+      let planChunks = "";
 
-      if (plan.architecture) {
-        setPlanArchitecture(plan.architecture);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === "chunk") {
+                planChunks += data.content;
+                setStreamingPlan(planChunks);
+              } else if (data.type === "plan") {
+                const plan = data.plan;
+                
+                if (plan.steps && Array.isArray(plan.steps)) {
+                  const tasks: PlanTask[] = plan.steps.map((step: any) => ({
+                    id: step.id || `task-${step.id}`,
+                    title: step.title || step.description || `Step ${step.id}`,
+                    description: step.description,
+                    fileTarget: step.fileTarget,
+                    type: step.type || "build",
+                    selected: true,
+                  }));
+                  setPlanTasks(tasks);
+                }
+
+                if (plan.summary) {
+                  setPlanSummary(plan.summary);
+                }
+
+                if (plan.architecture) {
+                  setPlanArchitecture(plan.architecture);
+                }
+              } else if (data.type === "error") {
+                throw new Error(data.error);
+              } else if (data.type === "done") {
+                setGenerationPhase(null);
+              }
+            } catch (parseError) {
+              // Continue on JSON parse errors for individual chunks
+            }
+          }
+        }
       }
 
       toast({
         title: "Plan Ready",
-        description: `Generated ${plan.tasks?.length || 0} tasks. Review and click 'Start Building' when ready.`,
+        description: "Review the plan and click 'Start Building' when ready.",
       });
     } catch (error: any) {
       toast({
@@ -1117,6 +1156,7 @@ export default function Home() {
       });
     } finally {
       setIsPlanning(false);
+      setGenerationPhase(null);
     }
   }, [activeProjectId, settings, toast]);
 
