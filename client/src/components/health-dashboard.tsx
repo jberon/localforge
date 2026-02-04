@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +41,7 @@ interface HealthDashboardData {
   };
   services: {
     database: { connected: boolean; latencyMs: number };
-    llm: { connected: boolean; latencyMs: number };
+    llm: { connected: boolean; latencyMs: number; provider: string; isCloud: boolean };
   };
   health: {
     status: "healthy" | "degraded" | "critical";
@@ -115,7 +115,6 @@ function formatUptime(seconds: number): string {
 
 export function HealthDashboard() {
   const [isOpen, setIsOpen] = useState(false);
-  const queryClient = useQueryClient();
 
   const { data, isLoading, error, refetch } = useQuery<HealthDashboardData>({
     queryKey: ["/api/health/dashboard"],
@@ -243,7 +242,12 @@ export function HealthDashboard() {
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
                     <div className="flex items-center gap-2">
                       <Cpu className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">LLM</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm">LLM</span>
+                        <span className="text-xs text-muted-foreground capitalize">
+                          {data.services.llm.isCloud ? data.services.llm.provider : "Local"}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{data.services.llm.latencyMs}ms</span>
@@ -364,6 +368,38 @@ export function HealthDashboard() {
                           >
                             {cb.state}
                           </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {data.resilience.bulkheads && Object.keys(data.resilience.bulkheads).length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    Bulkheads (Concurrency Limits)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {Object.entries(data.resilience.bulkheads).map(([key, stats]) => (
+                      <div key={key} className="flex items-center justify-between text-xs p-2 bg-muted/30 rounded">
+                        <span className="font-mono">{key}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground">
+                            Active: {stats.active}/{stats.maxConcurrent}
+                          </span>
+                          <span className="text-muted-foreground">
+                            Queue: {stats.queue}
+                          </span>
+                          <Progress 
+                            value={(stats.active / stats.maxConcurrent) * 100} 
+                            className="w-16 h-1.5" 
+                          />
                         </div>
                       </div>
                     ))}

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { checkConnection } from "../llm-client";
+import { checkConnection, isCloudProviderActive, checkCloudConnection, getCloudSettings } from "../llm-client";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { healthAlertsService } from "../services/health-alerts.service";
@@ -28,13 +28,22 @@ router.get("/", async (req, res) => {
   
   try {
     const llmStart = Date.now();
-    const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
-    const result = await checkConnection(endpoint);
-    checks.llm = { 
-      status: result.connected ? "healthy" : "degraded", 
-      latencyMs: Date.now() - llmStart,
-      ...(result.error && { error: result.error })
-    };
+    if (isCloudProviderActive()) {
+      const cloudResult = await checkCloudConnection();
+      checks.llm = { 
+        status: cloudResult.connected ? "healthy" : "degraded", 
+        latencyMs: Date.now() - llmStart,
+        ...(cloudResult.error && { error: cloudResult.error })
+      };
+    } else {
+      const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
+      const result = await checkConnection(endpoint);
+      checks.llm = { 
+        status: result.connected ? "healthy" : "degraded", 
+        latencyMs: Date.now() - llmStart,
+        ...(result.error && { error: result.error })
+      };
+    }
   } catch (error: any) {
     checks.llm = { status: "degraded", error: error.message };
   }
@@ -107,15 +116,31 @@ router.get("/dashboard", async (req, res) => {
     }
   }
   
-  // LLM connection check
-  let llmStatus = { connected: false, latencyMs: 0 };
+  // LLM connection check - uses active provider (local or cloud)
+  let llmStatus = { connected: false, latencyMs: 0, provider: "local", isCloud: false };
   try {
     const llmStart = Date.now();
-    const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
-    const result = await checkConnection(endpoint);
-    llmStatus = { connected: result.connected, latencyMs: Date.now() - llmStart };
+    if (isCloudProviderActive()) {
+      const cloudResult = await checkCloudConnection();
+      const settings = getCloudSettings();
+      llmStatus = { 
+        connected: cloudResult.connected, 
+        latencyMs: Date.now() - llmStart,
+        provider: settings.provider,
+        isCloud: true,
+      };
+    } else {
+      const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
+      const result = await checkConnection(endpoint);
+      llmStatus = { 
+        connected: result.connected, 
+        latencyMs: Date.now() - llmStart,
+        provider: "local",
+        isCloud: false,
+      };
+    }
   } catch {
-    llmStatus = { connected: false, latencyMs: 0 };
+    llmStatus = { connected: false, latencyMs: 0, provider: "unknown", isCloud: false };
   }
   
   res.json({

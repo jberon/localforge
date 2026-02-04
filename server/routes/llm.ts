@@ -10,6 +10,11 @@ import {
   getExtendedQueueTelemetry,
   getCircuitBreakerStatus,
   resetCircuitBreaker,
+  getCloudSettings,
+  setCloudSettings,
+  isCloudProviderActive,
+  checkCloudConnection,
+  getActiveLLMClient,
 } from "../llm-client";
 import { llmSettingsSchema } from "@shared/schema";
 import { z } from "zod";
@@ -160,14 +165,14 @@ router.post("/enhance-prompt", llmRateLimiter, async (req, res) => {
 
     const { prompt, settings } = parsed.data;
 
-    const openai = createLLMClient({
-      endpoint: settings.endpoint || "http://localhost:1234/v1",
+    const { client: openai, isCloud, provider } = getActiveLLMClient({
+      endpoint: settings.endpoint,
       model: settings.model,
       temperature: LLM_DEFAULTS.temperature.creative,
     });
 
     const response = await openai.chat.completions.create({
-      model: settings.model || "local-model",
+      model: isCloud ? (settings.model || "gpt-4o-mini") : (settings.model || "local-model"),
       messages: [
         { role: "system", content: PROMPT_ENHANCEMENT_SYSTEM },
         { role: "user", content: prompt },
@@ -203,14 +208,14 @@ router.post("/fix-code", llmRateLimiter, async (req, res) => {
 
     const { code, errors, settings } = parsed.data;
 
-    const openai = createLLMClient({
-      endpoint: settings.endpoint || "http://localhost:1234/v1",
+    const { client: openai, isCloud, provider } = getActiveLLMClient({
+      endpoint: settings.endpoint,
       model: settings.model,
       temperature: LLM_DEFAULTS.temperature.deterministic,
     });
 
     const response = await openai.chat.completions.create({
-      model: settings.model || "local-model",
+      model: isCloud ? (settings.model || "gpt-4o-mini") : (settings.model || "local-model"),
       messages: [
         { role: "system", content: ERROR_FIX_SYSTEM },
         { role: "user", content: `BROKEN CODE:\n\`\`\`jsx\n${code}\n\`\`\`\n\nERRORS:\n${errors.join("\n")}` },
@@ -254,8 +259,8 @@ router.post("/assist", llmRateLimiter, async (req, res) => {
 
     const { prompt, action, code, settings } = parsed.data;
 
-    const openai = createLLMClient({
-      endpoint: settings.endpoint || "http://localhost:1234/v1",
+    const { client: openai, isCloud } = getActiveLLMClient({
+      endpoint: settings.endpoint,
       model: settings.model,
       temperature: LLM_DEFAULTS.temperature.planner,
     });
@@ -267,7 +272,7 @@ router.post("/assist", llmRateLimiter, async (req, res) => {
     };
 
     const response = await openai.chat.completions.create({
-      model: settings.model || "local-model",
+      model: isCloud ? (settings.model || "gpt-4o-mini") : (settings.model || "local-model"),
       messages: [
         { role: "system", content: systemPrompts[action] },
         { role: "user", content: prompt },
@@ -394,17 +399,39 @@ router.post("/test-cloud", async (req, res) => {
   }
 });
 
-// Cloud LLM settings storage (in-memory for now, can be persisted to DB)
-let cloudLLMSettings: Record<string, unknown> = {};
-
+// Cloud LLM settings - uses centralized llm-client storage
 router.get("/cloud-settings", (_req, res) => {
-  res.json(cloudLLMSettings);
+  res.json(getCloudSettings());
 });
 
 router.post("/cloud-settings", (req, res) => {
-  cloudLLMSettings = req.body;
-  logger.info("Cloud LLM settings updated");
+  setCloudSettings(req.body);
+  logger.info("Cloud LLM settings updated", { provider: req.body.provider });
   res.json({ success: true });
+});
+
+// Get active LLM provider status
+router.get("/active-provider", async (_req, res) => {
+  const cloudActive = isCloudProviderActive();
+  const settings = getCloudSettings();
+  
+  if (cloudActive) {
+    const cloudStatus = await checkCloudConnection();
+    res.json({
+      provider: settings.provider,
+      isCloud: true,
+      connected: cloudStatus.connected,
+      error: cloudStatus.error,
+    });
+  } else {
+    const localStatus = await checkConnection();
+    res.json({
+      provider: "local",
+      isCloud: false,
+      connected: localStatus.connected,
+      error: localStatus.error,
+    });
+  }
 });
 
 export { SYSTEM_PROMPT, REFINEMENT_SYSTEM };

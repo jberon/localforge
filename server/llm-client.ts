@@ -103,6 +103,115 @@ const LOCAL_API_KEY = LLM_CONFIG.apiKey;
 
 const clientCache = new Map<string, OpenAI>();
 
+// ============================================================================
+// CLOUD LLM PROVIDER SUPPORT
+// ============================================================================
+
+interface CloudLLMSettings {
+  provider: "none" | "openai" | "anthropic" | "google" | "groq" | "together" | "custom";
+  apiKey?: string;
+  model?: string;
+  customEndpoint?: string;
+  temperature?: number;
+}
+
+let cloudSettings: CloudLLMSettings = { provider: "none" };
+
+export function getCloudSettings(): CloudLLMSettings {
+  return { ...cloudSettings };
+}
+
+export function setCloudSettings(settings: CloudLLMSettings): void {
+  cloudSettings = { ...settings };
+}
+
+export function isCloudProviderActive(): boolean {
+  return cloudSettings.provider !== "none" && !!cloudSettings.apiKey;
+}
+
+// Provider-specific endpoints
+const CLOUD_ENDPOINTS: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+  google: "https://generativelanguage.googleapis.com/v1beta",
+  groq: "https://api.groq.com/openai/v1",
+  together: "https://api.together.xyz/v1",
+};
+
+// Create cloud LLM client (OpenAI SDK compatible for most providers)
+export function createCloudLLMClient(settings: CloudLLMSettings): OpenAI | null {
+  if (settings.provider === "none" || !settings.apiKey) {
+    return null;
+  }
+
+  const endpoint = settings.provider === "custom" 
+    ? settings.customEndpoint 
+    : CLOUD_ENDPOINTS[settings.provider];
+
+  if (!endpoint) return null;
+
+  // Anthropic uses different SDK, but for compatibility we use fetch wrapper
+  // For OpenAI-compatible providers (Groq, Together), use OpenAI SDK
+  if (settings.provider === "anthropic") {
+    // Anthropic requires custom handling, return null for now
+    // Full implementation would use @anthropic-ai/sdk
+    return null;
+  }
+
+  return new OpenAI({
+    apiKey: settings.apiKey,
+    baseURL: endpoint,
+    timeout: LLM_CONFIG.requestTimeoutMs,
+  });
+}
+
+// Get active LLM client (cloud or local based on settings)
+export function getActiveLLMClient(localSettings?: { endpoint?: string; model?: string; temperature?: number }): { client: OpenAI; isCloud: boolean; provider: string } {
+  if (isCloudProviderActive()) {
+    const cloudClient = createCloudLLMClient(cloudSettings);
+    if (cloudClient) {
+      return { 
+        client: cloudClient, 
+        isCloud: true, 
+        provider: cloudSettings.provider 
+      };
+    }
+  }
+  
+  // Fall back to local LM Studio
+  const localClient = createLLMClient({
+    endpoint: localSettings?.endpoint || LLM_CONFIG.defaultEndpoint,
+    model: localSettings?.model,
+    temperature: localSettings?.temperature,
+  });
+  
+  return { client: localClient, isCloud: false, provider: "local" };
+}
+
+// Check cloud provider connection
+export async function checkCloudConnection(): Promise<{ connected: boolean; provider: string; error?: string }> {
+  if (!isCloudProviderActive()) {
+    return { connected: false, provider: "none", error: "No cloud provider configured" };
+  }
+
+  try {
+    const client = createCloudLLMClient(cloudSettings);
+    if (!client) {
+      return { connected: false, provider: cloudSettings.provider, error: "Client creation failed" };
+    }
+
+    // Quick test with models endpoint
+    await client.models.list();
+    return { connected: true, provider: cloudSettings.provider };
+  } catch (error: any) {
+    return { 
+      connected: false, 
+      provider: cloudSettings.provider, 
+      error: error.message || "Connection failed" 
+    };
+  }
+}
+
 // Request queue for enforcing concurrency limits (M4 Pro optimization)
 interface QueuedRequest<T> {
   execute: () => Promise<T>;
