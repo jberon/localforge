@@ -34,6 +34,7 @@ const DEFAULT_CONFIG: PruningConfig = {
 
 export class ContextPruningService {
   private static instance: ContextPruningService;
+  private estimationStats = { totalEstimated: 0, samples: 0, avgRatio: 0 };
 
   private constructor() {}
 
@@ -44,11 +45,123 @@ export class ContextPruningService {
     return ContextPruningService.instance;
   }
 
+  /**
+   * Enhanced token estimation using GPT-style BPE approximation.
+   * More accurate than simple word/character counting.
+   * 
+   * Accuracy improvements:
+   * - Code blocks tokenize differently (more tokens per character)
+   * - URLs and paths are broken into many tokens
+   * - Numbers and special characters count differently
+   * - Whitespace is often merged with adjacent tokens
+   */
   estimateTokens(text: string): number {
     if (!text) return 0;
-    const words = text.split(/\s+/).length;
-    const chars = text.length;
-    return Math.ceil(Math.max(words * 1.3, chars / 4));
+    
+    let totalTokens = 0;
+    let remainingText = text;
+    
+    // Extract and count code blocks separately (higher token density)
+    const codeBlockPattern = /```[\s\S]*?```/g;
+    const codeBlocks = remainingText.match(codeBlockPattern) || [];
+    for (const block of codeBlocks) {
+      // Code has ~3.5 chars per token due to symbols and short identifiers
+      totalTokens += Math.ceil(block.length / 3.5);
+    }
+    // Remove all code blocks at once
+    remainingText = remainingText.replace(codeBlockPattern, ' ');
+    
+    // Count URLs (they tokenize into many pieces)
+    const urlPattern = /https?:\/\/[^\s]+/g;
+    const urls = remainingText.match(urlPattern) || [];
+    for (const url of urls) {
+      // URLs break into many tokens (~2.5 chars per token)
+      totalTokens += Math.ceil(url.length / 2.5);
+    }
+    remainingText = remainingText.replace(urlPattern, ' ');
+    
+    // Count file paths (also tokenize densely)
+    const pathPattern = /(?:\/[\w\-./]+)+/g;
+    const paths = remainingText.match(pathPattern) || [];
+    for (const path of paths) {
+      totalTokens += Math.ceil(path.length / 3);
+    }
+    remainingText = remainingText.replace(pathPattern, ' ');
+    
+    // Count numbers (each number group is typically 1-2 tokens)
+    const numbers = remainingText.match(/\d+/g) || [];
+    for (const num of numbers) {
+      // Numbers: 1-3 digits = 1 token, 4-6 = 2 tokens, etc.
+      totalTokens += Math.ceil(num.length / 3);
+    }
+    remainingText = remainingText.replace(/\d+/g, ' ');
+    
+    // Count special characters/punctuation (before stripping them)
+    // Most punctuation becomes 1 token, some pairs like () {} [] are 1 each
+    const specialChars = remainingText.match(/[^a-zA-Z0-9\s]/g) || [];
+    // Common symbols: each is roughly 0.5-1 tokens (average 0.7)
+    totalTokens += Math.ceil(specialChars.length * 0.7);
+    
+    // Strip all non-alphanumeric chars before word processing
+    const cleanText = remainingText.replace(/[^a-zA-Z\s]/g, ' ');
+    
+    // Count remaining words using improved BPE estimation
+    const words = cleanText.split(/\s+/).filter(w => w.length > 0);
+    for (const word of words) {
+      if (word.length <= 4) {
+        // Short words are usually 1 token
+        totalTokens += 1;
+      } else if (word.length <= 8) {
+        // Medium words are 1-2 tokens
+        totalTokens += 1.3;
+      } else {
+        // Long words are split by BPE (~4 chars per subtoken)
+        totalTokens += Math.ceil(word.length / 4);
+      }
+    }
+    
+    // Add overhead for message structure (role tokens, delimiters)
+    // This is model-dependent; 5 is a conservative average
+    const overhead = 5;
+    
+    // Apply calibration factor if we have enough samples
+    let calibrated = totalTokens + overhead;
+    if (this.estimationStats.samples >= 10 && this.estimationStats.avgRatio > 0.5 && this.estimationStats.avgRatio < 2.0) {
+      calibrated = calibrated * this.estimationStats.avgRatio;
+    }
+    
+    return Math.ceil(calibrated);
+  }
+
+  /**
+   * Get estimation statistics for accuracy tracking
+   */
+  getEstimationStats() {
+    return { ...this.estimationStats };
+  }
+
+  /**
+   * Validate estimation accuracy against actual token count from LLM
+   * Call this with actual token counts from LLM responses to improve accuracy
+   */
+  recordActualTokens(text: string, actualTokens: number): void {
+    const estimated = this.estimateTokens(text);
+    const ratio = actualTokens / Math.max(1, estimated);
+    
+    this.estimationStats.samples++;
+    this.estimationStats.totalEstimated += estimated;
+    this.estimationStats.avgRatio = 
+      (this.estimationStats.avgRatio * (this.estimationStats.samples - 1) + ratio) / this.estimationStats.samples;
+    
+    // Log if estimation is significantly off (>20% error)
+    if (Math.abs(1 - ratio) > 0.2) {
+      logger.debug("Token estimation variance", { 
+        estimated, 
+        actual: actualTokens, 
+        ratio: ratio.toFixed(2),
+        textLength: text.length 
+      });
+    }
   }
 
   calculateTotalTokens(messages: Message[]): number {
