@@ -9,6 +9,15 @@ LocalForge is an AI-powered web application builder that generates working React
 - Temperature slider for LLM creativity control
 - Dual model support: Configure separate models for planning vs building phases
 - Cloud LLM provider support: OpenAI, Groq, Together AI (with API key configuration)
+- Test Mode: Built-in Replit AI Integration for testing without local LM Studio
+
+### Test Mode (v1.5.0)
+Test Mode uses Replit AI Integrations (OpenAI) to test LocalForge without requiring local LM Studio setup:
+- Enable via Cloud LLM Settings → Test Mode toggle
+- Uses automatic API key detection (AI_INTEGRATIONS_OPENAI_API_KEY)
+- Default model: gpt-4o-mini
+- Header badge shows connection status (green=connected, amber=not connected)
+- Automatically routes all generation requests to cloud LLM when active
 
 ## System Architecture
 
