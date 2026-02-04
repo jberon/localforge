@@ -57,6 +57,36 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+const updateProjectSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().optional(),
+  generatedCode: z.string().optional(),
+});
+
+router.put("/:id", async (req, res) => {
+  try {
+    const parsed = updateProjectSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+
+    const existing = await storage.getProject(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    const project = await storage.updateProject(req.params.id, parsed.data);
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    res.json(project);
+  } catch (error: any) {
+    logger.error("Error updating project", {}, error);
+    res.status(500).json({ error: "Failed to update project" });
+  }
+});
+
 const updateNameSchema = z.object({
   name: z.string().min(1).max(100),
 });
