@@ -39,6 +39,7 @@ import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRig
 import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
 import { BuildSpeedToggle } from "@/components/build-speed-toggle";
+import { DeployButton } from "@/components/deploy-button";
 import { AutonomySlider } from "@/components/autonomy-slider";
 import { ExtendedThinkingIndicator } from "@/components/extended-thinking-indicator";
 import { DesignModePanel } from "@/components/design-mode-panel";
@@ -1405,6 +1406,15 @@ export default function Home() {
                     queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                     queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject.id] });
                   }}
+                />
+              )}
+              {activeProject && (
+                <DeployButton
+                  projectId={parseInt(activeProject.id) || 0}
+                  projectName={activeProject.name}
+                  hasBackend={true}
+                  hasDatabase={false}
+                  disabled={isGenerating || isPlanning || isBuilding}
                 />
               )}
               <Button 

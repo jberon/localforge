@@ -77,6 +77,28 @@ Includes built-in version control with checkpoints, allowing users to save snaps
 ### Publishing & Packaging
 Supports downloading complete projects as ZIP files with options for Docker configurations, environment templates, and CI/CD pipelines, ensuring secure path sanitization.
 
+### One-Click Deployment
+LocalForge includes a one-click deployment system for publishing generated apps instantly to popular platforms:
+
+**Supported Platforms:**
+- **Vercel**: Best for React, Next.js, and static sites with zero-config deployments
+- **Netlify**: Great for static sites and serverless functions with easy CI/CD
+- **Railway**: Full-stack apps with databases, optimized for backends
+- **Render**: Simple cloud hosting for web apps and APIs
+- **Replit**: Deploy directly on Replit with built-in hosting
+
+**Features:**
+- **Platform Auto-Detection**: Recommends the best platform based on project type (has backend, database, etc.)
+- **Config Generation**: Auto-generates platform-specific configs (vercel.json, netlify.toml, railway.json, render.yaml)
+- **Dockerfile Generation**: Creates production-ready Dockerfiles for containerized deployments
+- **Environment Templates**: Generates .env templates in dotenv, JSON, or YAML formats
+- **Deployment Tracking**: Real-time status updates with build logs and deployment URLs
+- **Deployment History**: View all past deployments with quick access to deployed URLs
+
+**UI Components:**
+- **DeployButton**: One-click dropdown in the header for instant platform selection
+- **DeploymentPanel**: Full panel with platform selection, deployment history, and package management
+
 ### Local LLM Optimization
 Optimized for Mac M4 Pro, integrating with LM Studio via client connection caching, extended timeouts, automatic retry logic, and array-based streaming. Supports configurable temperature presets and token limits. Backpressure UX provides queue status and warnings.
 

@@ -29,6 +29,8 @@ import { buildModeService } from "../services/build-mode.service";
 import { autonomyLevelService } from "../services/autonomy-level.service";
 import { extendedThinkingService } from "../services/extended-thinking.service";
 import { designModeService } from "../services/design-mode.service";
+import { deploymentService, type ProjectDeploymentInfo, type DeploymentPlatform } from "../services/deployment.service";
+import { z } from "zod";
 import logger from "../lib/logger";
 
 const router = Router();
@@ -1795,6 +1797,164 @@ router.post("/design-mode/mockups/:mockupId/generate", (req, res) => {
   } catch (error) {
     logger.error("Failed to generate code", { error });
     res.status(500).json({ error: "Failed to generate code" });
+  }
+});
+
+// ============================================================================
+// DEPLOYMENT SERVICE ROUTES
+// ============================================================================
+
+// Get all available deployment platforms
+router.get("/deployment/platforms", (_req, res) => {
+  try {
+    const platforms = deploymentService.getPlatforms();
+    res.json(platforms);
+  } catch (error) {
+    logger.error("Failed to get deployment platforms", { error });
+    res.status(500).json({ error: "Failed to get platforms" });
+  }
+});
+
+// Zod schemas for deployment validation
+const deploymentPlatformSchema = z.enum(["vercel", "netlify", "railway", "render", "replit"]);
+const frameworkSchema = z.enum(["react", "next", "vite", "express", "static", "custom"]);
+
+const projectDeploymentInfoSchema = z.object({
+  name: z.string().min(1, "Project name is required"),
+  framework: frameworkSchema,
+  hasBackend: z.boolean(),
+  hasDatabase: z.boolean(),
+  entryPoint: z.string().min(1, "Entry point is required"),
+  buildCommand: z.string().min(1, "Build command is required"),
+  outputDir: z.string().min(1, "Output directory is required"),
+  envVars: z.array(z.string()).default([])
+});
+
+const packageRequestSchema = z.object({
+  projectId: z.number().int().positive("Project ID must be a positive integer"),
+  platform: deploymentPlatformSchema,
+  projectInfo: projectDeploymentInfoSchema
+});
+
+const deployRequestSchema = z.object({
+  projectId: z.number().int().positive("Project ID must be a positive integer"),
+  platform: deploymentPlatformSchema,
+  packageId: z.string().min(1, "Package ID is required")
+});
+
+// Get recommended platform for a project
+router.post("/deployment/recommend", (req, res) => {
+  try {
+    const result = projectDeploymentInfoSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: "Invalid request", details: result.error.flatten() });
+    }
+    const projectInfo = result.data;
+    const recommended = deploymentService.getRecommendedPlatform(projectInfo);
+    const platform = deploymentService.getPlatform(recommended);
+    res.json({ recommended, platform });
+  } catch (error) {
+    logger.error("Failed to get platform recommendation", { error });
+    res.status(500).json({ error: "Failed to get recommendation" });
+  }
+});
+
+// Generate deployment package for a project
+router.post("/deployment/package", (req, res) => {
+  try {
+    const result = packageRequestSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: "Invalid request", details: result.error.flatten() });
+    }
+    const { projectId, platform, projectInfo } = result.data;
+    const pkg = deploymentService.generatePackage(projectId, platform, projectInfo);
+    res.json(pkg);
+  } catch (error) {
+    logger.error("Failed to generate deployment package", { error });
+    res.status(500).json({ error: "Failed to generate package" });
+  }
+});
+
+// Get a specific deployment package
+router.get("/deployment/packages/:packageId", (req, res) => {
+  try {
+    const pkg = deploymentService.getPackage(req.params.packageId);
+    if (!pkg) {
+      return res.status(404).json({ error: "Package not found" });
+    }
+    res.json(pkg);
+  } catch (error) {
+    logger.error("Failed to get deployment package", { error });
+    res.status(500).json({ error: "Failed to get package" });
+  }
+});
+
+// Get all packages for a project
+router.get("/deployment/projects/:projectId/packages", (req, res) => {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    const packages = deploymentService.getProjectPackages(projectId);
+    res.json(packages);
+  } catch (error) {
+    logger.error("Failed to get project packages", { error });
+    res.status(500).json({ error: "Failed to get packages" });
+  }
+});
+
+// Start a deployment
+router.post("/deployment/deploy", (req, res) => {
+  try {
+    const result = deployRequestSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: "Invalid request", details: result.error.flatten() });
+    }
+    const { projectId, platform, packageId } = result.data;
+    const deployment = deploymentService.startDeployment(projectId, platform, packageId);
+    res.json(deployment);
+  } catch (error: any) {
+    // Check if it's a validation error from the service
+    if (error?.message?.includes("not found") || error?.message?.includes("required") || error?.message?.includes("mismatch")) {
+      return res.status(400).json({ error: error.message });
+    }
+    logger.error("Failed to start deployment", { error });
+    res.status(500).json({ error: "Failed to start deployment" });
+  }
+});
+
+// Get deployment status
+router.get("/deployment/deployments/:deploymentId", (req, res) => {
+  try {
+    const deployment = deploymentService.getDeployment(req.params.deploymentId);
+    if (!deployment) {
+      return res.status(404).json({ error: "Deployment not found" });
+    }
+    res.json(deployment);
+  } catch (error) {
+    logger.error("Failed to get deployment", { error });
+    res.status(500).json({ error: "Failed to get deployment" });
+  }
+});
+
+// Get all deployments for a project
+router.get("/deployment/projects/:projectId/deployments", (req, res) => {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    const deployments = deploymentService.getProjectDeployments(projectId);
+    res.json(deployments);
+  } catch (error) {
+    logger.error("Failed to get project deployments", { error });
+    res.status(500).json({ error: "Failed to get deployments" });
+  }
+});
+
+// Get deployment stats
+router.get("/deployment/stats", (_req, res) => {
+  try {
+    const stats = deploymentService.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get deployment stats", { error });
+    res.status(500).json({ error: "Failed to get stats" });
   }
 });
 
