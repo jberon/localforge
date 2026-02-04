@@ -295,5 +295,112 @@ router.post("/assist", llmRateLimiter, async (req, res) => {
   }
 });
 
+// Cloud LLM provider test endpoint
+router.post("/test-cloud", async (req, res) => {
+  try {
+    const { provider, apiKey, baseUrl, model } = req.body;
+    
+    if (!provider || !apiKey) {
+      return res.status(400).json({ error: "Provider and API key are required" });
+    }
+
+    let testUrl = baseUrl;
+    let headers: Record<string, string> = {};
+    let testBody: Record<string, unknown> = {};
+
+    // Configure provider-specific settings
+    switch (provider) {
+      case "openai":
+        testUrl = baseUrl || "https://api.openai.com/v1";
+        headers = {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        };
+        testBody = {
+          model: model || "gpt-4o-mini",
+          messages: [{ role: "user", content: "Hi" }],
+          max_tokens: 5,
+        };
+        break;
+        
+      case "anthropic":
+        testUrl = baseUrl || "https://api.anthropic.com/v1";
+        headers = {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        };
+        testBody = {
+          model: model || "claude-3-haiku-20240307",
+          messages: [{ role: "user", content: "Hi" }],
+          max_tokens: 5,
+        };
+        break;
+        
+      case "google":
+        testUrl = `${baseUrl || "https://generativelanguage.googleapis.com/v1beta"}/models/${model || "gemini-pro"}:generateContent?key=${apiKey}`;
+        headers = { "Content-Type": "application/json" };
+        testBody = {
+          contents: [{ parts: [{ text: "Hi" }] }],
+          generationConfig: { maxOutputTokens: 5 },
+        };
+        break;
+        
+      case "groq":
+      case "together":
+      case "custom":
+        testUrl = baseUrl || (provider === "groq" ? "https://api.groq.com/openai/v1" : "https://api.together.xyz/v1");
+        headers = {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        };
+        testBody = {
+          model: model || (provider === "groq" ? "llama-3.1-8b-instant" : "meta-llama/Llama-3-8b-chat-hf"),
+          messages: [{ role: "user", content: "Hi" }],
+          max_tokens: 5,
+        };
+        break;
+        
+      default:
+        return res.status(400).json({ error: "Unknown provider" });
+    }
+
+    const endpoint = provider === "google" 
+      ? testUrl 
+      : `${testUrl}/chat/completions`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(testBody),
+    });
+
+    if (response.ok) {
+      logger.info("Cloud LLM connection test successful", { provider });
+      res.json({ connected: true, provider });
+    } else {
+      const errorText = await response.text();
+      logger.warn("Cloud LLM connection test failed", { provider, status: response.status, error: errorText });
+      res.status(400).json({ connected: false, error: errorText });
+    }
+  } catch (error: any) {
+    logger.error("Cloud LLM test error", { error: error.message });
+    res.status(500).json({ connected: false, error: error.message });
+  }
+});
+
+// Cloud LLM settings storage (in-memory for now, can be persisted to DB)
+let cloudLLMSettings: Record<string, unknown> = {};
+
+router.get("/cloud-settings", (_req, res) => {
+  res.json(cloudLLMSettings);
+});
+
+router.post("/cloud-settings", (req, res) => {
+  cloudLLMSettings = req.body;
+  logger.info("Cloud LLM settings updated");
+  res.json({ success: true });
+});
+
 export { SYSTEM_PROMPT, REFINEMENT_SYSTEM };
 export default router;

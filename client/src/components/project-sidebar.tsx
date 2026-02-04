@@ -38,8 +38,11 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp, Globe, Eye, EyeOff } from "lucide-react";
+import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp, Globe, Eye, EyeOff, Cloud } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import { CloudLLMSettings, type CloudLLMSettings as CloudLLMSettingsType, DEFAULT_CLOUD_LLM_SETTINGS } from "@/components/cloud-llm-settings";
 import type { Project, LLMSettings } from "@shared/schema";
 import { APP_VERSION, APP_NAME } from "@shared/version";
 
@@ -78,6 +81,7 @@ export function ProjectSidebar({
   const inputRef = useRef<HTMLInputElement>(null);
   const [debouncedEndpoint, setDebouncedEndpoint] = useState(tempSettings.endpoint);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [cloudSettings, setCloudSettings] = useState<CloudLLMSettingsType>(DEFAULT_CLOUD_LLM_SETTINGS);
 
   useEffect(() => {
     if (editingId && inputRef.current) {
@@ -535,6 +539,22 @@ export function ProjectSidebar({
                     . Stored locally on this machine.
                   </p>
                 </div>
+              </div>
+
+              <Separator className="my-4" />
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Cloud className="h-4 w-4 text-blue-500" />
+                  <Label className="text-sm font-medium">Cloud LLM Providers</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Connect to cloud LLM providers like OpenAI, Anthropic, Google, Groq, or Together AI as an alternative to local LM Studio.
+                </p>
+                <CloudLLMSettings
+                  settings={cloudSettings}
+                  onSettingsChange={setCloudSettings}
+                />
               </div>
 
             </div>
