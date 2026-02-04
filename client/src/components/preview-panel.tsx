@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown, ExternalLink, Loader2, Zap } from "lucide-react";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown, ExternalLink, Loader2, Zap, Hammer, Square, FolderOpen } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishingPanel } from "./publishing-panel";
@@ -80,6 +80,11 @@ export function PreviewPanel({
   const [hasFileChanges, setHasFileChanges] = useState(false);
   const [devToolsExpanded, setDevToolsExpanded] = useState(false);
   const [bundlerEnabled, setBundlerEnabled] = useState(true);
+  const [localBuildStatus, setLocalBuildStatus] = useState<"idle" | "building" | "running" | "error">("idle");
+  const [localBuildPort, setLocalBuildPort] = useState<number | null>(null);
+  const [localBuildLogs, setLocalBuildLogs] = useState<string[]>([]);
+  const [showLocalBuildLogs, setShowLocalBuildLogs] = useState(false);
+  const [localBuildPath, setLocalBuildPath] = useState<string | null>(null);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
@@ -341,6 +346,87 @@ export function PreviewPanel({
     }
   }, [hasFullStackProject, bundlerEnabled, rebundle]);
 
+  const handleLocalBuild = useCallback(async () => {
+    if (!projectId) {
+      toast({ title: "Error", description: "No project selected", variant: "destructive" });
+      return;
+    }
+    
+    setLocalBuildStatus("building");
+    setLocalBuildLogs(["Starting local build..."]);
+    setShowLocalBuildLogs(true);
+    
+    try {
+      const eventSource = new EventSource(`/api/local-build/${projectId}/build-stream`);
+      
+      eventSource.addEventListener("log", (e) => {
+        const data = JSON.parse(e.data);
+        setLocalBuildLogs((prev) => [...prev, data.message]);
+      });
+      
+      eventSource.addEventListener("status", (e) => {
+        const data = JSON.parse(e.data);
+        if (data.status === "running") {
+          setLocalBuildStatus("running");
+        } else if (data.status === "error") {
+          setLocalBuildStatus("error");
+        }
+      });
+      
+      eventSource.addEventListener("ready", (e) => {
+        const data = JSON.parse(e.data);
+        setLocalBuildPort(data.port);
+        setLocalBuildStatus("running");
+        toast({ 
+          title: "Local Build Ready!", 
+          description: `App running at localhost:${data.port}` 
+        });
+      });
+      
+      eventSource.addEventListener("complete", (e) => {
+        const data = JSON.parse(e.data);
+        setLocalBuildPort(data.port);
+        setLocalBuildPath(data.projectPath);
+        setLocalBuildStatus("running");
+        eventSource.close();
+      });
+      
+      eventSource.addEventListener("error", (e) => {
+        try {
+          const data = JSON.parse((e as any).data);
+          setLocalBuildLogs((prev) => [...prev, `Error: ${data.message}`]);
+        } catch {
+          setLocalBuildLogs((prev) => [...prev, "Build failed"]);
+        }
+        setLocalBuildStatus("error");
+        eventSource.close();
+      });
+      
+      eventSource.onerror = () => {
+        setLocalBuildStatus("error");
+        eventSource.close();
+      };
+    } catch (error: any) {
+      setLocalBuildStatus("error");
+      setLocalBuildLogs((prev) => [...prev, `Error: ${error.message}`]);
+      toast({ title: "Build Failed", description: error.message, variant: "destructive" });
+    }
+  }, [projectId, toast]);
+
+  const handleStopLocalBuild = useCallback(async () => {
+    if (!projectId) return;
+    
+    try {
+      await apiRequest("POST", `/api/local-build/${projectId}/stop-build`);
+      setLocalBuildStatus("idle");
+      setLocalBuildPort(null);
+      setLocalBuildLogs((prev) => [...prev, "Build stopped"]);
+      toast({ title: "Build Stopped" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  }, [projectId, toast]);
+
   // Keyboard shortcut: Cmd/Ctrl+R to refresh preview
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -584,6 +670,60 @@ ${localCode}
               >
                 <Play className="h-4 w-4" />
               </Button>
+              {hasFullStackProject && projectId && (
+                <>
+                  {localBuildStatus === "running" ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(`http://localhost:${localBuildPort}`, "_blank")}
+                        className="gap-1 text-green-600 border-green-600"
+                        title={`Open localhost:${localBuildPort}`}
+                        data-testid="button-open-local-build"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        :{localBuildPort}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={handleStopLocalBuild}
+                        title="Stop local build"
+                        data-testid="button-stop-local-build"
+                      >
+                        <Square className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant={localBuildStatus === "building" ? "secondary" : "outline"}
+                      onClick={handleLocalBuild}
+                      disabled={localBuildStatus === "building"}
+                      className="gap-1"
+                      title="Build & run locally with npm (supports all packages)"
+                      data-testid="button-local-build"
+                    >
+                      {localBuildStatus === "building" ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Hammer className="h-3 w-3" />
+                      )}
+                      {localBuildStatus === "building" ? "Building..." : "Local Build"}
+                    </Button>
+                  )}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowLocalBuildLogs(!showLocalBuildLogs)}
+                    title="Build logs"
+                    data-testid="button-build-logs"
+                  >
+                    <Terminal className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
             </>
           )}
           {(code || hasFullStackProject) && (
@@ -1081,6 +1221,69 @@ ${localCode}
         onClose={() => setShowTestPreview(false)}
         projectName={projectName}
       />
+
+      <Dialog open={showLocalBuildLogs} onOpenChange={setShowLocalBuildLogs}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Terminal className="h-5 w-5" />
+              Local Build
+              {localBuildStatus === "running" && localBuildPort && (
+                <Badge variant="secondary" className="ml-2 gap-1 text-green-600">
+                  <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  Running on :{localBuildPort}
+                </Badge>
+              )}
+              {localBuildStatus === "building" && (
+                <Badge variant="secondary" className="ml-2 gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Building...
+                </Badge>
+              )}
+              {localBuildStatus === "error" && (
+                <Badge variant="destructive" className="ml-2">Error</Badge>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {localBuildPath && (
+                <span className="flex items-center gap-1 font-mono text-xs">
+                  <FolderOpen className="h-3 w-3" />
+                  {localBuildPath}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[400px] w-full rounded border bg-black p-4">
+            <pre className="text-xs text-green-400 font-mono whitespace-pre-wrap">
+              {localBuildLogs.join("\n") || "No logs yet..."}
+            </pre>
+          </ScrollArea>
+          <DialogFooter className="gap-2">
+            {localBuildStatus === "running" && localBuildPort && (
+              <Button
+                variant="outline"
+                onClick={() => window.open(`http://localhost:${localBuildPort}`, "_blank")}
+                className="gap-1"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open localhost:{localBuildPort}
+              </Button>
+            )}
+            {localBuildStatus === "running" && (
+              <Button variant="destructive" onClick={handleStopLocalBuild} className="gap-1">
+                <Square className="h-4 w-4" />
+                Stop
+              </Button>
+            )}
+            {localBuildStatus !== "building" && localBuildStatus !== "running" && (
+              <Button onClick={handleLocalBuild} className="gap-1">
+                <Hammer className="h-4 w-4" />
+                Start Build
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

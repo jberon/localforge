@@ -12,6 +12,7 @@ import dreamTeamRoutes from "./routes/dream-team";
 import healthRoutes from "./routes/health";
 import databaseRoutes from "./routes/database";
 import optimizationRoutes from "./routes/optimization";
+import localBuildRoutes from "./routes/local-build";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -39,6 +40,8 @@ export async function registerRoutes(
   app.use("/api/database", databaseRoutes);
   
   app.use("/api/optimization", optimizationRoutes);
+  
+  app.use("/api/local-build", localBuildRoutes);
 
   return httpServer;
 }
