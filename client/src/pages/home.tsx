@@ -35,7 +35,7 @@ import { useProjectMutations } from "@/hooks/use-project-mutations";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical } from "lucide-react";
 import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
 import { BuildSpeedToggle } from "@/components/build-speed-toggle";
@@ -125,6 +125,9 @@ export default function Home() {
     needsApiKey: boolean;
     pendingContent: string;
   } | null>(null);
+  
+  // Test Mode state (Replit AI Integration)
+  const [testModeActive, setTestModeActive] = useState(false);
   
   // Plan & Build mode state (Replit-style)
   const [agentMode, setAgentMode] = useState<AgentMode>("plan"); // Default to plan mode (Replit-style)
@@ -239,6 +242,25 @@ export default function Home() {
   useEffect(() => {
     setShowQuickUndo(false);
   }, [activeProjectId]);
+
+  // Fetch test mode status
+  useEffect(() => {
+    const fetchTestMode = async () => {
+      try {
+        const res = await fetch("/api/llm/test-mode/status");
+        if (res.ok) {
+          const data = await res.json();
+          setTestModeActive(data.active);
+        }
+      } catch {
+        // Silently fail
+      }
+    };
+    fetchTestMode();
+    // Poll every 30 seconds to keep status updated
+    const interval = setInterval(fetchTestMode, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const {
     createProject,
@@ -1423,6 +1445,12 @@ export default function Home() {
                 projectId={activeProjectId || undefined}
                 compact={true}
               />
+              {testModeActive && (
+                <Badge variant="default" className="ml-1 bg-emerald-600 hover:bg-emerald-700" data-testid="badge-test-mode">
+                  <FlaskConical className="w-3 h-3 mr-1" />
+                  Test Mode
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <DreamTeamSettings
