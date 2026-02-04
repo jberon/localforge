@@ -2,6 +2,9 @@ import { Router } from "express";
 import { checkConnection } from "../llm-client";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { healthAlertsService } from "../services/health-alerts.service";
+import { resilienceService } from "../services/resilience.service";
+import { contextPruningService } from "../services/context-pruning.service";
 
 const router = Router();
 
@@ -71,6 +74,92 @@ router.get("/ready", async (req, res) => {
 
 router.get("/live", (req, res) => {
   res.json({ alive: true, timestamp: Date.now() });
+});
+
+router.get("/dashboard", async (req, res) => {
+  const startTime = Date.now();
+  
+  // Gather comprehensive health data for the dashboard
+  const memUsage = process.memoryUsage();
+  const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+  const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+  const rssMB = Math.round(memUsage.rss / 1024 / 1024);
+  
+  // Get health alerts status
+  const healthStatus = healthAlertsService.getHealthStatus();
+  const alerts = healthAlertsService.getAlerts({ limit: 20 });
+  
+  // Get resilience stats
+  const resilienceStats = resilienceService.getStats();
+  
+  // Get token estimation stats
+  const tokenStats = contextPruningService.getEstimationStats();
+  
+  // Database check
+  let dbStatus = { connected: false, latencyMs: 0 };
+  if (db) {
+    try {
+      const dbStart = Date.now();
+      await db.execute(sql`SELECT 1`);
+      dbStatus = { connected: true, latencyMs: Date.now() - dbStart };
+    } catch {
+      dbStatus = { connected: false, latencyMs: 0 };
+    }
+  }
+  
+  // LLM connection check
+  let llmStatus = { connected: false, latencyMs: 0 };
+  try {
+    const llmStart = Date.now();
+    const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
+    const result = await checkConnection(endpoint);
+    llmStatus = { connected: result.connected, latencyMs: Date.now() - llmStart };
+  } catch {
+    llmStatus = { connected: false, latencyMs: 0 };
+  }
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    uptime: Math.round(process.uptime()),
+    responseTimeMs: Date.now() - startTime,
+    
+    memory: {
+      heapUsedMB,
+      heapTotalMB,
+      rssMB,
+      heapUsagePercent: Math.round((heapUsedMB / heapTotalMB) * 100),
+    },
+    
+    services: {
+      database: dbStatus,
+      llm: llmStatus,
+    },
+    
+    health: {
+      status: healthStatus.overall,
+      components: healthStatus.components,
+      lastUpdated: healthStatus.lastUpdated,
+    },
+    
+    resilience: {
+      circuitBreakers: resilienceStats.circuitBreakers,
+      bulkheads: resilienceStats.bulkheads,
+    },
+    
+    tokenEstimation: {
+      samples: tokenStats.samples,
+      avgRatio: tokenStats.avgRatio.toFixed(2),
+      totalEstimated: tokenStats.totalEstimated,
+    },
+    
+    recentAlerts: alerts.map(a => ({
+      id: a.id,
+      type: a.type,
+      message: a.message,
+      severity: a.severity,
+      timestamp: a.timestamp,
+    })),
+  });
 });
 
 export default router;

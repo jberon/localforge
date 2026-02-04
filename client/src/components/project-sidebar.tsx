@@ -43,6 +43,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { CloudLLMSettings, type CloudLLMSettings as CloudLLMSettingsType, DEFAULT_CLOUD_LLM_SETTINGS } from "@/components/cloud-llm-settings";
+import { HealthDashboard } from "@/components/health-dashboard";
 import type { Project, LLMSettings } from "@shared/schema";
 import { APP_VERSION, APP_NAME } from "@shared/version";
 
@@ -253,6 +254,7 @@ export function ProjectSidebar({
       </SidebarContent>
 
       <SidebarFooter className="p-3 border-t">
+        <HealthDashboard />
         <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
           <DialogTrigger asChild>
             <Button
