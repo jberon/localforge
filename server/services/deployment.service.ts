@@ -44,7 +44,7 @@ export interface Deployment {
 
 export interface ProjectDeploymentInfo {
   name: string;
-  framework: "react" | "next" | "vite" | "express" | "static";
+  framework: "react" | "next" | "vite" | "express" | "static" | "custom";
   hasBackend: boolean;
   hasDatabase: boolean;
   entryPoint: string;

@@ -424,7 +424,7 @@ router.get("/active-provider", async (_req, res) => {
       error: cloudStatus.error,
     });
   } else {
-    const localStatus = await checkConnection();
+    const localStatus = await checkConnection("http://localhost:1234/v1");
     res.json({
       provider: "local",
       isCloud: false,

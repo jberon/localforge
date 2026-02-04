@@ -10,6 +10,13 @@ import type {
 import { eq, desc, gte, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
+function getDb() {
+  if (!db) {
+    throw new Error("Database not initialized - DATABASE_URL may not be set");
+  }
+  return db;
+}
+
 export interface IAnalyticsStorage {
   trackEvent(type: AnalyticsEventType, projectId?: string, data?: Record<string, any>): Promise<AnalyticsEvent>;
   getEvents(limit?: number, type?: AnalyticsEventType): Promise<AnalyticsEvent[]>;
@@ -73,7 +80,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
     const id = randomUUID();
     const timestamp = Date.now();
     
-    const [row] = await db.insert(analyticsEvents).values({
+    const [row] = await getDb().insert(analyticsEvents).values({
       id,
       type,
       projectId: projectId ?? null,
@@ -85,10 +92,10 @@ export class AnalyticsStorage implements IAnalyticsStorage {
   }
 
   async getEvents(limit = 100, type?: AnalyticsEventType): Promise<AnalyticsEvent[]> {
-    let query = db.select().from(analyticsEvents).orderBy(desc(analyticsEvents.timestamp)).limit(limit);
+    let query = getDb().select().from(analyticsEvents).orderBy(desc(analyticsEvents.timestamp)).limit(limit);
     
     if (type) {
-      const rows = await db.select()
+      const rows = await getDb().select()
         .from(analyticsEvents)
         .where(eq(analyticsEvents.type, type))
         .orderBy(desc(analyticsEvents.timestamp))
@@ -101,7 +108,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
   }
 
   async getEventsSince(timestamp: number): Promise<AnalyticsEvent[]> {
-    const rows = await db.select()
+    const rows = await getDb().select()
       .from(analyticsEvents)
       .where(gte(analyticsEvents.timestamp, timestamp))
       .orderBy(desc(analyticsEvents.timestamp));
@@ -112,7 +119,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
     const id = randomUUID();
     const timestamp = Date.now();
     
-    const [row] = await db.insert(feedbacks).values({
+    const [row] = await getDb().insert(feedbacks).values({
       id,
       projectId: feedback.projectId,
       rating: feedback.rating,
@@ -127,7 +134,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
   }
 
   async getFeedbacks(limit = 100): Promise<Feedback[]> {
-    const rows = await db.select()
+    const rows = await getDb().select()
       .from(feedbacks)
       .orderBy(desc(feedbacks.timestamp))
       .limit(limit);
@@ -135,7 +142,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
   }
 
   async getPositiveFeedbacks(): Promise<Feedback[]> {
-    const rows = await db.select()
+    const rows = await getDb().select()
       .from(feedbacks)
       .where(eq(feedbacks.rating, "positive"))
       .orderBy(desc(feedbacks.timestamp));
@@ -145,7 +152,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
   async saveInsight(insight: Omit<Insight, "id">): Promise<Insight> {
     const id = randomUUID();
     
-    const [row] = await db.insert(insights).values({
+    const [row] = await getDb().insert(insights).values({
       id,
       type: insight.type,
       title: insight.title,
@@ -161,7 +168,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
   }
 
   async getInsights(limit = 50): Promise<Insight[]> {
-    const rows = await db.select()
+    const rows = await getDb().select()
       .from(insights)
       .orderBy(desc(insights.generatedAt))
       .limit(limit);
@@ -170,7 +177,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
 
   async getActiveInsights(): Promise<Insight[]> {
     const now = Date.now();
-    const rows = await db.select()
+    const rows = await getDb().select()
       .from(insights)
       .orderBy(desc(insights.priority), desc(insights.generatedAt));
     
@@ -181,7 +188,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
 
   async clearExpiredInsights(): Promise<number> {
     const now = Date.now();
-    const result = await db.delete(insights)
+    const result = await getDb().delete(insights)
       .where(sql`${insights.expiresAt} IS NOT NULL AND ${insights.expiresAt} < ${now}`)
       .returning();
     return result.length;

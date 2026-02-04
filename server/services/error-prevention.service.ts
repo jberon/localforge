@@ -127,7 +127,7 @@ class ErrorPreventionService {
       },
       {
         id: "race-condition",
-        pattern: /let\s+\w+\s*=.*\n.*await.*\n.*\1\s*=/g,
+        pattern: /let\s+(\w+)\s*=.*\n.*await.*\n.*\1\s*=/g,
         category: "race-condition",
         severity: "high",
         message: "Potential race condition with shared mutable variable",

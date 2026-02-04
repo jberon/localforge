@@ -321,7 +321,7 @@ router.post("/:id/chat", generationRateLimiter, async (req, res) => {
       return res.status(400).json({ error: "Invalid chat request", details: parsed.error.errors });
     }
     const { content, settings } = parsed.data;
-    const projectId = req.params.id;
+    const projectId = String(req.params.id);
     
     const project = await storage.getProject(projectId);
     if (!project) {
@@ -617,7 +617,7 @@ router.post("/:id/refine", generationRateLimiter, async (req, res) => {
     }
 
     const { refinement, settings } = parsed.data;
-    const projectId = req.params.id;
+    const projectId = String(req.params.id);
 
     const project = await storage.getProject(projectId);
     if (!project) {
@@ -787,7 +787,7 @@ router.post("/:id/generate-fullstack", async (req, res) => {
     }
 
     const { projectName, dataModel, prompt } = parsed.data;
-    const projectId = req.params.id;
+    const projectId = String(req.params.id);
 
     const project = await storage.getProject(projectId);
     if (!project) {
@@ -1141,7 +1141,7 @@ router.post("/:id/dream-team", generationRateLimiter, async (req, res) => {
     }
     
     const { content, settings } = parsed.data;
-    const projectId = req.params.id;
+    const projectId = String(req.params.id);
     
     const project = await storage.getProject(projectId);
     if (!project) {
@@ -1260,7 +1260,7 @@ router.post("/:id/production", generationRateLimiter, async (req, res) => {
     }
     
     const { content, settings } = parsed.data;
-    const projectId = req.params.id;
+    const projectId = String(req.params.id);
     
     const project = await storage.getProject(projectId);
     if (!project) {
@@ -1385,7 +1385,7 @@ router.use("/:id/:subpath", async (req, res, next) => {
     return next();
   }
   
-  const projectId = req.params.id;
+  const projectId = String(req.params.id);
   const project = await storage.getProject(projectId);
   
   if (!project) {
