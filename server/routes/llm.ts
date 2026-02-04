@@ -365,9 +365,14 @@ router.post("/test-cloud", async (req, res) => {
         return res.status(400).json({ error: "Unknown provider" });
     }
 
-    const endpoint = provider === "google" 
-      ? testUrl 
-      : `${testUrl}/chat/completions`;
+    let endpoint: string;
+    if (provider === "google") {
+      endpoint = testUrl;
+    } else if (provider === "anthropic") {
+      endpoint = `${testUrl}/messages`;
+    } else {
+      endpoint = `${testUrl}/chat/completions`;
+    }
 
     const response = await fetch(endpoint, {
       method: "POST",

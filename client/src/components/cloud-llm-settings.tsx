@@ -154,6 +154,19 @@ export function CloudLLMSettings({ settings, onSettingsChange }: CloudLLMSetting
     }
   }, [settings]);
 
+  useEffect(() => {
+    if (isOpen) {
+      fetch("/api/llm/cloud-settings")
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && Object.keys(data).length > 0) {
+            setLocalSettings(prev => ({ ...prev, ...data }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
+
   const updateProvider = (provider: CloudProvider, updates: Partial<CloudProviderConfig>) => {
     setLocalSettings(prev => ({
       ...prev,
@@ -166,7 +179,7 @@ export function CloudLLMSettings({ settings, onSettingsChange }: CloudLLMSetting
 
   const handleSave = async () => {
     try {
-      const response = await fetch("/api/settings/cloud-llm", {
+      const response = await fetch("/api/llm/cloud-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(localSettings),
