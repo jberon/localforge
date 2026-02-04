@@ -39,10 +39,21 @@ import {
   AlertCircle,
   ExternalLink,
   Eye,
-  EyeOff
+  EyeOff,
+  Zap,
+  FlaskConical
 } from "lucide-react";
 import { SiOpenai, SiAnthropic, SiGoogle } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
+
+// Test Mode status interface
+interface TestModeStatus {
+  available: boolean;
+  active: boolean;
+  connected: boolean;
+  error?: string;
+  model?: string;
+}
 
 export type CloudProvider = "openai" | "anthropic" | "google" | "groq" | "together" | "custom";
 
@@ -146,6 +157,8 @@ export function CloudLLMSettings({ settings, onSettingsChange }: CloudLLMSetting
   const [showApiKeys, setShowApiKeys] = useState<Record<CloudProvider, boolean>>({
     openai: false, anthropic: false, google: false, groq: false, together: false, custom: false
   });
+  const [testModeStatus, setTestModeStatus] = useState<TestModeStatus>({ available: false, active: false, connected: false });
+  const [testModeLoading, setTestModeLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -154,8 +167,22 @@ export function CloudLLMSettings({ settings, onSettingsChange }: CloudLLMSetting
     }
   }, [settings]);
 
+  // Fetch test mode status when dialog opens
+  const fetchTestModeStatus = async () => {
+    try {
+      const res = await fetch("/api/llm/test-mode/status");
+      if (res.ok) {
+        const data = await res.json();
+        setTestModeStatus(data);
+      }
+    } catch {
+      // Silently fail
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
+      fetchTestModeStatus();
       fetch("/api/llm/cloud-settings")
         .then(res => res.ok ? res.json() : null)
         .then(data => {
@@ -166,6 +193,41 @@ export function CloudLLMSettings({ settings, onSettingsChange }: CloudLLMSetting
         .catch(() => {});
     }
   }, [isOpen]);
+
+  const toggleTestMode = async (enable: boolean) => {
+    setTestModeLoading(true);
+    try {
+      const endpoint = enable ? "/api/llm/test-mode/enable" : "/api/llm/test-mode/disable";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o-mini" }),
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        toast({
+          title: enable ? "Test Mode Enabled" : "Test Mode Disabled",
+          description: data.message,
+        });
+        await fetchTestModeStatus();
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to toggle test mode",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to connect to server",
+        variant: "destructive",
+      });
+    } finally {
+      setTestModeLoading(false);
+    }
+  };
 
   const updateProvider = (provider: CloudProvider, updates: Partial<CloudProviderConfig>) => {
     setLocalSettings(prev => ({
@@ -410,6 +472,52 @@ export function CloudLLMSettings({ settings, onSettingsChange }: CloudLLMSetting
             Connect to cloud LLM providers for additional model options. Your API keys are stored securely.
           </DialogDescription>
         </DialogHeader>
+
+        {testModeStatus.available && (
+          <Card className="border-primary/50 bg-primary/5">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <FlaskConical className="w-5 h-5 text-primary" />
+                  <CardTitle className="text-base">Test Mode</CardTitle>
+                  {testModeStatus.active && (
+                    <Badge variant="default" className="ml-1">
+                      <Zap className="w-3 h-3 mr-1" />
+                      Active
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {testModeLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <Switch
+                    checked={testModeStatus.active}
+                    onCheckedChange={toggleTestMode}
+                    disabled={testModeLoading}
+                    data-testid="switch-test-mode"
+                  />
+                </div>
+              </div>
+              <CardDescription>
+                Use Replit AI (OpenAI) for testing without local LM Studio. 
+                {testModeStatus.active && testModeStatus.model && (
+                  <span className="text-primary"> Using {testModeStatus.model}</span>
+                )}
+              </CardDescription>
+              {testModeStatus.active && !testModeStatus.connected && testModeStatus.error && (
+                <div className="flex items-center gap-2 mt-2 text-sm text-destructive">
+                  <AlertCircle className="w-4 h-4" />
+                  {testModeStatus.error}
+                </div>
+              )}
+              {testModeStatus.active && testModeStatus.connected && (
+                <div className="flex items-center gap-2 mt-2 text-sm text-green-600">
+                  <Check className="w-4 h-4" />
+                  Connected and ready
+                </div>
+              )}
+            </CardHeader>
+          </Card>
+        )}
 
         <Tabs defaultValue="providers" className="mt-4">
           <TabsList className="grid w-full grid-cols-2">

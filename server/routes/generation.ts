@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../storage";
-import { createLLMClient, LLM_DEFAULTS } from "../llm-client";
+import { createLLMClient, LLM_DEFAULTS, getActiveLLMClient } from "../llm-client";
 import { llmSettingsSchema, dataModelSchema, LLMSettings } from "@shared/schema";
 import { generateFullStackProject } from "../code-generator";
 import { validateGeneratedCode } from "../generators/validator";
@@ -152,7 +152,7 @@ async function attemptCodeFix(
     
     try {
       const modelConfig = getModelForPhase(settings, phase);
-      const openai = createLLMClient({
+      const { client: openai, isCloud } = getActiveLLMClient({
         endpoint: settings.endpoint || "http://localhost:1234/v1",
         model: modelConfig.model,
         temperature: 0.2, // Lower temperature for fixing
@@ -170,7 +170,7 @@ ${currentCode}
 Please provide the complete fixed code with all errors resolved.`;
       
       const response = await openai.chat.completions.create({
-        model: modelConfig.model || "local-model",
+        model: isCloud ? (modelConfig.model || "gpt-4o-mini") : (modelConfig.model || "local-model"),
         messages: [
           { role: "system", content: ERROR_FIX_SYSTEM_PROMPT },
           { role: "user", content: fixPrompt }
@@ -351,7 +351,7 @@ router.post("/:id/chat", generationRateLimiter, async (req, res) => {
     // Use builder model when dual models are enabled
     const builderConfig = getModelForPhase(settings, "builder");
     
-    const openai = createLLMClient({
+    const { client: openai, isCloud } = getActiveLLMClient({
       endpoint: settings.endpoint || "http://localhost:1234/v1",
       model: builderConfig.model,
       temperature: builderConfig.temperature,
@@ -419,7 +419,7 @@ router.post("/:id/chat", generationRateLimiter, async (req, res) => {
 
     try {
       const stream = await openai.chat.completions.create({
-        model: builderConfig.model || "local-model",
+        model: isCloud ? (builderConfig.model || "gpt-4o-mini") : (builderConfig.model || "local-model"),
         messages: [
           { role: "system", content: systemMessage },
           ...conversationHistory,
@@ -636,7 +636,7 @@ router.post("/:id/refine", generationRateLimiter, async (req, res) => {
     // Use dual model support for refinement (builder model)
     const builderConfig = getModelForPhase(settings, "builder");
 
-    const openai = createLLMClient({
+    const { client: openai, isCloud } = getActiveLLMClient({
       endpoint: settings.endpoint || "http://localhost:1234/v1",
       model: builderConfig.model,
       temperature: builderConfig.temperature,
@@ -649,7 +649,7 @@ router.post("/:id/refine", generationRateLimiter, async (req, res) => {
 
     try {
       const stream = await openai.chat.completions.create({
-        model: builderConfig.model || "local-model",
+        model: isCloud ? (builderConfig.model || "gpt-4o-mini") : (builderConfig.model || "local-model"),
         messages: [
           { role: "system", content: REFINEMENT_SYSTEM },
           { role: "user", content: `EXISTING CODE:\n\`\`\`jsx\n${project.generatedCode}\n\`\`\`\n\nMODIFICATION REQUEST: ${refinement}` },
@@ -851,7 +851,7 @@ router.post("/:id/plan", async (req, res) => {
     // Use planner model when dual models are enabled
     const plannerConfig = getModelForPhase(settings, "planner");
 
-    const openai = createLLMClient({
+    const { client: openai, isCloud } = getActiveLLMClient({
       endpoint: settings.endpoint,
       model: plannerConfig.model,
       temperature: plannerConfig.temperature,
@@ -868,7 +868,7 @@ router.post("/:id/plan", async (req, res) => {
 
     try {
       const stream = await openai.chat.completions.create({
-        model: plannerConfig.model || "local-model",
+        model: isCloud ? (plannerConfig.model || "gpt-4o-mini") : (plannerConfig.model || "local-model"),
         messages: [
           { role: "system", content: PLANNING_SYSTEM_PROMPT },
           { role: "user", content: `Create an implementation plan for: ${prompt}` },
@@ -994,7 +994,7 @@ router.post("/:id/build", async (req, res) => {
       temperature: LLM_DEFAULTS.temperature.builder,
     };
 
-    const openai = createLLMClient({
+    const { client: openai, isCloud } = getActiveLLMClient({
       endpoint: settings.endpoint,
       model: settings.model,
       temperature: settings.temperature,
@@ -1024,7 +1024,7 @@ Generate complete, working code that implements this plan. Follow the file struc
 
     try {
       const stream = await openai.chat.completions.create({
-        model: settings.model || "local-model",
+        model: isCloud ? (settings.model || "gpt-4o-mini") : (settings.model || "local-model"),
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: buildPrompt },
