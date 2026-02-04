@@ -15,6 +15,7 @@ import {
   isCloudProviderActive,
   checkCloudConnection,
   getActiveLLMClient,
+  isReplitIntegrationAvailable,
 } from "../llm-client";
 import { llmSettingsSchema } from "@shared/schema";
 import { z } from "zod";
@@ -432,6 +433,78 @@ router.get("/active-provider", async (_req, res) => {
       error: localStatus.error,
     });
   }
+});
+
+// ============================================================================
+// TEST MODE - Uses Replit AI Integrations for testing without local LLM
+// ============================================================================
+
+// Check if test mode is available (Replit AI Integrations configured)
+router.get("/test-mode/status", async (_req, res) => {
+  const available = isReplitIntegrationAvailable();
+  const settings = getCloudSettings();
+  const isActive = settings.provider === "replit";
+  
+  let connected = false;
+  let error: string | undefined;
+  
+  if (isActive && available) {
+    const cloudStatus = await checkCloudConnection();
+    connected = cloudStatus.connected;
+    error = cloudStatus.error;
+  }
+  
+  res.json({
+    available,
+    active: isActive,
+    connected,
+    error,
+    model: isActive ? (settings.model || "gpt-4o-mini") : null,
+  });
+});
+
+// Enable test mode
+router.post("/test-mode/enable", async (req, res) => {
+  if (!isReplitIntegrationAvailable()) {
+    return res.status(400).json({ 
+      success: false, 
+      error: "Replit AI Integrations not available. Please configure the integration first." 
+    });
+  }
+  
+  const model = req.body?.model || "gpt-4o-mini";
+  
+  setCloudSettings({
+    provider: "replit",
+    model,
+    temperature: 0.7,
+  });
+  
+  logger.info("Test mode enabled", { model });
+  
+  // Verify connection
+  const cloudStatus = await checkCloudConnection();
+  
+  res.json({ 
+    success: true, 
+    provider: "replit",
+    model,
+    connected: cloudStatus.connected,
+    error: cloudStatus.error,
+    message: cloudStatus.connected 
+      ? "Test mode enabled! Using Replit AI Integrations (OpenAI)." 
+      : "Test mode enabled but connection failed.",
+  });
+});
+
+// Disable test mode (revert to local LLM)
+router.post("/test-mode/disable", (_req, res) => {
+  setCloudSettings({ provider: "none" });
+  logger.info("Test mode disabled, reverting to local LLM");
+  res.json({ 
+    success: true, 
+    message: "Test mode disabled. Reverted to local LLM (LM Studio).",
+  });
 });
 
 export { SYSTEM_PROMPT, REFINEMENT_SYSTEM };

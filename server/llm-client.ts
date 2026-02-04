@@ -108,7 +108,7 @@ const clientCache = new Map<string, OpenAI>();
 // ============================================================================
 
 interface CloudLLMSettings {
-  provider: "none" | "openai" | "anthropic" | "google" | "groq" | "together" | "custom";
+  provider: "none" | "replit" | "openai" | "anthropic" | "google" | "groq" | "together" | "custom";
   apiKey?: string;
   model?: string;
   customEndpoint?: string;
@@ -116,6 +116,11 @@ interface CloudLLMSettings {
 }
 
 let cloudSettings: CloudLLMSettings = { provider: "none" };
+
+// Check if Replit AI Integrations is available
+export function isReplitIntegrationAvailable(): boolean {
+  return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
+}
 
 export function getCloudSettings(): CloudLLMSettings {
   return { ...cloudSettings };
@@ -126,6 +131,10 @@ export function setCloudSettings(settings: CloudLLMSettings): void {
 }
 
 export function isCloudProviderActive(): boolean {
+  // Replit provider uses automatic env vars, no manual API key needed
+  if (cloudSettings.provider === "replit") {
+    return isReplitIntegrationAvailable();
+  }
   return cloudSettings.provider !== "none" && !!cloudSettings.apiKey;
 }
 
@@ -140,6 +149,18 @@ const CLOUD_ENDPOINTS: Record<string, string> = {
 
 // Create cloud LLM client (OpenAI SDK compatible for most providers)
 export function createCloudLLMClient(settings: CloudLLMSettings): OpenAI | null {
+  // Handle Replit provider - uses automatic env vars
+  if (settings.provider === "replit") {
+    if (!isReplitIntegrationAvailable()) {
+      return null;
+    }
+    return new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY!,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL!,
+      timeout: LLM_CONFIG.requestTimeoutMs,
+    });
+  }
+
   if (settings.provider === "none" || !settings.apiKey) {
     return null;
   }
