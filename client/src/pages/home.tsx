@@ -7,7 +7,7 @@ import { ChatPanel } from "@/components/chat-panel";
 import { PreviewPanel } from "@/components/preview-panel";
 import { GenerationWizard } from "@/components/generation-wizard";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { EmptyState } from "@/components/empty-state";
+import { MinimalLanding } from "@/components/minimal-landing";
 import { SuccessCelebration } from "@/components/success-celebration";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { PlanReviewPanel } from "@/components/plan-review-panel";
@@ -61,7 +61,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import JSZip from "jszip";
 import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion, GeneratedFile } from "@shared/schema";
 import { defaultDreamTeamPersonas } from "@shared/schema";
@@ -94,6 +94,7 @@ function updateOrAddAction(prev: Action[], newAction: Omit<Action, "id"> & { id?
 export default function Home() {
   const { toast } = useToast();
   const { isDarkMode, toggleTheme } = useTheme();
+  const [, navigate] = useLocation();
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationPhase, setGenerationPhase] = useState<string | null>(null);
@@ -1408,6 +1409,8 @@ export default function Home() {
           onNewProject={() => createProject()}
           onDeleteProject={(id) => deleteProject(id)}
           onRenameProject={(id, name) => renameProject(id, name)}
+          onOpenDatabase={() => setShowDatabasePanel(true)}
+          onOpenAnalytics={() => navigate('/analytics')}
           onUpdateSettings={(newSettings) => {
             setSettings(newSettings);
             setDualModelSettings(prev => ({
@@ -1428,61 +1431,60 @@ export default function Home() {
         />
         
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-2 px-4 py-2 pt-4 border-b bg-background electron-drag-region min-h-[52px] overflow-x-auto">
-            <div className="flex items-center gap-3 shrink-0">
+          <header className="flex items-center justify-between gap-4 px-4 py-3 border-b border-border/40 bg-background/80 backdrop-blur-xl electron-drag-region">
+            <div className="flex items-center gap-3">
               <SidebarTrigger data-testid="button-sidebar-toggle" className="electron-no-drag" />
               {activeProject && (
-                <span className="text-sm font-medium truncate max-w-[120px]">
+                <span className="text-sm font-medium truncate max-w-[200px]">
                   {activeProject.name}
                 </span>
               )}
+              {testModeActive && (
+                <Badge 
+                  variant="secondary" 
+                  className={`${testModeConnected ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'} border text-xs`}
+                  data-testid="badge-test-mode"
+                  title={testModeConnected ? "Test Mode: Connected to Replit AI" : "Test Mode: Not Connected"}
+                >
+                  <FlaskConical className="w-3 h-3 mr-1" />
+                  Test
+                </Badge>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-3">
               <PlanBuildModeToggle
                 mode={agentMode}
                 onModeChange={setAgentMode}
                 disabled={isGenerating || isPlanning || isBuilding}
               />
-              <BuildSpeedToggle 
-                projectId={activeProjectId || undefined}
-              />
-              <AutonomySlider 
-                projectId={activeProjectId || undefined}
-                compact={true}
-              />
-              {testModeActive && (
-                <Badge 
-                  variant="default" 
-                  className={`ml-1 ${testModeConnected ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}
-                  data-testid="badge-test-mode"
-                  title={testModeConnected ? "Test Mode: Connected to Replit AI" : "Test Mode: Not Connected"}
-                >
-                  <FlaskConical className="w-3 h-3 mr-1" />
-                  Test Mode{!testModeConnected && " (!)"}
-                </Badge>
-              )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <DreamTeamSettings
-                settings={dreamTeamSettings}
-                onSettingsChange={setDreamTeamSettings}
-              />
-              {activeProject && showQuickUndo && (
-                <QuickUndo 
-                  projectId={activeProject.id} 
-                  onUndo={() => {
-                    setShowQuickUndo(false);
-                    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-                    queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject.id] });
-                  }}
-                />
+
+            <div className="flex items-center gap-1">
+              {(llmConnected || testModeConnected) && (
+                <div className="flex items-center gap-2 mr-2" data-testid="indicator-connected">
+                  <div 
+                    className={`w-2 h-2 rounded-full ${
+                      health && !health.isHealthy && health.consecutiveFailures > 0
+                        ? 'bg-amber-500 animate-pulse' 
+                        : 'bg-emerald-500'
+                    }`} 
+                    title={testModeConnected ? "Connected to Replit AI" : "Connected to LM Studio"}
+                  />
+                  <span className="text-xs text-muted-foreground">Connected</span>
+                </div>
               )}
-              {activeProject && (
-                <VersionHistory 
-                  projectId={activeProject.id} 
-                  onRestore={() => {
-                    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-                    queryClient.invalidateQueries({ queryKey: ["/api/projects", activeProject.id] });
-                  }}
-                />
+              {llmConnected === false && !testModeConnected && (
+                <Badge 
+                  variant="outline" 
+                  className="gap-1.5 text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover-elevate electron-no-drag mr-2"
+                  onClick={checkConnection}
+                  data-testid="badge-connection-status"
+                  title="Click to retry connection"
+                >
+                  <WifiOff className="h-3 w-3" />
+                  Offline
+                </Badge>
               )}
               {activeProject && (
                 <DeployButton
@@ -1495,111 +1497,37 @@ export default function Home() {
               )}
               <Button 
                 variant="ghost" 
-                size="sm" 
-                onClick={() => setShowDatabasePanel(!showDatabasePanel)}
-                data-testid="button-database"
-                title="Database Explorer"
-              >
-                <Database className="h-4 w-4 sm:mr-1" />
-                <span className="hidden sm:inline">Database</span>
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+                size="icon" 
                 onClick={() => setShowAIInsights(!showAIInsights)}
                 data-testid="button-ai-insights"
                 title="AI Insights"
+                className="h-9 w-9 rounded-lg"
               >
-                <Brain className={`h-4 w-4 sm:mr-1 ${isGenerating || isPlanning ? "text-purple-500 animate-pulse" : ""}`} />
-                <span className="hidden sm:inline">AI</span>
+                <Brain className={`h-4 w-4 ${isGenerating || isPlanning ? "text-purple-500 animate-pulse" : ""}`} />
               </Button>
-              <Button variant="ghost" size="sm" asChild data-testid="button-analytics" title="Analytics">
-                <Link href="/analytics">
-                  <BarChart3 className="h-4 w-4 sm:mr-1" />
-                  <span className="hidden sm:inline">Analytics</span>
-                </Link>
-              </Button>
-              {llmConnected === false && (
-                <Badge 
-                  variant="outline" 
-                  className="gap-1.5 text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover-elevate electron-no-drag"
-                  onClick={checkConnection}
-                  data-testid="badge-connection-status"
-                  title="Click to retry connection"
-                >
-                  <WifiOff className="h-3 w-3" />
-                  <span className="hidden sm:inline">LM Studio offline</span>
-                </Badge>
-              )}
-              {llmConnected === true && (
-                <div className="flex items-center gap-1.5" data-testid="indicator-connected">
-                  <div 
-                    className={`w-2 h-2 rounded-full ${
-                      health && !health.isHealthy && health.consecutiveFailures > 0
-                        ? 'bg-amber-500 animate-pulse' 
-                        : queueStatus && queueStatus.pending > 0 
-                          ? 'bg-amber-500 animate-pulse' 
-                          : queueStatus?.isOverloaded
-                            ? 'bg-amber-500'
-                            : 'bg-green-500'
-                    }`} 
-                    title={
-                      health && !health.isHealthy && health.consecutiveFailures > 0
-                        ? `Connection degraded (${health.consecutiveFailures} failures)${health.lastError ? ` - ${health.lastError}` : ''}`
-                        : queueStatus?.isFull
-                          ? 'Queue full - please wait'
-                          : queueStatus?.isOverloaded
-                            ? `Queue ${queueStatus.utilizationPercent}% full`
-                            : queueStatus 
-                              ? `LM Studio connected${queueStatus.pending > 0 ? ` (${queueStatus.pending} queued)` : ''}${telemetry?.lastTokensPerSecond ? ` - ${telemetry.lastTokensPerSecond.toFixed(0)} tok/s` : ''}`
-                              : 'LM Studio connected'
-                    } 
-                  />
-                  {settings.useDualModels && (settings.plannerModel || settings.builderModel) ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {settings.plannerModel && (
-                        <span className="flex items-center gap-1 truncate max-w-[140px]" title={`Planner: ${settings.plannerModel}`}>
-                          <Brain className="h-3 w-3 text-purple-400" />
-                          {settings.plannerModel.split('/').pop()}
-                        </span>
-                      )}
-                      {settings.plannerModel && settings.builderModel && <span className="text-muted-foreground/30">|</span>}
-                      {settings.builderModel && (
-                        <span className="flex items-center gap-1 truncate max-w-[140px]" title={`Builder: ${settings.builderModel}`}>
-                          <Hammer className="h-3 w-3 text-amber-400" />
-                          {settings.builderModel.split('/').pop()}
-                        </span>
-                      )}
-                    </div>
-                  ) : loadedModel ? (
-                    <span className="text-xs text-muted-foreground truncate max-w-[180px]" title={`Model: ${loadedModel}`}>
-                      {loadedModel}
-                    </span>
-                  ) : availableModels.length > 0 ? (
-                    <span className="text-xs text-muted-foreground truncate max-w-[180px]" title={`${availableModels.length} models available`}>
-                      {availableModels.length} models
-                    </span>
-                  ) : null}
-                </div>
-              )}
               <ThemeToggle />
-              {!showFileExplorer && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowFileExplorer(true)}
-                  title="Show Files"
-                  data-testid="button-show-files"
-                >
-                  <PanelRight className="h-4 w-4" />
-                </Button>
-              )}
             </div>
           </header>
           
           <main className="flex-1 overflow-hidden">
             {projects.length === 0 && !activeProject ? (
-              <EmptyState onCreateProject={() => createProject()} />
+              <MinimalLanding
+                onGenerate={async (prompt, mode) => {
+                  const newProject = await createProject();
+                  if (newProject) {
+                    setTimeout(() => {
+                      if (mode === "design") {
+                        setAgentMode("plan");
+                      }
+                      handleIntelligentGenerate(prompt);
+                    }, 100);
+                  }
+                }}
+                isGenerating={isGenerating || isPlanning}
+                isConnected={llmConnected || testModeConnected}
+                testModeActive={testModeActive}
+                testModeConnected={testModeConnected}
+              />
             ) : !displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
               <div className="h-full flex flex-col">
                 {/* Plan Mode Info in wizard view */}

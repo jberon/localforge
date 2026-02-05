@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp, Globe, Eye, EyeOff, Cloud } from "lucide-react";
+import { Plus, Settings, Trash2, Hammer, Pencil, MoreHorizontal, Download, RefreshCw, Check, X, Loader2, Brain, Code, ChevronDown, ChevronUp, Globe, Eye, EyeOff, Cloud, Database, BarChart3 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -56,6 +56,8 @@ interface ProjectSidebarProps {
   onDeleteProject: (id: string) => void;
   onRenameProject: (id: string, name: string) => void;
   onUpdateSettings: (settings: LLMSettings) => void;
+  onOpenDatabase?: () => void;
+  onOpenAnalytics?: () => void;
 }
 
 interface ModelsResponse {
@@ -73,6 +75,8 @@ export function ProjectSidebar({
   onDeleteProject,
   onRenameProject,
   onUpdateSettings,
+  onOpenDatabase,
+  onOpenAnalytics,
 }: ProjectSidebarProps) {
   const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -253,8 +257,36 @@ export function ProjectSidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3 border-t">
+      <SidebarFooter className="p-3 border-t space-y-2">
         <HealthDashboard />
+        
+        <div className="flex gap-1">
+          {onOpenDatabase && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex-1 justify-start gap-2 h-8"
+              onClick={onOpenDatabase}
+              data-testid="button-sidebar-database"
+            >
+              <Database className="h-4 w-4" />
+              <span className="text-sm">Database</span>
+            </Button>
+          )}
+          {onOpenAnalytics && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex-1 justify-start gap-2 h-8"
+              onClick={onOpenAnalytics}
+              data-testid="button-sidebar-analytics"
+            >
+              <BarChart3 className="h-4 w-4" />
+              <span className="text-sm">Analytics</span>
+            </Button>
+          )}
+        </div>
+        
         <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
           <DialogTrigger asChild>
             <Button
