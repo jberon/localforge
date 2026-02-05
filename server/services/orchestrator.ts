@@ -634,9 +634,9 @@ export class AIOrchestrator {
         compressionApplied: result.compressionApplied,
         estimatedSpeedup: result.estimatedSpeedup,
         patterns: result.patterns?.length || 0,
-        recommendedMaxTokens: result.recommendedMaxTokens,
-        gpuLayers: result.gpuLayers,
-        batchSize: result.batchSize
+        recommendedMaxTokens: result.metrics?.recommendedMaxTokens,
+        gpuLayers: result.metrics?.gpuLayers,
+        batchSize: result.metrics?.batchSize
       });
 
       return result;
@@ -1101,8 +1101,8 @@ export class AIOrchestrator {
     const baseSystemPrompt = modelInstructions + PLANNING_PROMPT;
     const optimized = this.optimizeForLocalModel(baseSystemPrompt, userRequest + context, "planning");
     
-    // v2.0.0: Determine max tokens using V2 result if available
-    const v2MaxTokens = v2Result?.recommendedMaxTokens;
+    // v2.0.0: Determine max tokens using V2 result if available (from metrics object)
+    const v2MaxTokens = v2Result?.metrics?.recommendedMaxTokens;
     const effectiveMaxTokens = v2MaxTokens || optimized.maxTokens || LLM_DEFAULTS.maxTokens.plan;
     
     // v2.0.0: Include pattern context if available from V2
@@ -1345,8 +1345,8 @@ export class AIOrchestrator {
     }
     this.emitTasksUpdated();
 
-    // v2.0.0: Determine max tokens using V2 result if available
-    const v2MaxTokens = v2Result?.recommendedMaxTokens;
+    // v2.0.0: Determine max tokens using V2 result if available (from metrics object)
+    const v2MaxTokens = v2Result?.metrics?.recommendedMaxTokens;
     const effectiveMaxTokens = v2MaxTokens || optimized.maxTokens || LLM_DEFAULTS.maxTokens.fullStack;
     
     // v2.0.0: Enhance user prompt with pattern context if available
