@@ -13,6 +13,7 @@ import healthRoutes from "./routes/health";
 import databaseRoutes from "./routes/database";
 import optimizationRoutes from "./routes/optimization";
 import localBuildRoutes from "./routes/local-build";
+import intelligenceRoutes from "./routes/intelligence";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -42,6 +43,8 @@ export async function registerRoutes(
   app.use("/api/optimization", optimizationRoutes);
   
   app.use("/api/local-build", localBuildRoutes);
+  
+  app.use("/api/intelligence", intelligenceRoutes);
 
   return httpServer;
 }

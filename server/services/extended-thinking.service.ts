@@ -332,6 +332,23 @@ class ExtendedThinkingService {
       .slice(0, limit);
   }
 
+  getSessions(projectId?: string, limit: number = 20): ThinkingSession[] {
+    let sessions = Array.from(this.sessions.values());
+    
+    if (projectId) {
+      sessions = sessions.filter(s => s.projectId === projectId);
+    }
+    
+    return sessions
+      .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
+      .slice(0, limit);
+  }
+
+  setProjectMode(projectId: string, mode: ThinkingMode): void {
+    this.projectModes.set(projectId, mode);
+    logger.info("Project thinking mode set", { projectId, mode });
+  }
+
   detectLoopPattern(projectId: string): boolean {
     const count = this.loopCounts.get(projectId) || 0;
     const config = this.getConfig(projectId);

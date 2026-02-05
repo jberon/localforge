@@ -238,6 +238,41 @@ class FeedbackLearningService {
       .sort((a, b) => b.confidence - a.confidence);
   }
 
+  getAllPatterns(): LearnedPattern[] {
+    return Array.from(this.patterns.values()).concat(this.globalPatterns);
+  }
+
+  removePattern(patternId: string): boolean {
+    if (this.patterns.has(patternId)) {
+      this.patterns.delete(patternId);
+      this.globalPatterns = this.globalPatterns.filter(p => p.id !== patternId);
+      logger.info("Pattern removed", { patternId });
+      return true;
+    }
+    return false;
+  }
+
+  addPattern(pattern: Partial<LearnedPattern>): LearnedPattern | null {
+    if (!pattern.pattern || !pattern.category) {
+      return null;
+    }
+    
+    const newPattern: LearnedPattern = {
+      id: pattern.id || `pattern_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      category: pattern.category,
+      pattern: pattern.pattern,
+      replacement: pattern.replacement,
+      frequency: pattern.frequency || 1,
+      confidence: pattern.confidence || 0.5,
+      examples: pattern.examples || [],
+      lastApplied: pattern.lastApplied || new Date()
+    };
+
+    this.patterns.set(newPattern.id, newPattern);
+    logger.info("Pattern added", { id: newPattern.id, category: newPattern.category });
+    return newPattern;
+  }
+
   formatPatternsForPrompt(patterns: LearnedPattern[]): string {
     if (patterns.length === 0) {
       return "";

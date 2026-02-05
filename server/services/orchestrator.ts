@@ -854,12 +854,22 @@ export class AIOrchestrator {
     const patternsContext = feedbackLearningService.formatPatternsForPrompt(learnedPatterns);
 
     // Update project memory with conversation context
+    // Normalize roles: planner messages become user (they represent user intent), 
+    // builder messages become assistant (AI-generated code)
     if (this.projectId) {
-      const messages = this.state.messages.map(m => ({
-        role: m.role as "user" | "assistant" | "system",
-        content: m.content,
-        timestamp: Date.now()
-      }));
+      const messages = this.state.messages.map(m => {
+        let normalizedRole: "user" | "assistant" | "system" = "assistant";
+        if (m.role === "planner") {
+          normalizedRole = "user";
+        } else if (m.role === "system") {
+          normalizedRole = "system";
+        }
+        return {
+          role: normalizedRole,
+          content: m.content,
+          timestamp: Date.now()
+        };
+      });
       if (messages.length > 0) {
         smartContextService.updateProjectMemory(this.projectId, messages);
       }

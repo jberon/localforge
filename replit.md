@@ -28,6 +28,14 @@ New intelligent services that improve code generation quality:
 - **Enhanced Code Analysis**: Cyclomatic complexity, cognitive complexity, maintainability index, security scanning, best practice violation detection (SOLID, DRY, KISS)
 - All services are integrated into the orchestrator pipeline for automatic activation during generation
 
+### Intelligence Visibility & Polish (v1.6.5)
+New UI components that expose intelligence services to users:
+- **Intelligence Dashboard**: Real-time status panel showing all AI services, code quality scores (A-F grades), complexity metrics, security findings, and best practice violations
+- **Pattern Manager**: View, search, delete, export/import learned coding patterns from feedback learning with confidence scores and usage frequency
+- **Extended Thinking Panel**: Visualization of multi-step reasoning sessions with step-by-step progress, insights, open questions, and confidence scores
+- **Smart Context Fix**: Improved message role normalization for better conversation summarization (planner→user, builder→assistant)
+- **API Endpoints**: New `/api/intelligence/*` routes for analyzing code, managing patterns, controlling thinking mode, and viewing context
+
 ## System Architecture
 
 ### Core Functionality
