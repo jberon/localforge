@@ -419,6 +419,288 @@ class ProjectMemoryService {
     this.projectContexts.delete(projectId);
     logger.info("Project memory cleared", { projectId });
   }
+
+  // ============================================================================
+  // ENHANCED: DEPENDENCY GRAPH & SMART DIFFING
+  // ============================================================================
+
+  /**
+   * Build a dependency graph for the project
+   */
+  async buildDependencyGraph(projectId: string): Promise<{
+    nodes: Array<{ id: string; type: FileType; purpose: string }>;
+    edges: Array<{ from: string; to: string }>;
+    orphans: string[];
+    cycles: string[][];
+  }> {
+    const context = await this.getOrCreateContext(projectId);
+    const nodes: Array<{ id: string; type: FileType; purpose: string }> = [];
+    const edges: Array<{ from: string; to: string }> = [];
+    const allPaths = new Set<string>();
+    const referencedPaths = new Set<string>();
+
+    context.files.forEach((metadata, path) => {
+      nodes.push({
+        id: path,
+        type: metadata.type,
+        purpose: metadata.purpose
+      });
+      allPaths.add(path);
+
+      metadata.dependencies.forEach(dep => {
+        edges.push({ from: path, to: dep });
+        referencedPaths.add(dep);
+      });
+    });
+
+    const orphans = Array.from(allPaths).filter(p => {
+      const meta = context.files.get(p);
+      return meta?.dependencies.length === 0 && !referencedPaths.has(p);
+    });
+
+    const cycles = this.detectCycles(edges);
+
+    logger.info("Dependency graph built", {
+      projectId,
+      nodes: nodes.length,
+      edges: edges.length,
+      orphans: orphans.length,
+      cycles: cycles.length
+    });
+
+    return { nodes, edges, orphans, cycles };
+  }
+
+  private detectCycles(edges: Array<{ from: string; to: string }>): string[][] {
+    const graph = new Map<string, string[]>();
+    
+    edges.forEach(e => {
+      const deps = graph.get(e.from) || [];
+      deps.push(e.to);
+      graph.set(e.from, deps);
+    });
+
+    const cycles: string[][] = [];
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    const currentPath: string[] = [];
+
+    const dfs = (node: string): void => {
+      visited.add(node);
+      recursionStack.add(node);
+      currentPath.push(node);
+
+      const neighbors = graph.get(node) || [];
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          dfs(neighbor);
+        } else if (recursionStack.has(neighbor)) {
+          const cycleStart = currentPath.indexOf(neighbor);
+          if (cycleStart !== -1) {
+            cycles.push(currentPath.slice(cycleStart).concat(neighbor));
+          }
+        }
+      }
+
+      currentPath.pop();
+      recursionStack.delete(node);
+    };
+
+    graph.forEach((_, node) => {
+      if (!visited.has(node)) {
+        dfs(node);
+      }
+    });
+
+    return cycles;
+  }
+
+  /**
+   * Smart diff: Compute minimal changes needed
+   */
+  computeSmartDiff(
+    oldContent: string,
+    newContent: string
+  ): {
+    changeType: "none" | "minor" | "significant" | "rewrite";
+    changeRatio: number;
+    changedLines: { added: number; removed: number; modified: number };
+    hunks: Array<{ start: number; end: number; type: "add" | "remove" | "modify" }>;
+  } {
+    const oldLines = oldContent.split("\n");
+    const newLines = newContent.split("\n");
+    
+    let added = 0;
+    let removed = 0;
+    let modified = 0;
+    const hunks: Array<{ start: number; end: number; type: "add" | "remove" | "modify" }> = [];
+
+    const oldSet = new Set(oldLines);
+    const newSet = new Set(newLines);
+
+    oldLines.forEach((line, i) => {
+      if (!newSet.has(line)) {
+        removed++;
+        hunks.push({ start: i + 1, end: i + 1, type: "remove" });
+      }
+    });
+
+    newLines.forEach((line, i) => {
+      if (!oldSet.has(line)) {
+        added++;
+        hunks.push({ start: i + 1, end: i + 1, type: "add" });
+      }
+    });
+
+    const maxLines = Math.max(oldLines.length, newLines.length);
+    const changeRatio = maxLines > 0 ? (added + removed) / maxLines : 0;
+
+    let changeType: "none" | "minor" | "significant" | "rewrite";
+    if (changeRatio === 0) changeType = "none";
+    else if (changeRatio < 0.1) changeType = "minor";
+    else if (changeRatio < 0.5) changeType = "significant";
+    else changeType = "rewrite";
+
+    return {
+      changeType,
+      changeRatio,
+      changedLines: { added, removed, modified },
+      hunks: this.mergeHunks(hunks)
+    };
+  }
+
+  private mergeHunks(
+    hunks: Array<{ start: number; end: number; type: "add" | "remove" | "modify" }>
+  ): Array<{ start: number; end: number; type: "add" | "remove" | "modify" }> {
+    if (hunks.length === 0) return [];
+    
+    const sorted = [...hunks].sort((a, b) => a.start - b.start);
+    const merged: typeof hunks = [sorted[0]];
+
+    for (let i = 1; i < sorted.length; i++) {
+      const current = sorted[i];
+      const last = merged[merged.length - 1];
+
+      if (current.start <= last.end + 3 && current.type === last.type) {
+        last.end = Math.max(last.end, current.end);
+      } else {
+        merged.push(current);
+      }
+    }
+
+    return merged;
+  }
+
+  /**
+   * Get impact analysis for a file change
+   */
+  async getChangeImpact(
+    projectId: string,
+    filePath: string
+  ): Promise<{
+    directDependents: string[];
+    transitiveDependents: string[];
+    impactLevel: "low" | "medium" | "high" | "critical";
+    recommendations: string[];
+  }> {
+    const context = await this.getOrCreateContext(projectId);
+    const directDependents: string[] = [];
+    const transitiveDependents = new Set<string>();
+
+    context.files.forEach((metadata, path) => {
+      if (metadata.dependencies.includes(filePath)) {
+        directDependents.push(path);
+      }
+    });
+
+    const queue = [...directDependents];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (transitiveDependents.has(current)) continue;
+      transitiveDependents.add(current);
+
+      context.files.forEach((metadata, path) => {
+        if (metadata.dependencies.includes(current) && !transitiveDependents.has(path)) {
+          queue.push(path);
+        }
+      });
+    }
+
+    const fileMetadata = context.files.get(filePath);
+    const totalDependents = directDependents.length + transitiveDependents.size;
+
+    let impactLevel: "low" | "medium" | "high" | "critical";
+    if (totalDependents === 0) impactLevel = "low";
+    else if (totalDependents <= 3) impactLevel = "medium";
+    else if (totalDependents <= 10) impactLevel = "high";
+    else impactLevel = "critical";
+
+    if (fileMetadata?.type === "type" || fileMetadata?.type === "model") {
+      impactLevel = impactLevel === "low" ? "medium" : impactLevel === "medium" ? "high" : "critical";
+    }
+
+    const recommendations: string[] = [];
+    if (impactLevel === "high" || impactLevel === "critical") {
+      recommendations.push("Consider making changes incrementally and testing after each step");
+      recommendations.push(`This change may affect ${totalDependents} files`);
+    }
+    if (fileMetadata?.type === "type") {
+      recommendations.push("Type changes may require updates to all dependent files");
+    }
+    if (directDependents.length > 5) {
+      recommendations.push("Consider extracting shared logic into smaller modules");
+    }
+
+    return {
+      directDependents,
+      transitiveDependents: Array.from(transitiveDependents),
+      impactLevel,
+      recommendations
+    };
+  }
+
+  /**
+   * Get file hierarchy for display
+   */
+  getFileHierarchy(projectId: string): {
+    tree: Record<string, any>;
+    stats: { files: number; folders: number; maxDepth: number };
+  } | null {
+    const context = this.projectContexts.get(projectId);
+    if (!context) return null;
+
+    const tree: Record<string, any> = {};
+    let folders = new Set<string>();
+    let maxDepth = 0;
+
+    context.files.forEach((_, filePath) => {
+      const parts = filePath.split("/");
+      let current = tree;
+      
+      for (let i = 0; i < parts.length - 1; i++) {
+        const folderPath = parts.slice(0, i + 1).join("/");
+        folders.add(folderPath);
+        
+        if (!current[parts[i]]) {
+          current[parts[i]] = {};
+        }
+        current = current[parts[i]];
+      }
+      
+      const fileName = parts[parts.length - 1];
+      current[fileName] = null;
+      maxDepth = Math.max(maxDepth, parts.length);
+    });
+
+    return {
+      tree,
+      stats: {
+        files: context.files.size,
+        folders: folders.size,
+        maxDepth
+      }
+    };
+  }
 }
 
 export const projectMemoryService = ProjectMemoryService.getInstance();

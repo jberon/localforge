@@ -62,6 +62,7 @@ export interface DecomposedTask {
   id: string;
   projectId: string;
   originalPrompt: string;
+  strategy: string;
   subtasks: Subtask[];
   dependencyGraph: Map<string, string[]>;
   executionOrder: string[];
@@ -164,6 +165,7 @@ class TaskDecompositionService {
       id: taskId,
       projectId,
       originalPrompt: prompt,
+      strategy: strategy.name,
       subtasks,
       dependencyGraph,
       executionOrder,

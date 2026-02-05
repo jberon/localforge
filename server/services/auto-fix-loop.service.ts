@@ -1,12 +1,24 @@
 import { logger } from "../lib/logger";
 import { codeRunnerService, RunResult, ParsedError } from "./code-runner.service";
 import { projectMemoryService } from "./project-memory.service";
+import * as fs from "fs/promises";
+import * as path from "path";
+
+export interface CodePatch {
+  file: string;
+  oldContent: string;
+  newContent: string;
+  lineStart?: number;
+  lineEnd?: number;
+  description: string;
+}
 
 export interface FixAttempt {
   id: string;
   iteration: number;
   error: ParsedError;
   fix: string;
+  patch?: CodePatch;
   success: boolean;
   runResult: RunResult;
   timestamp: number;
@@ -51,12 +63,15 @@ export interface FixContext {
 }
 
 type LLMFixFunction = (prompt: string, context: any) => Promise<string>;
+type LLMCodePatchFunction = (error: ParsedError, fileContent: string, context: any) => Promise<CodePatch | null>;
 
 class AutoFixLoopService {
   private static instance: AutoFixLoopService;
   private activeSessions: Map<string, AutoFixSession> = new Map();
   private fixStrategies: FixStrategy[] = [];
   private llmFixFunction?: LLMFixFunction;
+  private llmCodePatchFunction?: LLMCodePatchFunction;
+  private projectsBaseDir: string = process.cwd();
   private defaultMaxIterations = 5;
 
   private constructor() {
@@ -74,6 +89,221 @@ class AutoFixLoopService {
   setLLMFixFunction(fn: LLMFixFunction): void {
     this.llmFixFunction = fn;
     logger.info("LLM fix function registered");
+  }
+
+  setLLMCodePatchFunction(fn: LLMCodePatchFunction): void {
+    this.llmCodePatchFunction = fn;
+    logger.info("LLM code patch function registered");
+  }
+
+  setProjectsBaseDir(dir: string): void {
+    this.projectsBaseDir = dir;
+  }
+
+  /**
+   * Read file content from the project
+   */
+  async readFileContent(projectId: string, filePath: string): Promise<string | null> {
+    try {
+      const fullPath = path.join(this.projectsBaseDir, "projects", projectId, filePath);
+      const content = await fs.readFile(fullPath, "utf-8");
+      return content;
+    } catch (e) {
+      logger.warn("Failed to read file for patching", { projectId, filePath, error: e });
+      return null;
+    }
+  }
+
+  /**
+   * Apply a code patch to a file
+   */
+  async applyCodePatch(projectId: string, patch: CodePatch): Promise<boolean> {
+    try {
+      const fullPath = path.join(this.projectsBaseDir, "projects", projectId, patch.file);
+      
+      // Read current content
+      let currentContent: string;
+      try {
+        currentContent = await fs.readFile(fullPath, "utf-8");
+      } catch (e) {
+        logger.error("Cannot read file for patching", { file: patch.file });
+        return false;
+      }
+
+      // Verify old content matches (for safety)
+      if (patch.oldContent && !currentContent.includes(patch.oldContent)) {
+        logger.warn("Old content mismatch, applying full replacement", { file: patch.file });
+      }
+
+      // Apply the patch
+      let newContent: string;
+      if (patch.lineStart !== undefined && patch.lineEnd !== undefined) {
+        // Line-based patch
+        const lines = currentContent.split("\n");
+        const beforeLines = lines.slice(0, patch.lineStart - 1);
+        const afterLines = lines.slice(patch.lineEnd);
+        const patchLines = patch.newContent.split("\n");
+        newContent = [...beforeLines, ...patchLines, ...afterLines].join("\n");
+      } else if (patch.oldContent) {
+        // String replacement patch
+        newContent = currentContent.replace(patch.oldContent, patch.newContent);
+      } else {
+        // Full file replacement
+        newContent = patch.newContent;
+      }
+
+      // Write the patched content
+      await fs.writeFile(fullPath, newContent, "utf-8");
+      
+      logger.info("Code patch applied successfully", {
+        file: patch.file,
+        description: patch.description
+      });
+
+      return true;
+    } catch (e) {
+      logger.error("Failed to apply code patch", { file: patch.file, error: e });
+      return false;
+    }
+  }
+
+  /**
+   * Generate a code patch for an error using LLM
+   */
+  async generateCodePatch(
+    projectId: string,
+    error: ParsedError,
+    context: FixContext
+  ): Promise<CodePatch | null> {
+    if (!error.file) {
+      logger.warn("Cannot generate patch without file path");
+      return null;
+    }
+
+    const fileContent = await this.readFileContent(projectId, error.file);
+    if (!fileContent) {
+      return null;
+    }
+
+    // Try LLM-based patch generation first
+    if (this.llmCodePatchFunction) {
+      try {
+        const patch = await this.llmCodePatchFunction(error, fileContent, context);
+        if (patch) {
+          return patch;
+        }
+      } catch (e) {
+        logger.warn("LLM patch generation failed, trying rule-based", { error: e });
+      }
+    }
+
+    // Fallback to rule-based fixes
+    return this.generateRuleBasedPatch(error, fileContent, context);
+  }
+
+  /**
+   * Generate patches using built-in rules
+   */
+  private generateRuleBasedPatch(
+    error: ParsedError,
+    fileContent: string,
+    context: FixContext
+  ): CodePatch | null {
+    const lines = fileContent.split("\n");
+    const errorLine = error.line ? lines[error.line - 1] : null;
+
+    // Missing import fix
+    if (error.type === "import" || /Cannot find module|is not defined/i.test(error.message)) {
+      const moduleMatch = error.message.match(/Cannot find module ['"](.+?)['"]/);
+      const identifierMatch = error.message.match(/['"](.+?)['"] is not defined/);
+      
+      if (moduleMatch || identifierMatch) {
+        const name = moduleMatch?.[1] || identifierMatch?.[1];
+        const importStatement = `import { ${name} } from "./${name}";\n`;
+        
+        // Find first import or top of file
+        const firstImportIndex = lines.findIndex(l => l.startsWith("import"));
+        const insertLine = firstImportIndex >= 0 ? firstImportIndex : 0;
+        
+        return {
+          file: error.file!,
+          oldContent: lines[insertLine],
+          newContent: importStatement + lines[insertLine],
+          lineStart: insertLine + 1,
+          lineEnd: insertLine + 1,
+          description: `Add missing import for ${name}`
+        };
+      }
+    }
+
+    // Null check fix
+    if (error.type === "type" && /Object is possibly ['"]?(null|undefined)/i.test(error.message)) {
+      if (errorLine && error.line) {
+        // Add optional chaining
+        const fixedLine = errorLine.replace(/(\w+)\.(\w+)/g, "$1?.$2");
+        if (fixedLine !== errorLine) {
+          return {
+            file: error.file!,
+            oldContent: errorLine,
+            newContent: fixedLine,
+            lineStart: error.line,
+            lineEnd: error.line,
+            description: "Add optional chaining for null safety"
+          };
+        }
+      }
+    }
+
+    // Type assertion fix
+    if (error.type === "type" && /Type '.*' is not assignable/i.test(error.message)) {
+      if (errorLine && error.line) {
+        // Try adding 'as any' as last resort
+        const fixedLine = errorLine.replace(/= (.+?);/, "= $1 as any;");
+        if (fixedLine !== errorLine) {
+          return {
+            file: error.file!,
+            oldContent: errorLine,
+            newContent: fixedLine,
+            lineStart: error.line,
+            lineEnd: error.line,
+            description: "Add type assertion to fix type mismatch"
+          };
+        }
+      }
+    }
+
+    // Missing semicolon fix
+    if (error.type === "syntax" && /Missing semicolon/i.test(error.message)) {
+      if (errorLine && error.line && !errorLine.trimEnd().endsWith(";")) {
+        return {
+          file: error.file!,
+          oldContent: errorLine,
+          newContent: errorLine + ";",
+          lineStart: error.line,
+          lineEnd: error.line,
+          description: "Add missing semicolon"
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Apply fix to code and return updated code string
+   * This is used when working with in-memory code rather than files
+   */
+  applyFixToCode(code: string, patch: CodePatch): string {
+    if (patch.lineStart !== undefined && patch.lineEnd !== undefined) {
+      const lines = code.split("\n");
+      const beforeLines = lines.slice(0, patch.lineStart - 1);
+      const afterLines = lines.slice(patch.lineEnd);
+      const patchLines = patch.newContent.split("\n");
+      return [...beforeLines, ...patchLines, ...afterLines].join("\n");
+    } else if (patch.oldContent) {
+      return code.replace(patch.oldContent, patch.newContent);
+    }
+    return patch.newContent;
   }
 
   private initializeStrategies(): void {

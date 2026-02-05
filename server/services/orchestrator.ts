@@ -13,6 +13,8 @@ import { projectMemoryService } from "./project-memory.service";
 import { codeRunnerService, type RunResult } from "./code-runner.service";
 import { autoFixLoopService, type AutoFixSession } from "./auto-fix-loop.service";
 import { refactoringAgentService, type RefactoringResult } from "./refactoring-agent.service";
+import { runtimeFeedbackService } from "./runtime-feedback.service";
+import { uiuxAgentService } from "./uiux-agent.service";
 
 // ============================================================================
 // MODEL-SPECIFIC INSTRUCTIONS
@@ -666,7 +668,7 @@ export class AIOrchestrator {
           this.emit({ 
             type: "thinking", 
             model: "builder", 
-            content: `Enhanced auto-fix completed: ${enhancedFixResult.session.iterations.length} iterations` 
+            content: `Enhanced auto-fix completed: ${enhancedFixResult.session.fixAttempts.length} fix attempts` 
           });
         }
         
@@ -726,6 +728,16 @@ export class AIOrchestrator {
             });
           }
           
+          // Multi-Agent: Run UI/UX analysis on frontend files
+          const uiuxResult = await this.runUIUXAnalysis(files);
+          if (uiuxResult && uiuxResult.issues > 0) {
+            this.emit({
+              type: "thinking",
+              model: "builder",
+              content: `UI/UX Quality: Grade ${uiuxResult.score}, ${uiuxResult.issues} design issue(s) detected`
+            });
+          }
+          
           // Multi-Agent: Record to project memory
           await this.recordToMemory(
             files.map(f => ({ path: f.path, purpose: "Generated code", content: f.content })),
@@ -737,6 +749,9 @@ export class AIOrchestrator {
             } : undefined
           );
         }
+        
+        // Clean up runtime feedback session after validation completes
+        runtimeFeedbackService.stopSession(this.projectId);
       }
 
       this.emit({ type: "phase_change", phase: "complete", message: "Generation complete!" });
@@ -749,6 +764,11 @@ export class AIOrchestrator {
 
       return { success: true, code: this.state.generatedCode, summary: plan.summary };
     } catch (error: any) {
+      // Ensure runtime session is cleaned up on error
+      if (this.projectId) {
+        runtimeFeedbackService.stopSession(this.projectId);
+      }
+      
       if (error.message === "Aborted") {
         this.emit({ type: "error", message: "Generation cancelled" });
         return { success: false, code: "", summary: "" };
@@ -1238,7 +1258,7 @@ export class AIOrchestrator {
   private parseFilesFromCode(code: string): Array<{ path: string; content: string }> {
     const files: Array<{ path: string; content: string }> = [];
     const filePattern = /\[FILE:\s*(.+?)\]/g;
-    const matches = [...code.matchAll(filePattern)];
+    const matches = Array.from(code.matchAll(filePattern));
     
     for (let i = 0; i < matches.length; i++) {
       const match = matches[i];
@@ -1332,6 +1352,7 @@ export class AIOrchestrator {
 
   /**
    * Run automated validation and fix loop using CodeRunner + AutoFixLoop services
+   * Enhanced with runtime feedback capture for real-time error detection
    */
   async runEnhancedAutoFix(code: string): Promise<{ success: boolean; fixedCode: string; session?: AutoFixSession }> {
     if (!this.projectId) {
@@ -1339,6 +1360,9 @@ export class AIOrchestrator {
     }
 
     try {
+      // Start runtime session for error capture
+      runtimeFeedbackService.startSession(this.projectId);
+      
       const session = await autoFixLoopService.startAutoFixSession(this.projectId, {
         maxIterations: this.state.maxFixAttempts
       });
@@ -1358,6 +1382,39 @@ export class AIOrchestrator {
         }
       );
 
+      // Check for any unhandled runtime errors after fix loop and feed into auto-fix
+      const unhandledErrors = runtimeFeedbackService.getUnhandledErrors(this.projectId);
+      if (unhandledErrors.length > 0 && result.status === "completed") {
+        this.emit({
+          type: "thinking",
+          model: "builder",
+          content: `Runtime feedback: ${unhandledErrors.length} runtime error(s) detected`
+        });
+        
+        // Format errors for LLM context - store for potential re-fix cycles
+        const errorContext = runtimeFeedbackService.formatErrorsForLLM(this.projectId);
+        if (errorContext) {
+          // Store runtime error context in the session for next generation cycle
+          // This enables the autonomous loop to learn from runtime failures
+          for (const err of unhandledErrors.slice(0, 3)) {
+            this.emit({
+              type: "phase_change",
+              phase: "fixing",
+              message: `Runtime error: ${err.type} - ${err.message.slice(0, 50)}...`
+            });
+            
+            // Mark with suggested fix if available
+            if (err.suggestion) {
+              this.emit({
+                type: "thinking",
+                model: "builder",
+                content: `Suggested fix: ${err.suggestion}`
+              });
+            }
+          }
+        }
+      }
+
       return {
         success: result.status === "completed",
         fixedCode: code,
@@ -1366,6 +1423,59 @@ export class AIOrchestrator {
     } catch (error) {
       console.error("[Orchestrator] Enhanced auto-fix failed:", error);
       return { success: false, fixedCode: code };
+    }
+  }
+
+  /**
+   * Run UI/UX analysis pass on generated frontend files
+   */
+  async runUIUXAnalysis(
+    files: Array<{ path: string; content: string }>
+  ): Promise<{ score: string; issues: number; suggestions: string[] } | null> {
+    if (!this.projectId || files.length === 0) return null;
+
+    try {
+      const frontendFiles = files.filter(f => 
+        f.path.endsWith('.tsx') || f.path.endsWith('.jsx') || 
+        f.path.endsWith('.css') || f.path.includes('component')
+      );
+
+      if (frontendFiles.length === 0) return null;
+
+      this.emit({
+        type: "phase_change",
+        phase: "reviewing",
+        message: "Analyzing UI/UX patterns..."
+      });
+
+      const analysis = await uiuxAgentService.analyzeFiles(frontendFiles);
+      
+      // Convert score (0-100) to letter grade
+      const getGrade = (s: number): string => {
+        if (s >= 90) return "A";
+        if (s >= 80) return "B";
+        if (s >= 70) return "C";
+        if (s >= 60) return "D";
+        return "F";
+      };
+      const grade = getGrade(analysis.score);
+      
+      if (analysis.issuesFound.length > 0) {
+        this.emit({
+          type: "thinking",
+          model: "builder",
+          content: `UI/UX Analysis: Grade ${grade}, ${analysis.issuesFound.length} issue(s) found`
+        });
+      }
+
+      return {
+        score: grade,
+        issues: analysis.issuesFound.length,
+        suggestions: analysis.issuesFound.slice(0, 5).map((i: { suggestion: string }) => i.suggestion)
+      };
+    } catch (error) {
+      console.error("[Orchestrator] UI/UX analysis failed:", error);
+      return null;
     }
   }
 

@@ -53,6 +53,15 @@ Five specialized services working together for intelligent code generation:
 - **Refactoring Agent Service** (`server/services/refactoring-agent.service.ts`): Post-generation cleanup applying DRY/SOLID patterns, detects code smells (magic numbers, long methods, complex conditions, DRY violations), suggests improvements
 - All services integrate into the orchestrator pipeline with methods: `decomposeRequest()`, `recordToMemory()`, `runEnhancedAutoFix()`, `runRefactoringPass()`, `getProjectContext()`
 
+### Autonomous Development Loop (v1.8.0)
+Enhanced autonomous development capabilities for self-supervised development:
+- **Runtime Feedback Service** (`server/services/runtime-feedback.service.ts`): Real-time error capture from browser/server/build sources with automatic error classification (syntax, reference, type, network, hydration, etc.), session management with proper cleanup, event-based streaming, and LLM-ready error formatting
+- **UI/UX Agent Service** (`server/services/uiux-agent.service.ts`): Automated design system analysis detecting hardcoded colors, spacing inconsistencies, missing alt text, component misuse, dark mode gaps, and accessibility violations with A-F quality grading
+- **Enhanced Auto-Fix Loop**: Applies LLM-generated code patches with line-based and string replacement strategies, generates rule-based fixes for common issues (missing imports, null checks, type assertions), runtime errors are surfaced with suggestions for future fix cycles
+- **Enhanced Project Memory**: Dependency graph building with cycle detection, smart diffing with change impact analysis, file hierarchy visualization, transitive dependency tracking
+- **API Routes** (`server/routes/runtime.ts`): New `/api/runtime/*` endpoints for error reporting, log capture, session management, auto-fix triggering, UI analysis, dependency graphs, and change impact analysis
+- **Orchestrator Integration**: Runtime sessions auto-start during validation with guaranteed cleanup, runtime errors surfaced via events with suggested fixes, UI/UX analysis runs on frontend files after refactoring pass with grade reporting
+
 ## System Architecture
 
 ### Core Functionality
