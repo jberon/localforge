@@ -10,6 +10,7 @@ import { useFileAttachments, type Attachment } from "@/hooks/use-file-attachment
 import { AttachmentPreview, DropZoneOverlay } from "./attachment-preview";
 import { ActionGroupRow, type Action } from "./action-group-row";
 import { StatusIndicator, type StatusType } from "./status-indicator";
+import { PlanBuildModeToggle, type AgentMode } from "./plan-build-mode-toggle";
 
 interface QueueStatus {
   pending: number;
@@ -29,6 +30,9 @@ interface ChatPanelProps {
   llmConnected: boolean | null;
   onCheckConnection: () => void;
   queueStatus?: QueueStatus | null;
+  agentMode?: AgentMode;
+  onAgentModeChange?: (mode: AgentMode) => void;
+  isModeDisabled?: boolean;
 }
 
 // Memoized message content formatter - prevents re-parsing unchanged content
@@ -134,7 +138,7 @@ function getStatusFromPhase(phase: string | null | undefined): StatusType {
   return "thinking";
 }
 
-export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection, queueStatus }: ChatPanelProps) {
+export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection, queueStatus, agentMode = "build", onAgentModeChange, isModeDisabled = false }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -374,13 +378,22 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2 text-center">
-                {isListening ? (
-                  <span className="text-red-500">Listening... Click mic to stop</span>
-                ) : (
-                  "Enter to send • Shift+Enter for new line • Drop files to attach"
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-xs text-muted-foreground">
+                  {isListening ? (
+                    <span className="text-red-500">Listening... Click mic to stop</span>
+                  ) : (
+                    "Enter to send • Shift+Enter for new line"
+                  )}
+                </p>
+                {onAgentModeChange && (
+                  <PlanBuildModeToggle
+                    mode={agentMode}
+                    onModeChange={onAgentModeChange}
+                    disabled={isModeDisabled}
+                  />
                 )}
-              </p>
+              </div>
               {speechError && (
                 <p className="text-xs text-destructive mt-1 text-center">{speechError}</p>
               )}

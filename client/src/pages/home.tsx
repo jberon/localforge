@@ -1452,14 +1452,6 @@ export default function Home() {
               )}
             </div>
             
-            <div className="flex items-center gap-3">
-              <PlanBuildModeToggle
-                mode={agentMode}
-                onModeChange={setAgentMode}
-                disabled={isGenerating || isPlanning || isBuilding}
-              />
-            </div>
-
             <div className="flex items-center gap-1">
               {(llmConnected || testModeConnected) && (
                 <div className="flex items-center gap-2 mr-2" data-testid="indicator-connected">
@@ -1512,16 +1504,14 @@ export default function Home() {
           <main className="flex-1 overflow-hidden">
             {projects.length === 0 && !activeProject ? (
               <MinimalLanding
-                onGenerate={async (prompt, mode) => {
-                  const newProject = await createProject();
-                  if (newProject) {
-                    setTimeout(() => {
-                      if (mode === "design") {
-                        setAgentMode("plan");
-                      }
-                      handleIntelligentGenerate(prompt);
-                    }, 100);
+                onGenerate={(prompt, mode) => {
+                  if (mode === "design") {
+                    setAgentMode("plan");
                   }
+                  createProject();
+                  setTimeout(() => {
+                    handleIntelligentGenerate(prompt);
+                  }, 200);
                 }}
                 isGenerating={isGenerating || isPlanning}
                 isConnected={llmConnected || testModeConnected}
@@ -1659,6 +1649,9 @@ export default function Home() {
                         llmConnected={llmConnected}
                         onCheckConnection={checkConnection}
                         queueStatus={queueStatus}
+                        agentMode={agentMode}
+                        onAgentModeChange={setAgentMode}
+                        isModeDisabled={isGenerating || isPlanning || isBuilding}
                       />
                     </div>
                   </div>
