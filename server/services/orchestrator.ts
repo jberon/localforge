@@ -3,6 +3,7 @@ import { searchWeb, formatSearchResultsForContext } from "./webSearch";
 import { createDreamTeamService, type DreamTeamService } from "./dreamTeam";
 import { llmSettingsSchema, CORE_DREAM_TEAM, detectModelRole, getOptimalTemperature } from "@shared/schema";
 import { z } from "zod";
+import { logger } from "../lib/logger";
 import { smartContextService } from "./smart-context.service";
 import { feedbackLearningService } from "./feedback-learning.service";
 import { enhancedAnalysisService } from "./enhanced-analysis.service";
@@ -178,7 +179,7 @@ function safeParseJSON<T>(
       : `Unexpected error: ${String(error)}`;
     
     if (fallback !== undefined) {
-      console.warn(`JSON parse failed, using fallback: ${errorMsg}`);
+      logger.warn("JSON parse failed, using fallback", { error: errorMsg });
       return { success: true, data: fallback };
     }
     
@@ -417,7 +418,7 @@ export class AIOrchestrator {
       });
     } else if (projectId && settings.model) {
       // Fallback: Use single model for Dream Team features if dual models not configured
-      console.log("[Orchestrator] Falling back to single-model mode for Dream Team");
+      logger.info("Falling back to single-model mode for Dream Team");
       this.dreamTeam = createDreamTeamService({
         endpoint: settings.endpoint || "http://localhost:1234/v1",
         reasoningModel: settings.model,
@@ -443,7 +444,7 @@ export class AIOrchestrator {
       
       if (!isAvailable && this.settings.useDualModels) {
         // Fallback: reconfigure to use builder model for planning too
-        console.log("[Orchestrator] Planner model unavailable, falling back to builder model");
+        logger.info("Planner model unavailable, falling back to builder model");
         this.emit({ 
           type: "status", 
           message: "Reasoning model unavailable, using builder model for all tasks" 
@@ -452,7 +453,7 @@ export class AIOrchestrator {
       
       return isAvailable;
     } catch (error) {
-      console.warn("[Orchestrator] Model availability check failed:", error);
+      logger.warn("Model availability check failed", {}, error as Error);
       return false;
     }
   }
@@ -667,7 +668,7 @@ export class AIOrchestrator {
         const plannerAvailable = await this.checkModelAvailability();
         if (!plannerAvailable && this.settings.builderModel) {
           // Fallback: Use builder model for planning if planner unavailable
-          console.log("[Orchestrator] Activating fallback: using builder model for planning");
+          logger.info("Activating fallback: using builder model for planning");
           this.settings = {
             ...this.settings,
             plannerModel: this.settings.builderModel,
@@ -1102,7 +1103,7 @@ export class AIOrchestrator {
       }
 
       // Log failure and retry if attempts remain
-      console.warn(`Plan JSON parse attempt ${attempt + 1}/${maxRetries + 1} failed: ${parseResult.error}`);
+      logger.warn("Plan JSON parse attempt failed", { attempt: attempt + 1, maxRetries: maxRetries + 1, error: parseResult.error });
       
       if (attempt < maxRetries) {
         this.emit({ type: "thinking", model: "planner", content: "Refining the plan structure..." });
@@ -1112,7 +1113,7 @@ export class AIOrchestrator {
     }
 
     // All retries exhausted, fall back to simple plan
-    console.warn("All planning retries exhausted, using simple plan");
+    logger.warn("All planning retries exhausted, using simple plan");
     return this.createSimplePlan(userRequest);
   }
 
@@ -1473,7 +1474,7 @@ export class AIOrchestrator {
       }
 
       // Fallback if parsing fails
-      console.warn("[Orchestrator] Review JSON parse failed, returning minimal review");
+      logger.warn("Review JSON parse failed, returning minimal review");
       return {
         summary: "Review completed (parsing failed)",
         strengths: [],
@@ -1481,7 +1482,7 @@ export class AIOrchestrator {
         recommendations: [],
       };
     } catch (error) {
-      console.error("[Orchestrator] Review phase error:", error);
+      logger.error("Review phase error", {}, error as Error);
       return {
         summary: "Review skipped due to error",
         strengths: [],
@@ -1541,7 +1542,7 @@ export class AIOrchestrator {
 
       return task;
     } catch (error) {
-      console.error("[Orchestrator] Task decomposition failed:", error);
+      logger.error("Task decomposition failed", {}, error as Error);
       return null;
     }
   }
@@ -1586,7 +1587,7 @@ export class AIOrchestrator {
         }
       });
     } catch (error) {
-      console.error("[Orchestrator] Failed to record to memory:", error);
+      logger.error("Failed to record to memory", {}, error as Error);
     }
   }
 
@@ -1661,7 +1662,7 @@ export class AIOrchestrator {
         session: result
       };
     } catch (error) {
-      console.error("[Orchestrator] Enhanced auto-fix failed:", error);
+      logger.error("Enhanced auto-fix failed", {}, error as Error);
       return { success: false, fixedCode: code };
     }
   }
@@ -1714,7 +1715,7 @@ export class AIOrchestrator {
         suggestions: analysis.issuesFound.slice(0, 5).map((i: { suggestion: string }) => i.suggestion)
       };
     } catch (error) {
-      console.error("[Orchestrator] UI/UX analysis failed:", error);
+      logger.error("UI/UX analysis failed", {}, error as Error);
       return null;
     }
   }
@@ -1765,7 +1766,7 @@ export class AIOrchestrator {
         metrics: totalMetrics
       };
     } catch (error) {
-      console.error("[Orchestrator] Refactoring pass failed:", error);
+      logger.error("Refactoring pass failed", {}, error as Error);
       return null;
     }
   }
@@ -1790,7 +1791,7 @@ export class AIOrchestrator {
         fileStructure: context.fileStructure
       };
     } catch (error) {
-      console.error("[Orchestrator] Failed to get project context:", error);
+      logger.error("Failed to get project context", {}, error as Error);
       return null;
     }
   }
