@@ -421,6 +421,140 @@ class ExtendedThinkingService {
       { mode: "deep", config: DEEP_CONFIG }
     ];
   }
+
+  validateStep(step: ThinkingStep): {
+    valid: boolean;
+    confidence: number;
+    issues: string[];
+    canProceed: boolean;
+  } {
+    const issues: string[] = [];
+    let confidence = step.insights.length > 0 ? 0.6 : 0.4;
+
+    if (step.content.length < 50) {
+      issues.push("Step content is too brief for thorough analysis");
+      confidence -= 0.1;
+    }
+
+    if (step.type === "validate" && step.questions.length === 0) {
+      issues.push("Validation step should identify remaining questions");
+      confidence -= 0.05;
+    }
+
+    if (step.type === "conclude" && step.insights.length === 0) {
+      issues.push("Conclusion should have supporting insights");
+      confidence -= 0.15;
+    }
+
+    const incompleteIndicators = ["TODO", "TBD", "...", "etc."];
+    for (const indicator of incompleteIndicators) {
+      if (step.content.includes(indicator)) {
+        issues.push(`Incomplete indicator found: ${indicator}`);
+        confidence -= 0.1;
+      }
+    }
+
+    if (step.insights.length > 0) {
+      confidence += Math.min(0.2, step.insights.length * 0.05);
+    }
+
+    confidence = Math.max(0, Math.min(1, confidence));
+
+    return {
+      valid: issues.filter(i => i.includes("too brief") || i.includes("should have")).length === 0,
+      confidence,
+      issues,
+      canProceed: confidence >= 0.4
+    };
+  }
+
+  backtrackSession(sessionId: string, toStepIndex?: number): ThinkingSession | null {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.steps.length === 0) return null;
+
+    const targetIndex = toStepIndex ?? Math.max(0, session.steps.length - 2);
+    const removedCount = session.steps.length - targetIndex;
+    
+    session.steps = session.steps.slice(0, targetIndex);
+    session.confidence = session.steps.length > 0
+      ? session.steps.reduce((sum, s) => sum + (s.insights.length * 0.1), 0.3)
+      : 0;
+
+    this.sessions.set(sessionId, session);
+    logger.info("Session backtracked", { sessionId, removedCount, newStepCount: session.steps.length });
+
+    return session;
+  }
+
+  generateEnhancedThinkingPrompt(session: ThinkingSession): string {
+    const prompts: string[] = [];
+
+    prompts.push(`## Enhanced Reasoning Chain\n`);
+    prompts.push(`**Mode:** ${session.mode} | **Confidence:** ${(session.confidence * 100).toFixed(0)}%`);
+    prompts.push(`**Request:** ${session.prompt}\n`);
+
+    if (session.triggerReason) {
+      prompts.push(`**Trigger:** ${session.triggerReason}\n`);
+    }
+
+    prompts.push(`### Self-Validation Protocol\n`);
+    prompts.push(`After each step, validate:`);
+    prompts.push(`1. Is the reasoning logically sound?`);
+    prompts.push(`2. Are assumptions explicitly stated?`);
+    prompts.push(`3. Is there evidence supporting conclusions?`);
+    prompts.push(`4. Are there gaps or contradictions?\n`);
+
+    prompts.push(`### Reasoning Steps\n`);
+
+    const stepConfigs = this.getStepConfig(session.mode);
+    stepConfigs.forEach((config, i) => {
+      prompts.push(`${i + 1}. **${config.name}** - ${config.description}`);
+      prompts.push(`   - Checkpoint: ${config.checkpoint}`);
+    });
+
+    if (session.steps.length > 0) {
+      prompts.push(`\n### Progress So Far\n`);
+      for (const step of session.steps) {
+        prompts.push(`**${step.type}** (Confidence: ${(this.validateStep(step).confidence * 100).toFixed(0)}%)`);
+        prompts.push(`${step.content.slice(0, 200)}...`);
+        if (step.insights.length > 0) {
+          prompts.push(`Insights: ${step.insights.join(", ")}`);
+        }
+      }
+    }
+
+    return prompts.join("\n");
+  }
+
+  private getStepConfig(mode: ThinkingMode): Array<{
+    name: string;
+    description: string;
+    checkpoint: string;
+  }> {
+    switch (mode) {
+      case "deep":
+        return [
+          { name: "Decompose", description: "Break into atomic sub-problems", checkpoint: "All sub-problems identified" },
+          { name: "Research", description: "Find patterns and prior solutions", checkpoint: "Relevant patterns documented" },
+          { name: "Analyze", description: "Examine each component", checkpoint: "All components understood" },
+          { name: "Synthesize", description: "Combine into coherent plan", checkpoint: "Plan is internally consistent" },
+          { name: "Validate", description: "Check logical consistency", checkpoint: "No contradictions found" },
+          { name: "Conclude", description: "Form recommendations", checkpoint: "Actionable and complete" }
+        ];
+      case "extended":
+        return [
+          { name: "Analyze", description: "Understand full scope", checkpoint: "Scope clearly defined" },
+          { name: "Decompose", description: "Identify key components", checkpoint: "Components mapped" },
+          { name: "Synthesize", description: "Create implementation plan", checkpoint: "Plan is feasible" },
+          { name: "Validate", description: "Verify approach", checkpoint: "Approach validated" }
+        ];
+      default:
+        return [
+          { name: "Analyze", description: "Quick assessment", checkpoint: "Problem understood" },
+          { name: "Conclude", description: "Direct solution", checkpoint: "Solution provided" }
+        ];
+    }
+  }
 }
 
 export const extendedThinkingService = ExtendedThinkingService.getInstance();
