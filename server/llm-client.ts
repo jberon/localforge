@@ -115,12 +115,16 @@ interface CloudLLMSettings {
   temperature?: number;
 }
 
-let cloudSettings: CloudLLMSettings = { provider: "none" };
-
 // Check if Replit AI Integrations is available
 export function isReplitIntegrationAvailable(): boolean {
   return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
 }
+
+// Auto-enable test mode if Replit AI Integrations are available
+// This ensures test mode persists across server restarts in Replit environment
+let cloudSettings: CloudLLMSettings = isReplitIntegrationAvailable() 
+  ? { provider: "replit", model: "gpt-4o-mini", temperature: 0.7 }
+  : { provider: "none" };
 
 export function getCloudSettings(): CloudLLMSettings {
   return { ...cloudSettings };
@@ -221,8 +225,14 @@ export async function checkCloudConnection(): Promise<{ connected: boolean; prov
       return { connected: false, provider: cloudSettings.provider, error: "Client creation failed" };
     }
 
-    // Quick test with models endpoint
-    await client.models.list();
+    // Use a minimal chat completion to verify connection
+    // (models.list() returns 405 on Replit AI Integrations)
+    const model = cloudSettings.model || "gpt-4o-mini";
+    await client.chat.completions.create({
+      model,
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 1,
+    });
     return { connected: true, provider: cloudSettings.provider };
   } catch (error: any) {
     return { 

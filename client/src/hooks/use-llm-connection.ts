@@ -54,6 +54,24 @@ export function useLLMConnection({
   const checkConnection = useCallback(async () => {
     setIsChecking(true);
     try {
+      // First check if test mode is active and connected
+      const testModeResponse = await fetch("/api/llm/test-mode/status", {
+        credentials: "include",
+      });
+      const testModeData = await testModeResponse.json();
+      
+      // If test mode is active and connected, use that as the connection status
+      if (testModeData.active && testModeData.connected) {
+        setIsConnected(true);
+        setLoadedModel(testModeData.model || "gpt-4o-mini");
+        setAvailableModels([testModeData.model || "gpt-4o-mini"]);
+        setQueueStatus(null);
+        setHealth({ isHealthy: true, consecutiveFailures: 0 });
+        setTelemetry(null);
+        return;
+      }
+      
+      // Otherwise check local LLM connection
       const response = await fetch("/api/llm/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
