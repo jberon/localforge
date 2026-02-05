@@ -14,6 +14,7 @@ import { liveSyntaxValidatorService } from "./live-syntax-validator.service";
 import { codeStyleEnforcerService } from "./code-style-enforcer.service";
 import { errorLearningService } from "./error-learning.service";
 import { contextBudgetService } from "./context-budget.service";
+import { closedLoopAutoFixService, type FixResult, type FixConfig, type FixStatistics } from "./closed-loop-autofix.service";
 
 export interface V2Config {
   speculativeDecoding: boolean;
@@ -31,6 +32,7 @@ export interface V2Config {
   codeStyleEnforcement: boolean;
   errorLearning: boolean;
   m4OptimizedContext: boolean;
+  closedLoopAutoFix: boolean;
 }
 
 export interface V2GenerationContext {
@@ -87,6 +89,7 @@ class V2OrchestratorService {
       codeStyleEnforcement: true,
       errorLearning: true,
       m4OptimizedContext: true,
+      closedLoopAutoFix: true,
     };
   }
 
@@ -285,7 +288,20 @@ class V2OrchestratorService {
         });
       }
 
-      if (this.config.errorLearning) {
+      if (this.config.closedLoopAutoFix) {
+        const enhancement = closedLoopAutoFixService.enhancePreGeneration(
+          optimizedContext,
+          selectedModel,
+          context.taskType,
+          []
+        );
+        optimizedContext = enhancement.enhancedPrompt;
+        logger.info("Closed-loop pre-generation enhancement applied", {
+          preventionRules: enhancement.preventionRules.length,
+          modelWarnings: enhancement.modelSpecificWarnings.length,
+          injectedTokens: enhancement.totalInjectedTokens,
+        });
+      } else if (this.config.errorLearning) {
         const modelFamily = selectedModel.toLowerCase().includes("qwen") ? "qwen" :
                            selectedModel.toLowerCase().includes("ministral") ? "ministral" :
                            selectedModel.toLowerCase().includes("deepseek") ? "deepseek" :
@@ -671,6 +687,65 @@ class V2OrchestratorService {
     return errorLearningService.getStats();
   }
 
+  postGenerationValidateAndFix(
+    code: string,
+    filePath?: string,
+    modelUsed?: string,
+    fixConfig?: Partial<FixConfig>
+  ): FixResult {
+    if (!this.config.closedLoopAutoFix) {
+      return {
+        originalCode: code,
+        finalCode: code,
+        wasFixed: false,
+        totalAttempts: 0,
+        attempts: [],
+        errorsFound: 0,
+        errorsFixed: 0,
+        warningsFound: 0,
+        modelUsed,
+        filePath,
+        durationMs: 0,
+      };
+    }
+
+    const result = closedLoopAutoFixService.validateAndFix(code, filePath, modelUsed, fixConfig);
+
+    if (this.config.performanceProfiling) {
+      const opId = performanceProfilerService.startOperation("autofix_postgen", "validation", {
+        filePath,
+        errorsFound: result.errorsFound,
+        errorsFixed: result.errorsFixed,
+      });
+      performanceProfilerService.endOperation(opId, result.errorsFixed === result.errorsFound);
+    }
+
+    return result;
+  }
+
+  postGenerationValidateAndFixMultiple(
+    files: Array<{ path: string; content: string }>,
+    modelUsed?: string,
+    fixConfig?: Partial<FixConfig>
+  ): Array<{ path: string; result: FixResult }> {
+    return files.map(file => ({
+      path: file.path,
+      result: this.postGenerationValidateAndFix(file.content, file.path, modelUsed, fixConfig),
+    }));
+  }
+
+  getClosedLoopFixHistory(limit?: number): ReturnType<typeof closedLoopAutoFixService.getFixHistory> {
+    return closedLoopAutoFixService.getFixHistory(limit);
+  }
+
+  getClosedLoopStatistics(): FixStatistics {
+    return closedLoopAutoFixService.getStatistics();
+  }
+
+  configureClosedLoop(config: Partial<FixConfig>): void {
+    closedLoopAutoFixService.configure(config);
+  }
+
   getEnhancedSystemStatus(): Record<string, unknown> {
     const baseStatus = this.getSystemStatus();
     
@@ -681,7 +756,9 @@ class V2OrchestratorService {
       codeStyleEnforcementEnabled: this.config.codeStyleEnforcement,
       errorLearningEnabled: this.config.errorLearning,
       m4OptimizedContextEnabled: this.config.m4OptimizedContext,
+      closedLoopAutoFixEnabled: this.config.closedLoopAutoFix,
       errorLearningStats: this.config.errorLearning ? errorLearningService.getStats() : null,
+      closedLoopStats: this.config.closedLoopAutoFix ? closedLoopAutoFixService.getStatistics() : null,
     };
   }
 }

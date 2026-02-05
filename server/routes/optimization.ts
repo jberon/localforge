@@ -1965,6 +1965,7 @@ import { liveSyntaxValidatorService } from "../services/live-syntax-validator.se
 import { codeStyleEnforcerService } from "../services/code-style-enforcer.service";
 import { errorLearningService } from "../services/error-learning.service";
 import { contextBudgetService } from "../services/context-budget.service";
+import { closedLoopAutoFixService } from "../services/closed-loop-autofix.service";
 
 router.post("/v21/validate-syntax", (req, res) => {
   try {
@@ -2083,6 +2084,134 @@ router.post("/v21/parallel/analyze", (req, res) => {
   } catch (error) {
     logger.error("Failed to analyze parallel generation", { error });
     res.status(500).json({ error: "Failed to analyze" });
+  }
+});
+
+router.post("/v21/autofix/validate-and-fix", (req, res) => {
+  try {
+    const { code, filePath, modelUsed, config } = req.body;
+    if (!code) {
+      return res.status(400).json({ error: "code is required" });
+    }
+    const result = closedLoopAutoFixService.validateAndFix(code, filePath, modelUsed, config);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to validate and fix code", { error });
+    res.status(500).json({ error: "Failed to validate and fix" });
+  }
+});
+
+router.post("/v21/autofix/enhance-prompt", (req, res) => {
+  try {
+    const { prompt, modelName, taskType, fileTypes } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ error: "prompt is required" });
+    }
+    const enhancement = closedLoopAutoFixService.enhancePreGeneration(
+      prompt,
+      modelName,
+      taskType || "build",
+      fileTypes || []
+    );
+    res.json(enhancement);
+  } catch (error) {
+    logger.error("Failed to enhance prompt", { error });
+    res.status(500).json({ error: "Failed to enhance prompt" });
+  }
+});
+
+router.post("/v21/autofix/build-fix-prompt", (req, res) => {
+  try {
+    const { code, errors, strategy, modelUsed } = req.body;
+    if (!code || !errors) {
+      return res.status(400).json({ error: "code and errors are required" });
+    }
+    const fixPrompt = closedLoopAutoFixService.buildFixPrompt(
+      code,
+      errors,
+      strategy || "syntax-targeted",
+      modelUsed
+    );
+    res.json({ fixPrompt });
+  } catch (error) {
+    logger.error("Failed to build fix prompt", { error });
+    res.status(500).json({ error: "Failed to build fix prompt" });
+  }
+});
+
+router.get("/v21/autofix/statistics", (_req, res) => {
+  try {
+    const stats = closedLoopAutoFixService.getStatistics();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get autofix statistics", { error });
+    res.status(500).json({ error: "Failed to get statistics" });
+  }
+});
+
+router.get("/v21/autofix/history", (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const history = closedLoopAutoFixService.getFixHistory(limit);
+    res.json({ history, count: history.length });
+  } catch (error) {
+    logger.error("Failed to get autofix history", { error });
+    res.status(500).json({ error: "Failed to get history" });
+  }
+});
+
+router.get("/v21/autofix/config", (_req, res) => {
+  try {
+    const config = closedLoopAutoFixService.getConfig();
+    res.json(config);
+  } catch (error) {
+    logger.error("Failed to get autofix config", { error });
+    res.status(500).json({ error: "Failed to get config" });
+  }
+});
+
+router.post("/v21/autofix/config", (req, res) => {
+  try {
+    const config = req.body;
+    closedLoopAutoFixService.configure(config);
+    res.json({ success: true, config: closedLoopAutoFixService.getConfig() });
+  } catch (error) {
+    logger.error("Failed to configure autofix", { error });
+    res.status(500).json({ error: "Failed to configure" });
+  }
+});
+
+router.get("/v21/error-learning/model-report/:modelName", (req, res) => {
+  try {
+    const { modelName } = req.params;
+    const report = errorLearningService.getModelReport(modelName);
+    res.json(report);
+  } catch (error) {
+    logger.error("Failed to get model report", { error });
+    res.status(500).json({ error: "Failed to get model report" });
+  }
+});
+
+router.post("/v21/autofix/validate-and-fix-multiple", (req, res) => {
+  try {
+    const { files, modelUsed, config } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    const results = files.map((file: { path: string; content: string }) => ({
+      path: file.path,
+      result: closedLoopAutoFixService.validateAndFix(file.content, file.path, modelUsed, config),
+    }));
+    const summary = {
+      totalFiles: results.length,
+      filesFixed: results.filter((r: { result: { wasFixed: boolean } }) => r.result.wasFixed).length,
+      totalErrors: results.reduce((s: number, r: { result: { errorsFound: number } }) => s + r.result.errorsFound, 0),
+      totalFixed: results.reduce((s: number, r: { result: { errorsFixed: number } }) => s + r.result.errorsFixed, 0),
+    };
+    res.json({ results, summary });
+  } catch (error) {
+    logger.error("Failed to validate and fix multiple files", { error });
+    res.status(500).json({ error: "Failed to validate and fix multiple files" });
   }
 });
 
