@@ -44,6 +44,15 @@ Unified AI Insights panel and improved user experience:
 - **Code Quality Improvements**: Removed text-primary violations, fixed query cache invalidation, cleaned up unused imports
 - **Header AI Button**: Quick access to AI services with visual indicator when generation is in progress
 
+### Multi-Agent Architecture (v1.7.0)
+Five specialized services working together for intelligent code generation:
+- **Task Decomposition Service** (`server/services/task-decomposition.service.ts`): Parses complex prompts into subtasks with dependency ordering, priority levels, topological execution, and strategy patterns for request type detection (full_stack_app, api_service, ui_feature, etc.)
+- **Project Memory Service** (`server/services/project-memory.service.ts`): Persistent storage for file metadata (type, purpose, dependencies), architectural decisions, change history, coding conventions, and project context for enhanced generation
+- **Code Runner Service** (`server/services/code-runner.service.ts`): Executes TypeScript/Node.js code in sandbox, runs type checking, ESLint validation, npm scripts with timeout protection and output limits
+- **Auto-Fix Loop Service** (`server/services/auto-fix-loop.service.ts`): Automated error detection with LLM feedback loop, configurable retry logic (default 5 iterations), prioritizes syntax/import errors first
+- **Refactoring Agent Service** (`server/services/refactoring-agent.service.ts`): Post-generation cleanup applying DRY/SOLID patterns, detects code smells (magic numbers, long methods, complex conditions, DRY violations), suggests improvements
+- All services integrate into the orchestrator pipeline with methods: `decomposeRequest()`, `recordToMemory()`, `runEnhancedAutoFix()`, `runRefactoringPass()`, `getProjectContext()`
+
 ## System Architecture
 
 ### Core Functionality

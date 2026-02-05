@@ -712,6 +712,7 @@ export const activityLogEntrySchema = z.object({
     "fixing",        // Bug fixes
     "suggesting",    // Recommendations
     "collaborating", // Team discussion
+    "refactoring",   // Code cleanup and optimization
   ]),
   content: z.string(),
   metadata: z.record(z.any()).optional(),

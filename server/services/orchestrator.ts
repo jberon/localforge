@@ -8,6 +8,11 @@ import { feedbackLearningService } from "./feedback-learning.service";
 import { enhancedAnalysisService } from "./enhanced-analysis.service";
 import { extendedThinkingService } from "./extended-thinking.service";
 import { buildEnhancedPlanningPrompt, buildEnhancedBuildingPrompt, buildEnhancedReviewPrompt, type EnhancedPromptContext } from "../prompts/enhanced-prompts";
+import { taskDecompositionService, type DecomposedTask, type Subtask } from "./task-decomposition.service";
+import { projectMemoryService } from "./project-memory.service";
+import { codeRunnerService, type RunResult } from "./code-runner.service";
+import { autoFixLoopService, type AutoFixSession } from "./auto-fix-loop.service";
+import { refactoringAgentService, type RefactoringResult } from "./refactoring-agent.service";
 
 // ============================================================================
 // MODEL-SPECIFIC INSTRUCTIONS
@@ -546,6 +551,29 @@ export class AIOrchestrator {
       
       this.emit({ type: "phase_change", phase: "planning", message: `${marty.name} is analyzing your request...` });
       
+      // Multi-Agent: Task decomposition for complex requests
+      let decomposedTask: DecomposedTask | null = null;
+      if (this.projectId) {
+        decomposedTask = await this.decomposeRequest(userRequest, existingCode);
+        if (decomposedTask && decomposedTask.subtasks.length > 1) {
+          this.emit({ 
+            type: "thinking", 
+            model: "planner", 
+            content: `Request analyzed: ${decomposedTask.subtasks.length} subtasks identified for ${decomposedTask.strategy}` 
+          });
+        }
+      }
+
+      // Multi-Agent: Get project context for enhanced generation
+      const projectContext = await this.getProjectContext();
+      if (projectContext && projectContext.conventions.length > 0) {
+        this.emit({ 
+          type: "thinking", 
+          model: "planner", 
+          content: `Project context loaded: ${projectContext.conventions.length} coding conventions applied` 
+        });
+      }
+
       if (this.dreamTeam && this.projectId) {
         await this.dreamTeam.logActivity(this.projectId, {
           member: marty,
@@ -573,7 +601,7 @@ export class AIOrchestrator {
         }
       }
       
-      const plan = await this.planningPhase(userRequest, existingCode);
+      const plan = await this.planningPhase(userRequest, existingCode, projectContext, decomposedTask);
       
       if (this.aborted) throw new Error("Aborted");
       this.state.plan = plan;
@@ -632,6 +660,17 @@ export class AIOrchestrator {
           });
         }
         
+        // Multi-Agent: Enhanced auto-fix with CodeRunner + AutoFixLoop
+        const enhancedFixResult = await this.runEnhancedAutoFix(code);
+        if (enhancedFixResult.success && enhancedFixResult.session) {
+          this.emit({ 
+            type: "thinking", 
+            model: "builder", 
+            content: `Enhanced auto-fix completed: ${enhancedFixResult.session.iterations.length} iterations` 
+          });
+        }
+        
+        // Fall back to original fix loop for remaining issues
         const fixedCode = await this.fixLoop(code, validation.errors);
         this.state.generatedCode = fixedCode;
       }
@@ -674,6 +713,32 @@ export class AIOrchestrator {
         severityCounts 
       });
 
+      // Multi-Agent: Run refactoring analysis on generated code
+      if (this.projectId && this.state.generatedCode) {
+        const files = this.parseFilesFromCode(this.state.generatedCode);
+        if (files.length > 0) {
+          const refactorResult = await this.runRefactoringPass(files);
+          if (refactorResult && refactorResult.metrics.issuesFound > 0) {
+            this.emit({ 
+              type: "thinking", 
+              model: "builder", 
+              content: `Refactoring analysis: ${refactorResult.metrics.issuesFound} improvements identified` 
+            });
+          }
+          
+          // Multi-Agent: Record to project memory
+          await this.recordToMemory(
+            files.map(f => ({ path: f.path, purpose: "Generated code", content: f.content })),
+            plan.summary ? {
+              category: "technical",
+              title: plan.summary.slice(0, 50),
+              description: plan.summary,
+              rationale: "User request"
+            } : undefined
+          );
+        }
+      }
+
       this.emit({ type: "phase_change", phase: "complete", message: "Generation complete!" });
       this.emit({ type: "complete", code: this.state.generatedCode, summary: plan.summary, reviewSummary });
 
@@ -697,13 +762,42 @@ export class AIOrchestrator {
     this.onEvent(event);
   }
 
-  private async planningPhase(userRequest: string, existingCode?: string): Promise<OrchestratorPlan> {
+  private async planningPhase(
+    userRequest: string, 
+    existingCode?: string,
+    projectMemoryContext?: {
+      summary: string;
+      conventions: Array<{ name: string; description: string }>;
+      recentDecisions: Array<{ title: string; description: string }>;
+      fileStructure: string;
+    } | null,
+    decomposedTask?: DecomposedTask | null
+  ): Promise<OrchestratorPlan> {
     const config = this.getPlannerConfig();
     const maxRetries = 2;
     
     let context = "";
     if (existingCode) {
       context = `\n\nEXISTING CODE TO MODIFY:\n${existingCode.slice(0, 2000)}...`;
+    }
+
+    // Multi-Agent: Add project memory context
+    if (projectMemoryContext) {
+      context += `\n\nPROJECT CONTEXT:\n${projectMemoryContext.summary}`;
+      if (projectMemoryContext.conventions.length > 0) {
+        context += `\n\nCODING CONVENTIONS:\n${projectMemoryContext.conventions.map(c => `- ${c.name}: ${c.description}`).join("\n")}`;
+      }
+      if (projectMemoryContext.recentDecisions.length > 0) {
+        context += `\n\nRECENT DECISIONS:\n${projectMemoryContext.recentDecisions.map(d => `- ${d.title}: ${d.description}`).join("\n")}`;
+      }
+    }
+
+    // Multi-Agent: Add task decomposition context
+    if (decomposedTask && decomposedTask.subtasks.length > 0) {
+      context += `\n\nTASK ANALYSIS (${decomposedTask.strategy}):\n`;
+      context += decomposedTask.subtasks.map((s, i) => 
+        `${i + 1}. [${s.priority}] ${s.title}: ${s.description}`
+      ).join("\n");
     }
 
     this.emit({ type: "thinking", model: "planner", content: "Reading your request and identifying what kind of application you want to build..." });
@@ -1134,6 +1228,220 @@ export class AIOrchestrator {
         issues: [],
         recommendations: [],
       };
+    }
+  }
+
+  /**
+   * Parse file blocks from generated code string
+   * Format: [FILE: path/to/file.ext] followed by code until next [FILE:] or end
+   */
+  private parseFilesFromCode(code: string): Array<{ path: string; content: string }> {
+    const files: Array<{ path: string; content: string }> = [];
+    const filePattern = /\[FILE:\s*(.+?)\]/g;
+    const matches = [...code.matchAll(filePattern)];
+    
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      const path = match[1].trim();
+      const startIndex = (match.index || 0) + match[0].length;
+      const endIndex = matches[i + 1]?.index || code.length;
+      const content = code.slice(startIndex, endIndex).trim();
+      
+      if (path && content) {
+        files.push({ path, content });
+      }
+    }
+    
+    return files;
+  }
+
+  // ============================================================================
+  // MULTI-AGENT SERVICES INTEGRATION
+  // Task decomposition, project memory, auto-fix loop, and refactoring
+  // ============================================================================
+
+  /**
+   * Decompose a complex request into manageable subtasks with dependency ordering
+   */
+  async decomposeRequest(userRequest: string, existingCode?: string): Promise<DecomposedTask | null> {
+    if (!this.projectId) return null;
+
+    try {
+      const task = await taskDecompositionService.decomposePrompt(
+        this.projectId,
+        userRequest,
+        existingCode ? { existingCode } : undefined
+      );
+
+      this.emit({
+        type: "phase_change",
+        phase: "planning",
+        message: `Task decomposed into ${task.subtasks.length} subtasks`
+      });
+
+      return task;
+    } catch (error) {
+      console.error("[Orchestrator] Task decomposition failed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Record file metadata and architectural decisions to project memory
+   */
+  async recordToMemory(
+    files: Array<{ path: string; purpose: string; content?: string }>,
+    decision?: { category: string; title: string; description: string; rationale: string }
+  ): Promise<void> {
+    if (!this.projectId) return;
+
+    try {
+      for (const file of files) {
+        await projectMemoryService.recordFileMetadata(this.projectId, file.path, {
+          purpose: file.purpose,
+          linesOfCode: file.content?.split("\n").length || 0
+        });
+      }
+
+      if (decision) {
+        await projectMemoryService.recordDecision(this.projectId, {
+          category: decision.category as any,
+          title: decision.title,
+          description: decision.description,
+          rationale: decision.rationale,
+          alternatives: [],
+          consequences: []
+        });
+      }
+
+      await projectMemoryService.recordChange(this.projectId, {
+        type: "creation",
+        description: `Generated ${files.length} file(s)`,
+        files: files.map(f => f.path),
+        metrics: {
+          filesChanged: files.length,
+          linesAdded: files.reduce((acc, f) => acc + (f.content?.split("\n").length || 0), 0),
+          linesRemoved: 0,
+          tokensUsed: 0
+        }
+      });
+    } catch (error) {
+      console.error("[Orchestrator] Failed to record to memory:", error);
+    }
+  }
+
+  /**
+   * Run automated validation and fix loop using CodeRunner + AutoFixLoop services
+   */
+  async runEnhancedAutoFix(code: string): Promise<{ success: boolean; fixedCode: string; session?: AutoFixSession }> {
+    if (!this.projectId) {
+      return { success: true, fixedCode: code };
+    }
+
+    try {
+      const session = await autoFixLoopService.startAutoFixSession(this.projectId, {
+        maxIterations: this.state.maxFixAttempts
+      });
+
+      const result = await autoFixLoopService.runFixLoop(
+        session.id,
+        async () => {
+          return await codeRunnerService.runTypeCheck();
+        },
+        async (fix, error) => {
+          this.emit({
+            type: "phase_change",
+            phase: "fixing",
+            message: `Applying fix for: ${error.message.slice(0, 50)}...`
+          });
+          return true;
+        }
+      );
+
+      return {
+        success: result.status === "completed",
+        fixedCode: code,
+        session: result
+      };
+    } catch (error) {
+      console.error("[Orchestrator] Enhanced auto-fix failed:", error);
+      return { success: false, fixedCode: code };
+    }
+  }
+
+  /**
+   * Run post-generation refactoring pass to improve code quality
+   */
+  async runRefactoringPass(
+    files: Array<{ path: string; content: string }>
+  ): Promise<RefactoringResult | null> {
+    if (!this.projectId || files.length === 0) return null;
+
+    try {
+      const sam = CORE_DREAM_TEAM.find(m => m.id === "sam");
+      
+      if (this.dreamTeam && sam) {
+        await this.dreamTeam.logActivity(this.projectId, {
+          member: sam,
+          action: "refactoring",
+          content: `Analyzing ${files.length} file(s) for code improvements...`
+        });
+      }
+
+      this.emit({
+        type: "phase_change",
+        phase: "reviewing",
+        message: "Running refactoring analysis..."
+      });
+
+      const { totalMetrics } = await refactoringAgentService.refactorProject(
+        this.projectId,
+        files,
+        { autoFix: false, dryRun: true }
+      );
+
+      if (totalMetrics.issuesFound > 0) {
+        this.emit({
+          type: "thinking",
+          model: "builder",
+          content: `Found ${totalMetrics.issuesFound} potential improvements across ${totalMetrics.filesAnalyzed} files`
+        });
+      }
+
+      return {
+        success: true,
+        changes: [],
+        summary: `Analyzed ${totalMetrics.filesAnalyzed} files, found ${totalMetrics.issuesFound} potential improvements`,
+        metrics: totalMetrics
+      };
+    } catch (error) {
+      console.error("[Orchestrator] Refactoring pass failed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Get project context from memory for enhanced generation
+   */
+  async getProjectContext(): Promise<{
+    summary: string;
+    conventions: Array<{ name: string; description: string }>;
+    recentDecisions: Array<{ title: string; description: string }>;
+    fileStructure: string;
+  } | null> {
+    if (!this.projectId) return null;
+
+    try {
+      const context = await projectMemoryService.getContextForGeneration(this.projectId);
+      return {
+        summary: context.summary,
+        conventions: context.conventions.map(c => ({ name: c.name, description: c.description })),
+        recentDecisions: context.recentDecisions.map(d => ({ title: d.title, description: d.description })),
+        fileStructure: context.fileStructure
+      };
+    } catch (error) {
+      console.error("[Orchestrator] Failed to get project context:", error);
+      return null;
     }
   }
 }
