@@ -574,7 +574,7 @@ export default function Home() {
                 } else if (data.type === "file_chunk") {
                   setGenerationPhase(`Writing ${data.file}... (${Math.round((data.progress || 0) * 100)}%)`);
                 } else if (data.type === "quality_issue") {
-                  console.log(`Quality issue in ${data.file}: ${data.issue} (severity: ${data.severity})`);
+                  // Quality issues are tracked in orchestrator state - no console logging needed
                 } else if (data.type === "search") {
                   setGenerationPhase(`Web search: ${data.query}`);
                   setOrchestratorThinking({ model: "web_search", content: `Searching: ${data.query}` });
@@ -614,7 +614,6 @@ export default function Home() {
     async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings) => {
       // Request deduplication - prevent duplicate calls using in-flight lock
       if (generationRequestRef.current !== null || isGenerating) {
-        console.log("Blocking duplicate generation request");
         return;
       }
       

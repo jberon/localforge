@@ -37,6 +37,7 @@ export function AIInsightsPanel({ projectId, isThinking = false, onClose }: AIIn
               size="icon" 
               onClick={() => setCollapsed(false)}
               data-testid="button-expand-insights"
+              aria-label="Expand AI Insights panel"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -52,6 +53,7 @@ export function AIInsightsPanel({ projectId, isThinking = false, onClose }: AIIn
                 size="icon"
                 onClick={() => { setActiveTab("dashboard"); setCollapsed(false); }}
                 data-testid="button-collapsed-dashboard"
+                aria-label="Open Intelligence Dashboard"
               >
                 <Activity className={`h-4 w-4 ${isThinking ? "text-purple-500 animate-pulse" : ""}`} />
               </Button>
@@ -66,6 +68,7 @@ export function AIInsightsPanel({ projectId, isThinking = false, onClose }: AIIn
                 size="icon"
                 onClick={() => { setActiveTab("thinking"); setCollapsed(false); }}
                 data-testid="button-collapsed-thinking"
+                aria-label="Open Extended Thinking panel"
               >
                 <Brain className={`h-4 w-4 ${isThinking ? "text-purple-500 animate-pulse" : ""}`} />
               </Button>
@@ -80,6 +83,7 @@ export function AIInsightsPanel({ projectId, isThinking = false, onClose }: AIIn
                 size="icon"
                 onClick={() => { setActiveTab("patterns"); setCollapsed(false); }}
                 data-testid="button-collapsed-patterns"
+                aria-label="Open Pattern Manager"
               >
                 <Lightbulb className="h-4 w-4" />
               </Button>
@@ -94,6 +98,7 @@ export function AIInsightsPanel({ projectId, isThinking = false, onClose }: AIIn
                 size="icon"
                 onClick={() => { setActiveTab("budget"); setCollapsed(false); }}
                 data-testid="button-collapsed-budget"
+                aria-label="Open Context Budget"
               >
                 <Gauge className="h-4 w-4" />
               </Button>
@@ -125,6 +130,7 @@ export function AIInsightsPanel({ projectId, isThinking = false, onClose }: AIIn
                 size="icon" 
                 onClick={() => setCollapsed(true)}
                 data-testid="button-collapse-insights"
+                aria-label="Collapse AI Insights panel"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>

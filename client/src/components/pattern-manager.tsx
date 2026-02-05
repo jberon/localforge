@@ -9,7 +9,8 @@ import {
   Plus,
   X,
   CheckCircle,
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -196,8 +197,13 @@ export function PatternManager({ projectId }: PatternManagerProps) {
               onClick={() => exportMutation.mutate()}
               disabled={patterns.length === 0 || exportMutation.isPending}
               data-testid="button-export-patterns"
+              aria-label="Export patterns"
             >
-              <Download className="h-4 w-4 mr-1" />
+              {exportMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1" />
+              )}
               Export
             </Button>
             <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
@@ -229,7 +235,11 @@ export function PatternManager({ projectId }: PatternManagerProps) {
                     onClick={handleImport} 
                     disabled={!importData.trim() || importMutation.isPending}
                     data-testid="button-confirm-import"
+                    aria-label="Confirm pattern import"
                   >
+                    {importMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : null}
                     Import Patterns
                   </Button>
                 </DialogFooter>

@@ -172,11 +172,12 @@ export function IntelligenceDashboard({ projectId, code }: IntelligenceDashboard
             <Badge variant="outline" className="text-xs">v{status?.version}</Badge>
           </div>
           <Button 
-            size="sm" 
+            size="icon"
             variant="ghost" 
             onClick={handleRefreshAnalysis}
             disabled={!code || analyzeMutation.isPending}
             data-testid="button-refresh-analysis"
+            aria-label="Refresh code analysis"
           >
             <RefreshCw className={`h-4 w-4 ${analyzeMutation.isPending ? "animate-spin" : ""}`} />
           </Button>
