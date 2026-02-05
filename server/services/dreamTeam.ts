@@ -13,6 +13,7 @@ import {
 } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { streamCompletion } from "../llm-client";
+import { logger } from "../lib/logger";
 
 export interface DreamTeamConfig {
   endpoint: string;
@@ -322,7 +323,7 @@ export class DreamTeamService {
 
       return specialists;
     } catch (error) {
-      console.error("Failed to analyze specialists:", error);
+      logger.error("Failed to analyze specialists", {}, error as Error);
       return [];
     }
   }
@@ -412,7 +413,7 @@ export class DreamTeamService {
 
       return businessCase;
     } catch (error) {
-      console.error("Failed to generate business case:", error);
+      logger.error("Failed to generate business case", {}, error as Error);
       return null;
     }
   }
@@ -521,7 +522,7 @@ export class DreamTeamService {
 
       return readme;
     } catch (error) {
-      console.error("Failed to generate README:", error);
+      logger.error("Failed to generate README", {}, error as Error);
       return null;
     }
   }
