@@ -43,6 +43,7 @@ import { DeployButton } from "@/components/deploy-button";
 import { AutonomySlider } from "@/components/autonomy-slider";
 import { ExtendedThinkingIndicator } from "@/components/extended-thinking-indicator";
 import { DesignModePanel } from "@/components/design-mode-panel";
+import { AIInsightsPanel } from "@/components/ai-insights-panel";
 import type { Action, ActionType } from "@/components/action-group-row";
 import {
   AlertDialog,
@@ -103,6 +104,7 @@ export default function Home() {
   const [showQuickUndo, setShowQuickUndo] = useState(false);
   const [showFileExplorer, setShowFileExplorer] = useState(true);
   const [showDatabasePanel, setShowDatabasePanel] = useState(false);
+  const [showAIInsights, setShowAIInsights] = useState(false);
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
   const generationRequestRef = useRef<string | null>(null);
   const [settings, setSettings] = useState<LLMSettings>({
@@ -1502,6 +1504,16 @@ export default function Home() {
                 <Database className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline">Database</span>
               </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowAIInsights(!showAIInsights)}
+                data-testid="button-ai-insights"
+                title="AI Insights"
+              >
+                <Brain className={`h-4 w-4 sm:mr-1 ${isGenerating || isPlanning ? "text-purple-500 animate-pulse" : ""}`} />
+                <span className="hidden sm:inline">AI</span>
+              </Button>
               <Button variant="ghost" size="sm" asChild data-testid="button-analytics" title="Analytics">
                 <Link href="/analytics">
                   <BarChart3 className="h-4 w-4 sm:mr-1" />
@@ -1948,6 +1960,19 @@ export default function Home() {
           </SheetHeader>
           <div className="h-[calc(100vh-60px)]">
             <DatabasePanel />
+          </div>
+        </SheetContent>
+      </Sheet>
+      
+      {/* AI Insights Panel Sheet */}
+      <Sheet open={showAIInsights} onOpenChange={setShowAIInsights}>
+        <SheetContent side="right" className="w-[450px] sm:max-w-[450px] p-0">
+          <div className="h-full">
+            <AIInsightsPanel 
+              projectId={activeProjectId || undefined} 
+              isThinking={isGenerating || isPlanning}
+              onClose={() => setShowAIInsights(false)}
+            />
           </div>
         </SheetContent>
       </Sheet>

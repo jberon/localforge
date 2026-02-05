@@ -80,7 +80,7 @@ interface LearningStats {
 }
 
 interface IntelligenceDashboardProps {
-  projectId?: number;
+  projectId?: string;
   code?: string;
 }
 

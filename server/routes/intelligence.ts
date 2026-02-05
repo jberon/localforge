@@ -3,6 +3,8 @@ import { enhancedAnalysisService, AnalysisResult } from "../services/enhanced-an
 import { feedbackLearningService, LearnedPattern, LearningStats } from "../services/feedback-learning.service";
 import { extendedThinkingService, ThinkingMode } from "../services/extended-thinking.service";
 import { smartContextService } from "../services/smart-context.service";
+import { contextBudgetService } from "../services/context-budget.service";
+import { CONTEXT_LIMITS, CONTEXT_ALLOCATION } from "@shared/schema";
 import logger from "../lib/logger";
 
 const router = Router();
@@ -35,7 +37,7 @@ router.get("/status", async (_req: Request, res: Response) => {
         },
         smartContext: { active: true }
       },
-      version: "1.6.5"
+      version: "1.6.6"
     };
 
     res.json(status);
@@ -118,7 +120,7 @@ router.post("/patterns/export", async (req: Request, res: Response) => {
 
     res.json({ 
       exportedAt: new Date().toISOString(),
-      version: "1.6.5",
+      version: "1.6.6",
       patterns 
     });
   } catch (error: any) {
@@ -232,6 +234,58 @@ router.get("/context/:projectId", async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error("Failed to get context", { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/context-budget", async (req: Request, res: Response) => {
+  try {
+    const projectId = req.query.projectId as string | undefined;
+    const modelName = req.query.modelName as string || "default";
+    
+    const modelLimit = contextBudgetService.getModelContextLimit(modelName);
+    const maxTokens = Math.floor(modelLimit * 0.95);
+    
+    const outputReserve = Math.floor(maxTokens * CONTEXT_ALLOCATION.outputBuffer);
+    const breakdown = {
+      systemPrompt: Math.floor(maxTokens * CONTEXT_ALLOCATION.systemPrompt),
+      userMessage: Math.floor(maxTokens * CONTEXT_ALLOCATION.userMessage),
+      codeContext: Math.floor(maxTokens * CONTEXT_ALLOCATION.codeContext),
+      chatHistory: Math.floor(maxTokens * CONTEXT_ALLOCATION.chatHistory),
+      outputReserve,
+      fileContents: 0,
+    };
+    
+    let selectedFiles: Array<{ path: string; tokens: number; relevanceScore: number; reason: string }> = [];
+    
+    if (projectId) {
+      const files = await contextBudgetService.selectRelevantFiles(
+        projectId, 
+        "", 
+        breakdown.codeContext
+      );
+      selectedFiles = files.map(f => ({
+        path: f.path,
+        tokens: f.tokens,
+        relevanceScore: f.relevanceScore,
+        reason: f.reason,
+      }));
+      breakdown.fileContents = files.reduce((sum, f) => sum + f.tokens, 0);
+    }
+    
+    const usedTokens = breakdown.systemPrompt + breakdown.userMessage + breakdown.fileContents + breakdown.chatHistory;
+    
+    res.json({
+      maxTokens,
+      usedTokens,
+      breakdown,
+      selectedFiles,
+      truncatedFiles: [],
+      modelLimit,
+      modelName,
+    });
+  } catch (error: any) {
+    logger.error("Failed to get context budget", { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });

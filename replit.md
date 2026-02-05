@@ -36,6 +36,14 @@ New UI components that expose intelligence services to users:
 - **Smart Context Fix**: Improved message role normalization for better conversation summarization (planner→user, builder→assistant)
 - **API Endpoints**: New `/api/intelligence/*` routes for analyzing code, managing patterns, controlling thinking mode, and viewing context
 
+### Integration & Polish (v1.6.6)
+Unified AI Insights panel and improved user experience:
+- **Context Budget Visualization**: Real-time token budget meter showing allocation breakdown (system prompt, user message, code context, chat history, output reserve) with warning indicators when approaching limits
+- **AI Insights Panel**: Unified drawer integrating Intelligence Dashboard, Pattern Manager, Extended Thinking Panel, and Context Budget into a single accessible location from the header
+- **Improved Accessibility**: Enhanced keyboard navigation, aria-labels on interactive elements
+- **Code Quality Improvements**: Removed text-primary violations, fixed query cache invalidation, cleaned up unused imports
+- **Header AI Button**: Quick access to AI services with visual indicator when generation is in progress
+
 ## System Architecture
 
 ### Core Functionality
