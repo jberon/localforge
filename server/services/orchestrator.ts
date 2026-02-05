@@ -19,6 +19,7 @@ import { uiuxAgentService } from "./uiux-agent.service";
 import { localModelOptimizerService } from "./local-model-optimizer.service";
 import { contextBudgetService } from "./context-budget.service";
 import { fewShotCacheService } from "./few-shot-cache.service";
+import { v2OrchestratorService, type V2GenerationContext, type V2GenerationResult } from "./v2-orchestrator.service";
 
 // ============================================================================
 // MODEL-SPECIFIC INSTRUCTIONS
@@ -601,6 +602,50 @@ export class AIOrchestrator {
     }
   }
 
+  /**
+   * Apply V2 optimizations for enhanced local LLM performance
+   * This method integrates all v2.0.0 optimization services
+   */
+  private async applyV2Optimizations(
+    prompt: string,
+    taskType: "planning" | "coding" | "review" | "general",
+    messages?: Array<{ role: string; content: string }>
+  ): Promise<V2GenerationResult | null> {
+    try {
+      if (!v2OrchestratorService.isInitialized()) {
+        await v2OrchestratorService.initialize(this.settings.model);
+      }
+
+      const v2Context: V2GenerationContext = {
+        prompt,
+        taskType,
+        projectId: this.projectId,
+        modelName: this.settings.model,
+        messages: messages?.map(m => ({
+          role: m.role as "user" | "assistant" | "system",
+          content: m.content
+        }))
+      };
+
+      const result = await v2OrchestratorService.prepareGeneration(v2Context);
+      
+      logger.info("V2 optimizations applied", {
+        cacheHit: result.cacheHit,
+        compressionApplied: result.compressionApplied,
+        estimatedSpeedup: result.estimatedSpeedup,
+        patterns: result.patterns?.length || 0,
+        recommendedMaxTokens: result.recommendedMaxTokens,
+        gpuLayers: result.gpuLayers,
+        batchSize: result.batchSize
+      });
+
+      return result;
+    } catch (error) {
+      logger.warn("V2 optimization failed, continuing without", {}, error as Error);
+      return null;
+    }
+  }
+
   abort() {
     this.aborted = true;
   }
@@ -959,6 +1004,10 @@ export class AIOrchestrator {
     const config = this.getPlannerConfig();
     const maxRetries = 2;
     
+    // v2.0.0: Apply V2 optimizations for enhanced local LLM performance
+    const messagesForV2 = this.state.messages.map(m => ({ role: m.role, content: m.content }));
+    const v2Result = await this.applyV2Optimizations(userRequest, "planning", messagesForV2);
+    
     // v1.9.0: Build optimized context for planning phase
     const files = existingCode 
       ? [{ path: "App.tsx", content: existingCode }] 
@@ -1052,6 +1101,19 @@ export class AIOrchestrator {
     const baseSystemPrompt = modelInstructions + PLANNING_PROMPT;
     const optimized = this.optimizeForLocalModel(baseSystemPrompt, userRequest + context, "planning");
     
+    // v2.0.0: Determine max tokens using V2 result if available
+    const v2MaxTokens = v2Result?.recommendedMaxTokens;
+    const effectiveMaxTokens = v2MaxTokens || optimized.maxTokens || LLM_DEFAULTS.maxTokens.plan;
+    
+    // v2.0.0: Include pattern context if available from V2
+    let enhancedUserPrompt = optimized.userPrompt;
+    if (v2Result?.patterns && v2Result.patterns.length > 0) {
+      enhancedUserPrompt = `${optimized.userPrompt}\n\nRELEVANT PATTERNS: ${v2Result.patterns.join(", ")}`;
+    }
+    if (v2Result?.semanticContext && v2Result.semanticContext.length > 0) {
+      enhancedUserPrompt = `${enhancedUserPrompt}\n\nSEMANTIC CONTEXT:\n${v2Result.semanticContext.slice(0, 3).join("\n")}`;
+    }
+    
     // Retry loop for JSON parsing with exponential backoff
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const promptSuffix = attempt > 0 
@@ -1064,8 +1126,8 @@ export class AIOrchestrator {
       const response = await generateCompletion(
         config,
         fullPrompt,
-        optimized.userPrompt,
-        optimized.maxTokens || LLM_DEFAULTS.maxTokens.plan
+        enhancedUserPrompt,
+        effectiveMaxTokens
       );
 
       // Use safe JSON parsing with fallback to simple plan
@@ -1153,6 +1215,10 @@ export class AIOrchestrator {
   private async buildingPhase(plan: OrchestratorPlan, userRequest: string, existingCode?: string): Promise<string> {
     const config = this.getBuilderConfig();
     const client = createLLMClient(config);
+
+    // v2.0.0: Apply V2 optimizations for enhanced local LLM performance
+    const messagesForV2 = this.state.messages.map(m => ({ role: m.role, content: m.content }));
+    const v2Result = await this.applyV2Optimizations(userRequest, "coding", messagesForV2);
 
     // Get learned patterns for enhanced building
     const learnedPatterns = this.projectId
@@ -1279,14 +1345,27 @@ export class AIOrchestrator {
     }
     this.emitTasksUpdated();
 
+    // v2.0.0: Determine max tokens using V2 result if available
+    const v2MaxTokens = v2Result?.recommendedMaxTokens;
+    const effectiveMaxTokens = v2MaxTokens || optimized.maxTokens || LLM_DEFAULTS.maxTokens.fullStack;
+    
+    // v2.0.0: Enhance user prompt with pattern context if available
+    let enhancedUserPrompt = optimized.userPrompt;
+    if (v2Result?.patterns && v2Result.patterns.length > 0) {
+      enhancedUserPrompt = `${optimized.userPrompt}\n\nRELEVANT CODE PATTERNS: ${v2Result.patterns.join(", ")}`;
+    }
+    if (v2Result?.semanticContext && v2Result.semanticContext.length > 0) {
+      enhancedUserPrompt = `${enhancedUserPrompt}\n\nSEMANTIC CODE CONTEXT:\n${v2Result.semanticContext.slice(0, 5).join("\n\n").slice(0, 2000)}`;
+    }
+
     const stream = await client.chat.completions.create({
-      model: config.model || "local-model",
+      model: v2Result?.selectedModel || config.model || "local-model",
       messages: [
         { role: "system", content: optimized.systemPrompt },
-        { role: "user", content: optimized.userPrompt },
+        { role: "user", content: enhancedUserPrompt },
       ],
       temperature: optimized.temperature,
-      max_tokens: optimized.maxTokens || LLM_DEFAULTS.maxTokens.fullStack,
+      max_tokens: effectiveMaxTokens,
       stream: true,
     });
 
