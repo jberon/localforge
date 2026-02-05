@@ -5,6 +5,7 @@ export interface EnhancedPromptContext {
   previousErrors?: string[];
   userPreferences?: Record<string, string>;
   feedbackHistory?: string[];
+  additionalContext?: string;
 }
 
 export const ENHANCED_PLANNER_PROMPT = `You are an elite software architect combining the expertise of Martin Fowler (architecture), Marty Cagan (product), and Kent Beck (quality).
@@ -226,6 +227,10 @@ export function buildEnhancedPlanningPrompt(context: EnhancedPromptContext): str
 
   if (context.previousErrors && context.previousErrors.length > 0) {
     parts.push(`\n## AVOID THESE PREVIOUS ERRORS\n${context.previousErrors.map(e => `- ${e}`).join('\n')}`);
+  }
+
+  if (context.additionalContext) {
+    parts.push(`\n${context.additionalContext}`);
   }
 
   parts.push(`\n## USER REQUEST\n${context.userRequest}`);

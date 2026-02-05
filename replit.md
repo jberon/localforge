@@ -19,6 +19,15 @@ Test Mode uses Replit AI Integrations (OpenAI) to test LocalForge without requir
 - Header badge shows connection status (green=connected, amber=not connected)
 - Automatically routes all generation requests to cloud LLM when active
 
+### Enhanced Intelligence Services (v1.6.0)
+New intelligent services that improve code generation quality:
+- **Enhanced Prompts**: Sophisticated system prompts based on Martin Fowler, Kent Beck, and Marty Cagan principles for architecture, quality, and product thinking
+- **Smart Context Management**: Semantic chunking to extract decisions, preferences, errors, and requirements from conversation history
+- **Extended Thinking with Self-Validation**: Step-by-step validation checkpoints with backtracking capability for reasoning
+- **Feedback Learning**: Captures user corrections/refinements and extracts reusable patterns (naming conventions, code style preferences)
+- **Enhanced Code Analysis**: Cyclomatic complexity, cognitive complexity, maintainability index, security scanning, best practice violation detection (SOLID, DRY, KISS)
+- All services are integrated into the orchestrator pipeline for automatic activation during generation
+
 ## System Architecture
 
 ### Core Functionality

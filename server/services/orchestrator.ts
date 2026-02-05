@@ -3,6 +3,11 @@ import { searchWeb, formatSearchResultsForContext } from "./webSearch";
 import { createDreamTeamService, type DreamTeamService } from "./dreamTeam";
 import { llmSettingsSchema, CORE_DREAM_TEAM, detectModelRole, getOptimalTemperature } from "@shared/schema";
 import { z } from "zod";
+import { smartContextService } from "./smart-context.service";
+import { feedbackLearningService } from "./feedback-learning.service";
+import { enhancedAnalysisService } from "./enhanced-analysis.service";
+import { extendedThinkingService } from "./extended-thinking.service";
+import { buildEnhancedPlanningPrompt, buildEnhancedBuildingPrompt, buildEnhancedReviewPrompt, type EnhancedPromptContext } from "../prompts/enhanced-prompts";
 
 // ============================================================================
 // MODEL-SPECIFIC INSTRUCTIONS
@@ -672,6 +677,11 @@ export class AIOrchestrator {
       this.emit({ type: "phase_change", phase: "complete", message: "Generation complete!" });
       this.emit({ type: "complete", code: this.state.generatedCode, summary: plan.summary, reviewSummary });
 
+      // Record successful generation for feedback learning
+      if (this.projectId) {
+        feedbackLearningService.recordSuccessfulGeneration(this.projectId, this.state.generatedCode);
+      }
+
       return { success: true, code: this.state.generatedCode, summary: plan.summary };
     } catch (error: any) {
       if (error.message === "Aborted") {
@@ -698,6 +708,17 @@ export class AIOrchestrator {
 
     this.emit({ type: "thinking", model: "planner", content: "Reading your request and identifying what kind of application you want to build..." });
 
+    // Initialize extended thinking for complex requests
+    const projectIdForSession = this.projectId || "default";
+    const thinkingSession = extendedThinkingService.startSession(projectIdForSession, userRequest);
+    this.emit({ type: "thinking", model: "planner", content: `Using ${thinkingSession.mode} reasoning mode...` });
+
+    // Get learned patterns from user feedback
+    const learnedPatterns = this.projectId 
+      ? feedbackLearningService.getProjectPatterns(this.projectId) 
+      : [];
+    const patternsContext = feedbackLearningService.formatPatternsForPrompt(learnedPatterns);
+
     // Emit more detailed thinking as we analyze
     setTimeout(() => {
       if (!this.aborted) {
@@ -707,6 +728,14 @@ export class AIOrchestrator {
 
     // Get model-specific instructions based on detected model role
     const modelInstructions = getModelInstructions(config.model, "planner");
+    
+    // Build enhanced prompt with learned patterns
+    const enhancedContext: EnhancedPromptContext = {
+      userRequest,
+      projectContext: existingCode?.slice(0, 2000),
+      additionalContext: patternsContext
+    };
+    const enhancedPromptSection = buildEnhancedPlanningPrompt(enhancedContext);
     
     // Retry loop for JSON parsing with exponential backoff
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -818,12 +847,44 @@ export class AIOrchestrator {
       context += `EXISTING CODE:\n${existingCode}\n\n`;
     }
 
+    // Get learned patterns for enhanced building
+    const learnedPatterns = this.projectId
+      ? feedbackLearningService.getProjectPatterns(this.projectId)
+      : [];
+    const patternsContext = feedbackLearningService.formatPatternsForPrompt(learnedPatterns);
+
+    // Update project memory with conversation context
+    if (this.projectId) {
+      const messages = this.state.messages.map(m => ({
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content,
+        timestamp: Date.now()
+      }));
+      if (messages.length > 0) {
+        smartContextService.updateProjectMemory(this.projectId, messages);
+      }
+    }
+
+    // Build enhanced context for builder
+    const enhancedBuildContext: EnhancedPromptContext = {
+      userRequest,
+      projectContext: existingCode?.slice(0, 3000),
+      feedbackHistory: learnedPatterns.map(p => p.pattern),
+      additionalContext: patternsContext
+    };
+    const enhancedPromptSection = buildEnhancedBuildingPrompt(enhancedBuildContext, {
+      filePath: "App.tsx",
+      purpose: plan.summary,
+      architecture: plan.architecture || "React + TypeScript",
+      relatedFiles: []
+    });
+
     // Get model-specific instructions based on detected model role
     const modelInstructions = getModelInstructions(config.model, "builder");
     
     // Prepend model-specific instructions to the building prompt
     const prompt = modelInstructions + BUILDING_PROMPT
-      .replace("{context}", context || "No additional context.")
+      .replace("{context}", context + "\n" + enhancedPromptSection || "No additional context.")
       .replace("{plan}", JSON.stringify(plan, null, 2));
 
     this.emit({ type: "thinking", model: "builder", content: "Starting code generation with the implementation plan..." });
@@ -889,9 +950,27 @@ export class AIOrchestrator {
     return cleanedCode;
   }
 
-  private validateCode(code: string): { valid: boolean; errors: string[] } {
+  private validateCode(code: string): { valid: boolean; errors: string[]; analysisScore?: number } {
     const errors: string[] = [];
 
+    // Run enhanced code analysis
+    const analysis = enhancedAnalysisService.analyzeCode(code, "generated.tsx");
+    
+    // Add critical issues as errors
+    for (const issue of analysis.issues) {
+      if (issue.severity === "critical" || issue.severity === "high") {
+        errors.push(`[${issue.type}] ${issue.message}`);
+      }
+    }
+    
+    // Add security findings as errors
+    for (const finding of analysis.securityFindings) {
+      if (finding.severity === "critical" || finding.severity === "high") {
+        errors.push(`[SECURITY] ${finding.description}`);
+      }
+    }
+
+    // Basic syntax checks (still needed for quick validation)
     const openBraces = (code.match(/\{/g) || []).length;
     const closeBraces = (code.match(/\}/g) || []).length;
     if (openBraces !== closeBraces) {
@@ -912,7 +991,11 @@ export class AIOrchestrator {
       errors.push("Missing export or render call");
     }
 
-    return { valid: errors.length === 0, errors };
+    return { 
+      valid: errors.length === 0, 
+      errors,
+      analysisScore: analysis.score
+    };
   }
 
   private async fixLoop(code: string, errors: string[]): Promise<string> {
