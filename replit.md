@@ -116,6 +116,19 @@ Advanced local LLM optimization features for maximum performance on MacBook Pro 
 
 - **V2 Orchestrator Service** (`server/services/v2-orchestrator.service.ts`): Unified integration layer that coordinates all v2.0.0 services with proper sequencing, fallbacks, and metrics collection.
 
+### Local LLM Optimization Services (v2.1.0)
+Enhanced services for faster, better, and cleaner code generation:
+
+- **Parallel Generation Service** (`server/services/parallel-generation.service.ts`): Concurrent multi-file generation with dependency analysis, topological sorting for correct build order, batch creation for parallel execution (up to 3x speedup on multi-file projects), and automatic dependency inference.
+
+- **Live Syntax Validator Service** (`server/services/live-syntax-validator.service.ts`): Real-time code validation during streaming, bracket/string/comment/template-literal state tracking, common syntax error detection, completion hints for partial code, and early error detection before generation completes.
+
+- **Code Style Enforcer Service** (`server/services/code-style-enforcer.service.ts`): Prettier-like formatting without external dependencies, import organization and sorting, consistent code styling (semicolons, quotes, trailing commas), multiple file formatting support, and ESLint/Prettier config generation.
+
+- **Error Learning Service** (`server/services/error-learning.service.ts`): Tracks common LLM coding mistakes (15+ built-in patterns), learns new error patterns from repeated occurrences, generates model-specific prevention prompts, auto-fix suggestions for known error types, and error category statistics.
+
+- **M4 Pro Optimized Context Presets** (enhanced `server/services/context-budget.service.ts`): Fine-tuned allocations for Qwen2.5-Coder, Qwen3-Coder, Ministral, DeepSeek-Coder, CodeLlama, Llama-3, and Mistral models. Task-specific allocation adjustments (planning, coding, debugging, refactoring, review, documentation), optimal temperature per model/task combination, GPU layers and batch size recommendations for Apple Silicon.
+
 ### In-Browser Bundler
 Uses esbuild-wasm for in-browser bundling of multi-file TypeScript/React projects with a virtual file system and hot refresh.
 

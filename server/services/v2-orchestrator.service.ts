@@ -9,6 +9,11 @@ import { streamingBudgetService } from "./streaming-budget.service";
 import { conversationCompressorService, type Message } from "./conversation-compressor.service";
 import { performanceProfilerService } from "./performance-profiler.service";
 import { patternLibraryService } from "./pattern-library.service";
+import { parallelGenerationService } from "./parallel-generation.service";
+import { liveSyntaxValidatorService } from "./live-syntax-validator.service";
+import { codeStyleEnforcerService } from "./code-style-enforcer.service";
+import { errorLearningService } from "./error-learning.service";
+import { contextBudgetService } from "./context-budget.service";
 
 export interface V2Config {
   speculativeDecoding: boolean;
@@ -21,6 +26,11 @@ export interface V2Config {
   conversationCompression: boolean;
   performanceProfiling: boolean;
   patternLibrary: boolean;
+  parallelGeneration: boolean;
+  liveSyntaxValidation: boolean;
+  codeStyleEnforcement: boolean;
+  errorLearning: boolean;
+  m4OptimizedContext: boolean;
 }
 
 export interface V2GenerationContext {
@@ -72,6 +82,11 @@ class V2OrchestratorService {
       conversationCompression: true,
       performanceProfiling: true,
       patternLibrary: true,
+      parallelGeneration: true,
+      liveSyntaxValidation: true,
+      codeStyleEnforcement: true,
+      errorLearning: true,
+      m4OptimizedContext: true,
     };
   }
 
@@ -270,6 +285,43 @@ class V2OrchestratorService {
         });
       }
 
+      if (this.config.errorLearning) {
+        const modelFamily = selectedModel.toLowerCase().includes("qwen") ? "qwen" :
+                           selectedModel.toLowerCase().includes("ministral") ? "ministral" :
+                           selectedModel.toLowerCase().includes("deepseek") ? "deepseek" :
+                           selectedModel.toLowerCase().includes("llama") ? "llama" : undefined;
+        const preventionPrompt = errorLearningService.getPreventionPrompt(modelFamily);
+        if (preventionPrompt && preventionPrompt.length > 20) {
+          optimizedContext = optimizedContext + "\n" + preventionPrompt;
+          logger.info("Error prevention prompt injected", { 
+            modelFamily,
+            promptLength: preventionPrompt.length
+          });
+        }
+      }
+
+      if (this.config.m4OptimizedContext && selectedModel) {
+        const taskProfile = this.mapTaskTypeToContextProfile(context.taskType);
+        const m4Allocation = contextBudgetService.calculateM4OptimizedAllocation(selectedModel, taskProfile);
+        const optimalTemp = contextBudgetService.getOptimalTemperature(selectedModel, taskProfile);
+        const preset = contextBudgetService.getM4OptimizedPreset(selectedModel);
+        
+        if (preset) {
+          recommendedMaxTokens = Math.min(m4Allocation.available, recommendedMaxTokens);
+          gpuLayers = preset.gpuLayers;
+          batchSize = preset.optimalBatchSize;
+          
+          logger.info("M4 optimization applied", {
+            model: selectedModel,
+            taskProfile,
+            contextWindow: preset.contextWindow,
+            temperature: optimalTemp,
+            gpuLayers,
+            batchSize,
+          });
+        }
+      }
+
       const hwProfile = hardwareOptimizerService.getHardwareProfile();
       const result: V2GenerationResult = {
         optimizedContext,
@@ -387,6 +439,250 @@ class V2OrchestratorService {
 
   private estimateTokens(text: string): number {
     return Math.ceil(text.length / 3.5);
+  }
+
+  // ============================================================================
+  // V2.1 ENHANCED SERVICES - Better, Faster, Cleaner Code Generation
+  // ============================================================================
+
+  prepareParallelGeneration(
+    files: Array<{ path: string; description: string }>
+  ): {
+    batches: Array<{ batchId: number; files: Array<{ filePath: string; description: string }>; canParallelize: boolean }>;
+    estimatedSpeedup: number;
+    totalFiles: number;
+  } {
+    if (!this.config.parallelGeneration) {
+      return {
+        batches: [{ batchId: 0, files: files.map(f => ({ filePath: f.path, description: f.description })), canParallelize: false }],
+        estimatedSpeedup: 1,
+        totalFiles: files.length,
+      };
+    }
+
+    const tasks = parallelGenerationService.prepareFileTasks(files);
+    const batches = parallelGenerationService.createBatches(tasks);
+    const estimatedSpeedup = parallelGenerationService.estimateSpeedup(batches);
+
+    logger.info("Parallel generation prepared", {
+      totalFiles: files.length,
+      batches: batches.length,
+      estimatedSpeedup,
+    });
+
+    return {
+      batches: batches.map(b => ({
+        batchId: b.batchId,
+        files: b.files.map(f => ({ filePath: f.filePath, description: f.description })),
+        canParallelize: b.canParallelize,
+      })),
+      estimatedSpeedup,
+      totalFiles: files.length,
+    };
+  }
+
+  validateCodeStreaming(
+    code: string,
+    previousCode: string = ""
+  ): {
+    isValid: boolean;
+    errors: Array<{ line: number; message: string; severity: string }>;
+    warnings: Array<{ line: number; message: string }>;
+    completionHints: string[];
+  } {
+    if (!this.config.liveSyntaxValidation) {
+      return { isValid: true, errors: [], warnings: [], completionHints: [] };
+    }
+
+    const fullCode = previousCode + code;
+    const result = liveSyntaxValidatorService.validateStreaming(fullCode);
+    const hints = liveSyntaxValidatorService.getCompletionHints(fullCode);
+
+    return {
+      isValid: result.isValid,
+      errors: result.errors.map(e => ({
+        line: e.line,
+        message: e.message,
+        severity: e.severity,
+      })),
+      warnings: result.warnings.map(w => ({
+        line: w.line,
+        message: w.message,
+      })),
+      completionHints: hints,
+    };
+  }
+
+  formatGeneratedCode(
+    code: string,
+    filePath?: string
+  ): {
+    formatted: string;
+    changed: boolean;
+    issues: string[];
+  } {
+    if (!this.config.codeStyleEnforcement) {
+      return { formatted: code, changed: false, issues: [] };
+    }
+
+    const result = codeStyleEnforcerService.formatCode(code);
+
+    if (result.changed) {
+      logger.debug("Code formatted", { filePath, changed: true });
+    }
+
+    return result;
+  }
+
+  formatMultipleFiles(
+    files: Array<{ path: string; content: string }>
+  ): Array<{ path: string; formatted: string; changed: boolean }> {
+    if (!this.config.codeStyleEnforcement) {
+      return files.map(f => ({ path: f.path, formatted: f.content, changed: false }));
+    }
+
+    const results = codeStyleEnforcerService.formatMultipleFiles(files);
+
+    const changedCount = results.filter(r => r.result.changed).length;
+    if (changedCount > 0) {
+      logger.info("Multiple files formatted", { total: files.length, changed: changedCount });
+    }
+
+    return results.map(r => ({
+      path: r.path,
+      formatted: r.result.formatted,
+      changed: r.result.changed,
+    }));
+  }
+
+  recordError(
+    errorMessage: string,
+    code: string,
+    modelUsed?: string,
+    filePath?: string
+  ): void {
+    if (!this.config.errorLearning) return;
+
+    errorLearningService.recordError({
+      errorMessage,
+      code,
+      filePath,
+      wasFixed: false,
+      modelUsed,
+    });
+  }
+
+  recordErrorFixed(
+    errorMessage: string,
+    code: string,
+    fixApplied: string,
+    modelUsed?: string
+  ): void {
+    if (!this.config.errorLearning) return;
+
+    errorLearningService.recordError({
+      errorMessage,
+      code,
+      wasFixed: true,
+      fixApplied,
+      modelUsed,
+    });
+  }
+
+  getErrorPreventionPrompt(modelFamily?: string): string {
+    if (!this.config.errorLearning) return "";
+    return errorLearningService.getPreventionPrompt(modelFamily);
+  }
+
+  getAutoFixSuggestion(errorMessage: string): string | null {
+    if (!this.config.errorLearning) return null;
+    return errorLearningService.getAutoFix(errorMessage);
+  }
+
+  getM4OptimizedAllocation(
+    modelName: string,
+    taskType: "plan" | "build" | "refine" | "review"
+  ): {
+    allocation: {
+      systemPrompt: number;
+      userMessage: number;
+      codeContext: number;
+      chatHistory: number;
+      projectMemory: number;
+      fewShotExamples: number;
+      outputReserve: number;
+      total: number;
+      available: number;
+    };
+    optimalTemperature: number;
+    preset: {
+      contextWindow: number;
+      optimalBatchSize: number;
+      gpuLayers: number;
+      notes: string;
+    } | null;
+  } {
+    const taskProfile = this.mapTaskTypeToContextProfile(taskType);
+    
+    if (!this.config.m4OptimizedContext) {
+      const baseAllocation = contextBudgetService.calculateLocalModelAllocation(modelName, taskProfile);
+      return {
+        allocation: baseAllocation,
+        optimalTemperature: 0.2,
+        preset: null,
+      };
+    }
+
+    const allocation = contextBudgetService.calculateM4OptimizedAllocation(modelName, taskProfile);
+    const optimalTemperature = contextBudgetService.getOptimalTemperature(modelName, taskProfile);
+    const preset = contextBudgetService.getM4OptimizedPreset(modelName);
+
+    logger.debug("M4 optimized allocation calculated", {
+      modelName,
+      taskType,
+      contextWindow: preset?.contextWindow,
+      temperature: optimalTemperature,
+    });
+
+    return {
+      allocation,
+      optimalTemperature,
+      preset,
+    };
+  }
+
+  private mapTaskTypeToContextProfile(taskType: "plan" | "build" | "refine" | "review"): "planning" | "coding" | "debugging" | "refactoring" | "review" | "documentation" {
+    const mapping: Record<string, "planning" | "coding" | "debugging" | "refactoring" | "review" | "documentation"> = {
+      plan: "planning",
+      build: "coding",
+      refine: "refactoring",
+      review: "review",
+    };
+    return mapping[taskType] || "coding";
+  }
+
+  getErrorLearningStats(): {
+    totalPatterns: number;
+    learnedPatterns: number;
+    totalErrors: number;
+    topCategories: Array<{ category: string; count: number }>;
+  } | null {
+    if (!this.config.errorLearning) return null;
+    return errorLearningService.getStats();
+  }
+
+  getEnhancedSystemStatus(): Record<string, unknown> {
+    const baseStatus = this.getSystemStatus();
+    
+    return {
+      ...baseStatus,
+      parallelGenerationEnabled: this.config.parallelGeneration,
+      liveSyntaxValidationEnabled: this.config.liveSyntaxValidation,
+      codeStyleEnforcementEnabled: this.config.codeStyleEnforcement,
+      errorLearningEnabled: this.config.errorLearning,
+      m4OptimizedContextEnabled: this.config.m4OptimizedContext,
+      errorLearningStats: this.config.errorLearning ? errorLearningService.getStats() : null,
+    };
   }
 }
 

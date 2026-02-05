@@ -343,6 +343,259 @@ export class ContextBudgetService {
     }]
   ]);
 
+  // ============================================================================
+  // M4 PRO OPTIMIZED MODEL PRESETS
+  // Fine-tuned allocations for popular local LLMs on Apple Silicon M4 Pro
+  // ============================================================================
+  
+  private m4ModelPresets: Map<string, {
+    contextWindow: number;
+    optimalBatchSize: number;
+    gpuLayers: number;
+    temperatureRange: { min: number; max: number; default: number };
+    taskAdjustments: Partial<Record<TaskProfile, Partial<AllocationProfile>>>;
+    notes: string;
+  }> = new Map([
+    ["qwen2.5-coder", {
+      contextWindow: 32768,
+      optimalBatchSize: 512,
+      gpuLayers: 99,
+      temperatureRange: { min: 0.0, max: 0.7, default: 0.1 },
+      taskAdjustments: {
+        coding: {
+          codeContext: 0.50,
+          fewShotExamples: 0.08,
+          outputReserve: 0.18
+        },
+        refactoring: {
+          codeContext: 0.55,
+          outputReserve: 0.22
+        }
+      },
+      notes: "Excellent code completion. Prefers lower temperature for precision."
+    }],
+    ["qwen3-coder", {
+      contextWindow: 32768,
+      optimalBatchSize: 512,
+      gpuLayers: 99,
+      temperatureRange: { min: 0.0, max: 0.8, default: 0.2 },
+      taskAdjustments: {
+        coding: {
+          codeContext: 0.48,
+          fewShotExamples: 0.10,
+          outputReserve: 0.20
+        },
+        planning: {
+          systemPrompt: 0.12,
+          chatHistory: 0.25
+        }
+      },
+      notes: "Strong reasoning. Good for complex multi-file generation."
+    }],
+    ["ministral", {
+      contextWindow: 32768,
+      optimalBatchSize: 256,
+      gpuLayers: 99,
+      temperatureRange: { min: 0.1, max: 0.9, default: 0.3 },
+      taskAdjustments: {
+        planning: {
+          systemPrompt: 0.12,
+          userMessage: 0.25,
+          codeContext: 0.20,
+          outputReserve: 0.18
+        },
+        documentation: {
+          userMessage: 0.20,
+          codeContext: 0.25,
+          outputReserve: 0.25
+        }
+      },
+      notes: "Great for planning and documentation. Higher temperature ok."
+    }],
+    ["deepseek-coder", {
+      contextWindow: 16384,
+      optimalBatchSize: 512,
+      gpuLayers: 99,
+      temperatureRange: { min: 0.0, max: 0.5, default: 0.0 },
+      taskAdjustments: {
+        coding: {
+          codeContext: 0.55,
+          fewShotExamples: 0.05,
+          outputReserve: 0.18
+        },
+        debugging: {
+          codeContext: 0.50,
+          projectMemory: 0.12
+        }
+      },
+      notes: "Best with temperature 0. Excellent for debugging and code analysis."
+    }],
+    ["codellama", {
+      contextWindow: 16384,
+      optimalBatchSize: 256,
+      gpuLayers: 80,
+      temperatureRange: { min: 0.1, max: 0.6, default: 0.2 },
+      taskAdjustments: {
+        coding: {
+          codeContext: 0.45,
+          fewShotExamples: 0.08
+        }
+      },
+      notes: "Solid general-purpose coder. May need more few-shot examples."
+    }],
+    ["llama-3", {
+      contextWindow: 8192,
+      optimalBatchSize: 256,
+      gpuLayers: 99,
+      temperatureRange: { min: 0.2, max: 0.8, default: 0.4 },
+      taskAdjustments: {
+        planning: {
+          codeContext: 0.20,
+          chatHistory: 0.25
+        },
+        documentation: {
+          codeContext: 0.25,
+          outputReserve: 0.25
+        }
+      },
+      notes: "Great for planning and natural language. Smaller context."
+    }],
+    ["mistral", {
+      contextWindow: 32768,
+      optimalBatchSize: 256,
+      gpuLayers: 99,
+      temperatureRange: { min: 0.1, max: 0.7, default: 0.3 },
+      taskAdjustments: {
+        coding: {
+          codeContext: 0.42,
+          fewShotExamples: 0.06
+        },
+        review: {
+          codeContext: 0.55
+        }
+      },
+      notes: "Balanced model. Good for code review and general tasks."
+    }]
+  ]);
+
+  getM4OptimizedPreset(modelName: string): {
+    contextWindow: number;
+    optimalBatchSize: number;
+    gpuLayers: number;
+    temperatureRange: { min: number; max: number; default: number };
+    notes: string;
+  } | null {
+    const modelLower = modelName.toLowerCase();
+    
+    for (const [key, preset] of Array.from(this.m4ModelPresets.entries())) {
+      if (modelLower.includes(key)) {
+        return {
+          contextWindow: preset.contextWindow,
+          optimalBatchSize: preset.optimalBatchSize,
+          gpuLayers: preset.gpuLayers,
+          temperatureRange: preset.temperatureRange,
+          notes: preset.notes
+        };
+      }
+    }
+    
+    return null;
+  }
+
+  calculateM4OptimizedAllocation(
+    modelName: string,
+    taskProfile: TaskProfile
+  ): LocalModelAllocation {
+    const modelLower = modelName.toLowerCase();
+    let preset: typeof this.m4ModelPresets extends Map<string, infer V> ? V : never = null as any;
+    
+    for (const [key, p] of Array.from(this.m4ModelPresets.entries())) {
+      if (modelLower.includes(key)) {
+        preset = p;
+        break;
+      }
+    }
+    
+    if (!preset) {
+      return this.calculateLocalModelAllocation(modelName, taskProfile);
+    }
+    
+    const baseProfile = this.allocationProfiles.get(taskProfile) || this.allocationProfiles.get("coding")!;
+    const taskAdjustment = preset.taskAdjustments[taskProfile] || {};
+    
+    const mergedProfile: AllocationProfile = {
+      ...baseProfile,
+      ...taskAdjustment
+    };
+    
+    const total = this.normalizeAllocation(mergedProfile);
+    const contextSize = preset.contextWindow;
+    const outputReserve = Math.floor(contextSize * total.outputReserve);
+    const available = contextSize - outputReserve;
+    
+    return {
+      systemPrompt: Math.floor(available * total.systemPrompt),
+      userMessage: Math.floor(available * total.userMessage),
+      codeContext: Math.floor(available * total.codeContext),
+      chatHistory: Math.floor(available * total.chatHistory),
+      projectMemory: Math.floor(available * total.projectMemory),
+      fewShotExamples: Math.floor(available * total.fewShotExamples),
+      outputReserve,
+      total: contextSize,
+      available
+    };
+  }
+  
+  private normalizeAllocation(profile: AllocationProfile): AllocationProfile {
+    const nonOutputSum = 
+      profile.systemPrompt + 
+      profile.userMessage + 
+      profile.codeContext + 
+      profile.chatHistory + 
+      profile.projectMemory + 
+      profile.fewShotExamples;
+    
+    const total = nonOutputSum + profile.outputReserve;
+    
+    if (Math.abs(total - 1.0) < 0.01) {
+      return profile;
+    }
+    
+    const scale = (1.0 - profile.outputReserve) / nonOutputSum;
+    
+    return {
+      systemPrompt: profile.systemPrompt * scale,
+      userMessage: profile.userMessage * scale,
+      codeContext: profile.codeContext * scale,
+      chatHistory: profile.chatHistory * scale,
+      projectMemory: profile.projectMemory * scale,
+      fewShotExamples: profile.fewShotExamples * scale,
+      outputReserve: profile.outputReserve
+    };
+  }
+
+  getOptimalTemperature(modelName: string, taskProfile: TaskProfile): number {
+    const preset = this.getM4OptimizedPreset(modelName);
+    
+    if (!preset) {
+      return taskProfile === "coding" ? 0.1 : 0.3;
+    }
+    
+    switch (taskProfile) {
+      case "coding":
+      case "debugging":
+      case "refactoring":
+        return preset.temperatureRange.min;
+      case "documentation":
+      case "planning":
+        return preset.temperatureRange.default;
+      case "review":
+        return (preset.temperatureRange.min + preset.temperatureRange.default) / 2;
+      default:
+        return preset.temperatureRange.default;
+    }
+  }
+
   detectModelContextSize(modelName: string): number {
     const profile = localModelOptimizerService.getModelProfile(modelName);
     return profile.contextWindow;
