@@ -56,23 +56,23 @@ class ParallelGenerationService {
   detectFileType(filePath: string): FileTask["type"] {
     const lower = filePath.toLowerCase();
     
-    if (lower.includes("/components/") || lower.endsWith(".tsx") && !lower.includes("/pages/")) {
-      return "component";
-    }
-    if (lower.includes("/api/") || lower.includes("/routes") || lower.includes("server/")) {
-      return "api";
-    }
-    if (lower.includes("/utils/") || lower.includes("/lib/") || lower.includes("/helpers/")) {
-      return "util";
-    }
-    if (lower.includes("config") || lower.endsWith(".json") || lower.endsWith(".env")) {
-      return "config";
+    if (lower.includes(".test.") || lower.includes(".spec.") || lower.includes("__tests__") || lower.includes("/tests/") || lower.includes("/test/")) {
+      return "test";
     }
     if (lower.endsWith(".css") || lower.endsWith(".scss") || lower.includes("styles")) {
       return "style";
     }
-    if (lower.includes(".test.") || lower.includes(".spec.") || lower.includes("__tests__")) {
-      return "test";
+    if (lower.includes("config") || lower.endsWith(".json") || lower.endsWith(".env")) {
+      return "config";
+    }
+    if (lower.includes("/utils/") || lower.includes("/lib/") || lower.includes("/helpers/")) {
+      return "util";
+    }
+    if (lower.includes("/api/") || lower.includes("/routes") || lower.includes("server/")) {
+      return "api";
+    }
+    if (lower.includes("/components/") || (lower.endsWith(".tsx") && !lower.includes("/pages/"))) {
+      return "component";
     }
     
     return "component";

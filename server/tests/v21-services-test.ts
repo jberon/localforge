@@ -299,12 +299,14 @@ import { helper } from "./utils";
   const unknownTemp = contextBudgetService.getOptimalTemperature("unknown-model", "coding");
   assert(unknownTemp === 0.1, `Unknown model coding temp 0.1 (got ${unknownTemp})`);
 
-  const allocSum = qwenAllocation.systemPrompt + qwenAllocation.userMessage + 
+  const inputFieldsSum = qwenAllocation.systemPrompt + qwenAllocation.userMessage + 
                    qwenAllocation.codeContext + qwenAllocation.chatHistory + 
-                   qwenAllocation.projectMemory + qwenAllocation.fewShotExamples + 
-                   qwenAllocation.outputReserve;
-  assert(Math.abs(allocSum - qwenAllocation.total) < 100, 
-    `Allocation sums to total (${allocSum} ~= ${qwenAllocation.total})`);
+                   qwenAllocation.projectMemory + qwenAllocation.fewShotExamples;
+  assert(Math.abs(inputFieldsSum - qwenAllocation.available) < 10, 
+    `Input fields sum to available (${inputFieldsSum} ~= ${qwenAllocation.available})`);
+  const fullSum = inputFieldsSum + qwenAllocation.outputReserve;
+  assert(Math.abs(fullSum - qwenAllocation.total) < 100, 
+    `Full allocation sums to total (${fullSum} ~= ${qwenAllocation.total})`);
 
   section("SUMMARY");
   console.log(`\nTotal: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`);

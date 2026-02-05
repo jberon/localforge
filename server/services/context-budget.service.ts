@@ -528,18 +528,23 @@ export class ContextBudgetService {
       ...taskAdjustment
     };
     
-    const total = this.normalizeAllocation(mergedProfile);
+    const normalized = this.normalizeAllocation(mergedProfile);
     const contextSize = preset.contextWindow;
-    const outputReserve = Math.floor(contextSize * total.outputReserve);
+    const outputReserve = Math.floor(contextSize * normalized.outputReserve);
     const available = contextSize - outputReserve;
     
+    const nonOutputSum = normalized.systemPrompt + normalized.userMessage + 
+                         normalized.codeContext + normalized.chatHistory + 
+                         normalized.projectMemory + normalized.fewShotExamples;
+    const scale = nonOutputSum > 0 ? 1.0 / nonOutputSum : 1.0;
+    
     return {
-      systemPrompt: Math.floor(available * total.systemPrompt),
-      userMessage: Math.floor(available * total.userMessage),
-      codeContext: Math.floor(available * total.codeContext),
-      chatHistory: Math.floor(available * total.chatHistory),
-      projectMemory: Math.floor(available * total.projectMemory),
-      fewShotExamples: Math.floor(available * total.fewShotExamples),
+      systemPrompt: Math.floor(available * normalized.systemPrompt * scale),
+      userMessage: Math.floor(available * normalized.userMessage * scale),
+      codeContext: Math.floor(available * normalized.codeContext * scale),
+      chatHistory: Math.floor(available * normalized.chatHistory * scale),
+      projectMemory: Math.floor(available * normalized.projectMemory * scale),
+      fewShotExamples: Math.floor(available * normalized.fewShotExamples * scale),
       outputReserve,
       total: contextSize,
       available

@@ -110,31 +110,74 @@ class CodeStyleEnforcerService {
   }
 
   private normalizeSpacing(code: string, opts: FormatOptions): string {
-    let result = code;
+    const lines = code.split("\n");
+    const result = lines.map(line => {
+      const { codeParts, literals } = this.extractStringLiterals(line);
+      let processed = codeParts;
 
-    result = result.replace(/\s*,\s*/g, ", ");
-    result = result.replace(/\s*:\s*/g, ": ");
-    result = result.replace(/([=!<>+\-*/%&|^])=/g, " $1= ");
-    result = result.replace(/\s*=\s*(?!=)/g, " = ");
-    result = result.replace(/([^=!<>])={2}(?!=)/g, "$1 == ");
-    result = result.replace(/\s*===\s*/g, " === ");
-    result = result.replace(/\s*!==\s*/g, " !== ");
-    result = result.replace(/\s*&&\s*/g, " && ");
-    result = result.replace(/\s*\|\|\s*/g, " || ");
-    result = result.replace(/\s*\?\?\s*/g, " ?? ");
+      processed = processed.replace(/\s*,\s*/g, ", ");
 
-    if (opts.bracketSpacing) {
-      result = result.replace(/{\s*([^}\s])/g, "{ $1");
-      result = result.replace(/([^{\s])\s*}/g, "$1 }");
-    } else {
-      result = result.replace(/{\s+/g, "{");
-      result = result.replace(/\s+}/g, "}");
+      processed = processed.replace(/(?<!=)\s*(?<![=!<>])==(?!=)\s*/g, " == ");
+      processed = processed.replace(/\s*===\s*/g, " === ");
+      processed = processed.replace(/\s*!==\s*/g, " !== ");
+      processed = processed.replace(/\s*>=\s*/g, " >= ");
+      processed = processed.replace(/\s*<=\s*/g, " <= ");
+      processed = processed.replace(/\s*!=(?!=)\s*/g, " != ");
+      processed = processed.replace(/\s*&&\s*/g, " && ");
+      processed = processed.replace(/\s*\|\|\s*/g, " || ");
+      processed = processed.replace(/\s*\?\?\s*/g, " ?? ");
+
+      processed = processed.replace(/\s*=>\s*/g, " => ");
+
+      processed = processed.replace(/(?<![=!<>+\-*/%&|^])=(?![=>])\s*/g, " = ");
+
+      if (opts.bracketSpacing) {
+        processed = processed.replace(/{\s*([^}\s])/g, "{ $1");
+        processed = processed.replace(/([^{\s])\s*}/g, "$1 }");
+      }
+
+      processed = processed.replace(/  +/g, " ");
+
+      return this.restoreStringLiterals(processed, literals);
+    }).join("\n");
+
+    return result.replace(/\n{3,}/g, "\n\n");
+  }
+
+  private extractStringLiterals(line: string): { codeParts: string; literals: string[] } {
+    const literals: string[] = [];
+    let result = "";
+    let i = 0;
+
+    while (i < line.length) {
+      if (line[i] === "/" && line[i + 1] === "/") {
+        literals.push(line.slice(i));
+        result += `\x00STR${literals.length - 1}\x00`;
+        break;
+      }
+
+      if (line[i] === '"' || line[i] === "'" || line[i] === "`") {
+        const quote = line[i];
+        let j = i + 1;
+        while (j < line.length && line[j] !== quote) {
+          if (line[j] === "\\") j++;
+          j++;
+        }
+        const literal = line.slice(i, j + 1);
+        literals.push(literal);
+        result += `\x00STR${literals.length - 1}\x00`;
+        i = j + 1;
+      } else {
+        result += line[i];
+        i++;
+      }
     }
 
-    result = result.replace(/  +/g, " ");
-    result = result.replace(/\n{3,}/g, "\n\n");
+    return { codeParts: result, literals };
+  }
 
-    return result;
+  private restoreStringLiterals(code: string, literals: string[]): string {
+    return code.replace(/\x00STR(\d+)\x00/g, (_, idx) => literals[parseInt(idx)]);
   }
 
   private normalizeStrings(code: string, opts: FormatOptions): string {
