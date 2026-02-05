@@ -1,3 +1,5 @@
+import { logger } from "../lib/logger";
+
 export interface WebSearchResult {
   title: string;
   snippet: string;
@@ -22,7 +24,7 @@ export async function searchWeb(query: string, apiKey: string): Promise<WebSearc
   }
 
   try {
-    console.log(`[webSearch] Searching for: "${query}"`);
+    logger.info("Web search started", { query });
     
     const response = await fetch(SERPER_ENDPOINT, {
       method: "POST",
@@ -38,7 +40,7 @@ export async function searchWeb(query: string, apiKey: string): Promise<WebSearc
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[webSearch] Serper API error: ${response.status} - ${errorText}`);
+      logger.error("Serper API error", { status: response.status, errorText });
       return {
         success: false,
         results: [],
@@ -60,14 +62,14 @@ export async function searchWeb(query: string, apiKey: string): Promise<WebSearc
       }
     }
 
-    console.log(`[webSearch] Found ${results.length} results`);
+    logger.info("Web search completed", { resultCount: results.length });
     
     return {
       success: true,
       results,
     };
   } catch (error: any) {
-    console.error(`[webSearch] Network error: ${error.message}`);
+    logger.error("Web search network error", { error: error.message });
     return {
       success: false,
       results: [],

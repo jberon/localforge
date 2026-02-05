@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { LLMSettings } from "@shared/schema";
+import { logger } from "../lib/logger";
 
 const CLASSIFIER_PROMPT = `You are a classifier that decides whether a user question requires fresh information from the internet.
 
@@ -23,7 +24,7 @@ export async function shouldUseWebSearch(
   settings: LLMSettings
 ): Promise<{ needsWeb: boolean; reason?: string }> {
   try {
-    console.log(`[webSearchClassifier] Classifying message: "${userMessage.substring(0, 100)}..."`);
+    logger.info("Classifying web search need", { message: userMessage.substring(0, 100) });
 
     const client = new OpenAI({
       baseURL: settings.endpoint,
@@ -47,18 +48,16 @@ export async function shouldUseWebSearch(
 
     const answer = response.choices[0]?.message?.content?.trim().toUpperCase() || "";
     
-    console.log(`[webSearchClassifier] LLM response: "${answer}"`);
-
     const needsWeb = answer.includes("USE_WEB");
     
-    console.log(`[webSearchClassifier] Decision: ${needsWeb ? "USE_WEB" : "NO_WEB"}`);
+    logger.info("Web search classification complete", { answer, needsWeb });
 
     return {
       needsWeb,
       reason: needsWeb ? "Question requires up-to-date information" : "Can be answered from general knowledge",
     };
   } catch (error: any) {
-    console.error(`[webSearchClassifier] Error: ${error.message}`);
+    logger.error("Web search classification error", { error: error.message });
     return {
       needsWeb: false,
       reason: `Classification failed: ${error.message}`,
