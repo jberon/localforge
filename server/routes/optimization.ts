@@ -1958,4 +1958,132 @@ router.get("/deployment/stats", (_req, res) => {
   }
 });
 
+// ==================== V2.1 SERVICES ====================
+
+import { parallelGenerationService } from "../services/parallel-generation.service";
+import { liveSyntaxValidatorService } from "../services/live-syntax-validator.service";
+import { codeStyleEnforcerService } from "../services/code-style-enforcer.service";
+import { errorLearningService } from "../services/error-learning.service";
+import { contextBudgetService } from "../services/context-budget.service";
+
+router.post("/v21/validate-syntax", (req, res) => {
+  try {
+    const { code, language } = req.body;
+    if (!code) {
+      return res.status(400).json({ error: "code is required" });
+    }
+    const result = liveSyntaxValidatorService.validateStreaming(code, language || "typescript");
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to validate syntax", { error });
+    res.status(500).json({ error: "Failed to validate syntax" });
+  }
+});
+
+router.post("/v21/format-code", (req, res) => {
+  try {
+    const { code, options } = req.body;
+    if (!code) {
+      return res.status(400).json({ error: "code is required" });
+    }
+    const result = codeStyleEnforcerService.formatCode(code, options);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to format code", { error });
+    res.status(500).json({ error: "Failed to format code" });
+  }
+});
+
+router.post("/v21/format-files", (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    const results = codeStyleEnforcerService.formatMultipleFiles(files);
+    res.json(results);
+  } catch (error) {
+    logger.error("Failed to format files", { error });
+    res.status(500).json({ error: "Failed to format files" });
+  }
+});
+
+router.post("/v21/error-learning/record", (req, res) => {
+  try {
+    const { error: errorMsg, context, filePath } = req.body;
+    if (!errorMsg) {
+      return res.status(400).json({ error: "error message is required" });
+    }
+    errorLearningService.recordError({ errorMessage: errorMsg, code: context || "", filePath: filePath || "", wasFixed: false });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to record error", { error });
+    res.status(500).json({ error: "Failed to record error" });
+  }
+});
+
+router.get("/v21/error-learning/insights", (_req, res) => {
+  try {
+    const insights = errorLearningService.getInsights();
+    res.json(insights);
+  } catch (error) {
+    logger.error("Failed to get error insights", { error });
+    res.status(500).json({ error: "Failed to get insights" });
+  }
+});
+
+router.get("/v21/error-learning/prevention-prompt", (req, res) => {
+  try {
+    const modelName = (req.query.model as string) || "";
+    const prompt = errorLearningService.getPreventionPrompt(modelName);
+    res.json({ prompt });
+  } catch (error) {
+    logger.error("Failed to get prevention prompt", { error });
+    res.status(500).json({ error: "Failed to get prevention prompt" });
+  }
+});
+
+router.get("/v21/context-budget/preset/:model", (req, res) => {
+  try {
+    const preset = contextBudgetService.getM4OptimizedPreset(req.params.model);
+    res.json(preset || { error: "No preset found for model" });
+  } catch (error) {
+    logger.error("Failed to get context preset", { error });
+    res.status(500).json({ error: "Failed to get preset" });
+  }
+});
+
+router.post("/v21/context-budget/allocate", (req, res) => {
+  try {
+    const { model, taskProfile } = req.body;
+    if (!model || !taskProfile) {
+      return res.status(400).json({ error: "model and taskProfile are required" });
+    }
+    const allocation = contextBudgetService.calculateM4OptimizedAllocation(model, taskProfile);
+    const temperature = contextBudgetService.getOptimalTemperature(model, taskProfile);
+    res.json({ allocation, temperature });
+  } catch (error) {
+    logger.error("Failed to calculate allocation", { error });
+    res.status(500).json({ error: "Failed to calculate allocation" });
+  }
+});
+
+router.post("/v21/parallel/analyze", (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) {
+      return res.status(400).json({ error: "files array is required" });
+    }
+    const fileDescriptions = files.map((f: string | { path: string; description: string }) => 
+      typeof f === "string" ? { path: f, description: `Generate ${f}` } : f
+    );
+    const tasks = parallelGenerationService.prepareFileTasks(fileDescriptions);
+    const batches = parallelGenerationService.createBatches(tasks);
+    res.json({ tasks, batches, estimatedSpeedup: `${(tasks.length / batches.length).toFixed(1)}x` });
+  } catch (error) {
+    logger.error("Failed to analyze parallel generation", { error });
+    res.status(500).json({ error: "Failed to analyze" });
+  }
+});
+
 export default router;
