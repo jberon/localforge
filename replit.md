@@ -91,6 +91,31 @@ Maximizing local LLM performance through intelligent context management and mode
 - **Enhanced Project Memory**: Error history learning, similar error detection, successful fix tracking, active dependency prioritization
 - **Orchestrator Integration**: `optimizeForLocalModel()` wired into planning/building phases, `buildOptimizedContext()` for smart context assembly with few-shot examples, `runRuntimeAutoFix()` for enhanced error correction, `recordErrorsToMemory()` for learning from errors
 
+### Local LLM Optimization Services (v2.0.0)
+Advanced local LLM optimization features for maximum performance on MacBook Pro M4 Pro:
+
+- **Speculative Decoding Service** (`server/services/speculative-decoding.service.ts`): Uses fast draft models to generate initial responses, then verifies/refines with primary model for 2-3x speedup. Configurable draft token limits, verification thresholds, and model pair selection.
+
+- **Quantization-Aware Context Service** (`server/services/quantization-detector.service.ts`): Automatic detection of Q2-Q8 quantization levels from model names, memory footprint calculation, context window adjustment based on quantization profile, and quality retention scoring.
+
+- **KV Cache Persistence Service** (`server/services/kv-cache.service.ts`): Persists and reuses key-value cache between related requests, prefix matching for partial cache hits, configurable TTL and capacity limits, avoiding full context reprocessing.
+
+- **Local Embedding Service** (`server/services/local-embedding.service.ts`): Integration with local embedding models (nomic-embed-text) for semantic code search, batch processing, cosine similarity calculations, and fallback to simple embeddings.
+
+- **Hardware Optimizer Service** (`server/services/hardware-optimizer.service.ts`): Automatic detection of Apple Silicon (M1-M4) capabilities, GPU layer recommendations, batch size optimization, Neural Engine utilization, and memory-aware configuration.
+
+- **Model Router Service** (`server/services/model-router.service.ts`): Intelligent task routing between fast/balanced/powerful model tiers, complexity analysis, task type detection, and automatic model selection based on context requirements.
+
+- **Streaming Budget Service** (`server/services/streaming-budget.service.ts`): Real-time token budget monitoring during streaming, quality signal detection (repetition, completion patterns), dynamic output length adjustment, and early stopping.
+
+- **Conversation Compressor Service** (`server/services/conversation-compressor.service.ts`): Intelligent summarization of old conversation turns, topic segmentation, critical info extraction, code block preservation, and decision tracking.
+
+- **Performance Profiler Service** (`server/services/performance-profiler.service.ts`): Comprehensive metrics tracking for tokens/sec, latency percentiles (p50/p95/p99), success rates, model performance comparison, and optimization recommendations.
+
+- **Pattern Library Service** (`server/services/pattern-library.service.ts`): Pre-computed code patterns (React components, hooks, API routes, forms, CRUD operations), pattern matching with relevance scoring, user pattern learning, and success tracking.
+
+- **V2 Orchestrator Service** (`server/services/v2-orchestrator.service.ts`): Unified integration layer that coordinates all v2.0.0 services with proper sequencing, fallbacks, and metrics collection.
+
 ### In-Browser Bundler
 Uses esbuild-wasm for in-browser bundling of multi-file TypeScript/React projects with a virtual file system and hot refresh.
 
