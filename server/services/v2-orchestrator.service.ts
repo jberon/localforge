@@ -226,11 +226,21 @@ class V2OrchestratorService {
         }
       }
 
+      let matchedPatterns: ReturnType<typeof patternLibraryService.findPatterns> = [];
+      if (this.config.patternLibrary) {
+        matchedPatterns = patternLibraryService.findPatterns(context.prompt);
+        for (const match of matchedPatterns) {
+          patterns.push(match.pattern.name);
+        }
+        if (patterns.length > 0) {
+          logger.info("Relevant patterns found", { patterns });
+        }
+      }
+
       if (this.config.localEmbeddings && localEmbeddingService.isEnabled()) {
         try {
           const embedding = await localEmbeddingService.getEmbedding(context.prompt);
           if (embedding.length > 0) {
-            const matchedPatterns = patternLibraryService.findPatterns(context.prompt);
             for (const match of matchedPatterns) {
               semanticContext.push(match.pattern.code || match.pattern.name);
             }
@@ -258,16 +268,6 @@ class V2OrchestratorService {
           sessionId,
           maxTokens: session.maxTokens
         });
-      }
-
-      if (this.config.patternLibrary) {
-        const matchedPatterns = patternLibraryService.findPatterns(context.prompt);
-        for (const match of matchedPatterns) {
-          patterns.push(match.pattern.name);
-        }
-        if (patterns.length > 0) {
-          logger.info("Relevant patterns found", { patterns });
-        }
       }
 
       const hwProfile = hardwareOptimizerService.getHardwareProfile();
