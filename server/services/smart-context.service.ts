@@ -450,6 +450,332 @@ class SmartContextService {
       memoryByProject
     };
   }
+
+  // ============================================================================
+  // SEMANTIC COMPRESSION FOR LOCAL MODELS
+  // Optimized context selection for small context windows (8K-32K tokens)
+  // ============================================================================
+
+  /**
+   * Score relevance of code/text to a query using keyword matching and structure analysis
+   * Returns 0-1 relevance score
+   */
+  scoreRelevance(content: string, query: string): number {
+    const queryTerms = this.extractKeyTerms(query.toLowerCase());
+    const contentLower = content.toLowerCase();
+    
+    let score = 0;
+    let maxScore = 0;
+    
+    for (const term of queryTerms) {
+      maxScore += 1;
+      if (contentLower.includes(term)) {
+        score += 1;
+        
+        const regex = new RegExp(`\\b${this.escapeRegex(term)}\\b`, 'gi');
+        const matches = contentLower.match(regex);
+        if (matches && matches.length > 1) {
+          score += Math.min(matches.length - 1, 2) * 0.1;
+        }
+      }
+    }
+    
+    if (maxScore === 0) return 0;
+    return Math.min(score / maxScore, 1);
+  }
+
+  private extractKeyTerms(text: string): string[] {
+    const stopWords = new Set([
+      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+      'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare',
+      'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as',
+      'into', 'through', 'during', 'before', 'after', 'above', 'below',
+      'and', 'or', 'but', 'if', 'then', 'else', 'when', 'where', 'why',
+      'how', 'what', 'which', 'who', 'whom', 'this', 'that', 'these',
+      'those', 'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its'
+    ]);
+    
+    return text
+      .replace(/[^a-z0-9\s_-]/g, ' ')
+      .split(/\s+/)
+      .filter(term => term.length > 2 && !stopWords.has(term))
+      .slice(0, 20);
+  }
+
+  private escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * Score code file relevance based on structure and dependencies
+   */
+  scoreCodeRelevance(
+    code: string,
+    query: string,
+    activeFile?: string
+  ): {
+    score: number;
+    factors: { name: string; contribution: number }[];
+  } {
+    const factors: { name: string; contribution: number }[] = [];
+    let totalScore = 0;
+    
+    const keywordScore = this.scoreRelevance(code, query);
+    factors.push({ name: 'keyword_match', contribution: keywordScore * 0.3 });
+    totalScore += keywordScore * 0.3;
+    
+    const structureScore = this.scoreCodeStructure(code);
+    factors.push({ name: 'structure_quality', contribution: structureScore * 0.2 });
+    totalScore += structureScore * 0.2;
+    
+    if (activeFile) {
+      const importScore = this.scoreImportRelevance(code, activeFile);
+      factors.push({ name: 'import_relevance', contribution: importScore * 0.25 });
+      totalScore += importScore * 0.25;
+    }
+    
+    const recencyScore = 0.15;
+    factors.push({ name: 'recency', contribution: recencyScore });
+    totalScore += recencyScore;
+    
+    const exportScore = this.scoreExports(code);
+    factors.push({ name: 'exports', contribution: exportScore * 0.1 });
+    totalScore += exportScore * 0.1;
+    
+    return { score: Math.min(totalScore, 1), factors };
+  }
+
+  private scoreCodeStructure(code: string): number {
+    let score = 0;
+    
+    if (code.match(/^(import|export)\s/m)) score += 0.2;
+    if (code.match(/^(function|const|class|interface|type)\s/m)) score += 0.3;
+    if (code.match(/\breturn\b/)) score += 0.2;
+    if (code.match(/\basync\b|\bawait\b/)) score += 0.1;
+    if (code.match(/\bexport\s+(default|const|function|class)/)) score += 0.2;
+    
+    return Math.min(score, 1);
+  }
+
+  private scoreImportRelevance(code: string, activeFile: string): number {
+    const fileName = activeFile.split('/').pop()?.replace(/\.[^.]+$/, '') || '';
+    
+    if (code.includes(`from './${fileName}'`) || 
+        code.includes(`from "./${fileName}"`) ||
+        code.includes(`from '@/${fileName}'`)) {
+      return 0.8;
+    }
+    
+    if (code.includes(fileName)) {
+      return 0.4;
+    }
+    
+    return 0;
+  }
+
+  private scoreExports(code: string): number {
+    const exportMatches = code.match(/export\s+(default\s+)?(function|const|class|interface|type)\s+\w+/g);
+    if (!exportMatches) return 0;
+    return Math.min(exportMatches.length * 0.2, 1);
+  }
+
+  /**
+   * Select most relevant files for context given token budget
+   */
+  selectRelevantFiles(
+    files: Array<{ path: string; content: string }>,
+    query: string,
+    tokenBudget: number,
+    activeFile?: string
+  ): Array<{ path: string; content: string; relevanceScore: number }> {
+    const scored = files.map(file => {
+      const { score } = this.scoreCodeRelevance(file.content, query, activeFile);
+      
+      let adjustedScore = score;
+      if (activeFile && file.path === activeFile) {
+        adjustedScore = 1.0;
+      }
+      
+      return {
+        ...file,
+        relevanceScore: adjustedScore,
+        estimatedTokens: this.estimateTokens(file.content)
+      };
+    });
+    
+    scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    
+    const selected: Array<{ path: string; content: string; relevanceScore: number }> = [];
+    let usedTokens = 0;
+    
+    for (const file of scored) {
+      if (usedTokens + file.estimatedTokens <= tokenBudget) {
+        selected.push({
+          path: file.path,
+          content: file.content,
+          relevanceScore: file.relevanceScore
+        });
+        usedTokens += file.estimatedTokens;
+      } else if (file.relevanceScore > 0.7) {
+        const remainingTokens = tokenBudget - usedTokens;
+        if (remainingTokens > 500) {
+          const compressedContent = this.compressCode(file.content, remainingTokens);
+          selected.push({
+            path: file.path,
+            content: compressedContent,
+            relevanceScore: file.relevanceScore
+          });
+          break;
+        }
+      }
+    }
+    
+    return selected;
+  }
+
+  /**
+   * Compress code while preserving important structure
+   */
+  compressCode(code: string, maxTokens: number): string {
+    const estimatedTokens = this.estimateTokens(code);
+    if (estimatedTokens <= maxTokens) return code;
+    
+    const lines = code.split('\n');
+    const scored: Array<{ line: string; priority: number; index: number }> = [];
+    
+    lines.forEach((line, index) => {
+      let priority = this.getLinePriority(line, index, lines);
+      scored.push({ line, priority, index });
+    });
+    
+    const ratio = maxTokens / estimatedTokens;
+    const targetLines = Math.floor(lines.length * ratio);
+    
+    const sorted = [...scored].sort((a, b) => b.priority - a.priority);
+    const selectedIndices = new Set(
+      sorted.slice(0, targetLines).map(s => s.index)
+    );
+    
+    const result: string[] = [];
+    let lastIncluded = -1;
+    let gapCount = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      if (selectedIndices.has(i)) {
+        if (lastIncluded !== -1 && i - lastIncluded > 1) {
+          if (gapCount < 5) {
+            result.push('  // ... [compressed]');
+            gapCount++;
+          }
+        }
+        result.push(lines[i]);
+        lastIncluded = i;
+      }
+    }
+    
+    return result.join('\n');
+  }
+
+  private getLinePriority(line: string, index: number, allLines: string[]): number {
+    const trimmed = line.trim();
+    
+    if (trimmed.startsWith('import ') || trimmed.startsWith('export ')) return 10;
+    if (trimmed.match(/^(export\s+)?(function|const|class|interface|type)\s+\w+/)) return 9;
+    if (trimmed.match(/^(async\s+)?function\s+\w+/)) return 9;
+    if (trimmed.startsWith('return ')) return 7;
+    if (trimmed.startsWith('throw ')) return 7;
+    if (trimmed.match(/^(if|else|switch|case|default)\s*[({]/)) return 6;
+    if (trimmed.match(/^(for|while|do)\s*[({]/)) return 5;
+    if (trimmed.match(/^(try|catch|finally)\s*[({]/)) return 6;
+    if (trimmed === '{' || trimmed === '}') return 4;
+    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) return 1;
+    if (trimmed === '') return 0;
+    if (trimmed.includes('=')) return 3;
+    if (trimmed.includes('(') && trimmed.includes(')')) return 4;
+    
+    return 2;
+  }
+
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 3.5);
+  }
+
+  /**
+   * Build optimized context for local LLM with small context window
+   */
+  buildOptimizedContext(
+    projectId: string,
+    query: string,
+    files: Array<{ path: string; content: string }>,
+    chatHistory: Message[],
+    options: {
+      contextWindow: number;
+      activeFile?: string;
+      recentErrors?: string[];
+    }
+  ): {
+    selectedFiles: Array<{ path: string; content: string }>;
+    summarizedHistory: string;
+    relevantMemory: string;
+    tokenUsage: { files: number; history: number; memory: number; total: number };
+  } {
+    const { contextWindow, activeFile, recentErrors } = options;
+    
+    const outputReserve = Math.floor(contextWindow * 0.25);
+    const available = contextWindow - outputReserve;
+    
+    const fileBudget = Math.floor(available * 0.55);
+    const historyBudget = Math.floor(available * 0.25);
+    const memoryBudget = Math.floor(available * 0.20);
+    
+    const selectedFiles = this.selectRelevantFiles(files, query, fileBudget, activeFile);
+    const fileTokens = selectedFiles.reduce(
+      (sum, f) => sum + this.estimateTokens(f.content), 0
+    );
+    
+    let summarizedHistory = this.summarizeConversation(chatHistory, historyBudget);
+    const historyTokens = this.estimateTokens(summarizedHistory);
+    
+    const memory = this.getProjectMemory(projectId);
+    let relevantMemory = '';
+    
+    if (memory) {
+      const memoryParts: string[] = [];
+      
+      if (recentErrors && recentErrors.length > 0) {
+        memoryParts.push(`Recent Errors:\n${recentErrors.slice(0, 3).map(e => `- ${e}`).join('\n')}`);
+      }
+      
+      if (memory.keyDecisions.length > 0) {
+        memoryParts.push(`Key Decisions:\n${memory.keyDecisions.slice(-3).map(d => `- ${d}`).join('\n')}`);
+      }
+      
+      if (memory.successfulPatterns.length > 0) {
+        memoryParts.push(`Preferred Patterns:\n${memory.successfulPatterns.slice(-2).map(p => `- ${p}`).join('\n')}`);
+      }
+      
+      relevantMemory = memoryParts.join('\n\n');
+      
+      if (this.estimateTokens(relevantMemory) > memoryBudget) {
+        const ratio = memoryBudget / this.estimateTokens(relevantMemory);
+        relevantMemory = relevantMemory.slice(0, Math.floor(relevantMemory.length * ratio));
+      }
+    }
+    const memoryTokens = this.estimateTokens(relevantMemory);
+    
+    return {
+      selectedFiles: selectedFiles.map(f => ({ path: f.path, content: f.content })),
+      summarizedHistory,
+      relevantMemory,
+      tokenUsage: {
+        files: fileTokens,
+        history: historyTokens,
+        memory: memoryTokens,
+        total: fileTokens + historyTokens + memoryTokens
+      }
+    };
+  }
 }
 
 export const smartContextService = SmartContextService.getInstance();

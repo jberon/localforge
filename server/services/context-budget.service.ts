@@ -1,8 +1,54 @@
 import { db as dbInstance } from "../db";
 import { contextBudgets, projectFiles, estimateTokens, CONTEXT_LIMITS, CONTEXT_ALLOCATION } from "@shared/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import logger from "../lib/logger";
+import { localModelOptimizerService } from "./local-model-optimizer.service";
+
+export type TaskProfile = 
+  | "planning"
+  | "coding"
+  | "debugging"
+  | "refactoring"
+  | "review"
+  | "documentation";
+
+interface AllocationProfile {
+  systemPrompt: number;
+  userMessage: number;
+  codeContext: number;
+  chatHistory: number;
+  projectMemory: number;
+  fewShotExamples: number;
+  outputReserve: number;
+}
+
+export interface LocalModelAllocation {
+  systemPrompt: number;
+  userMessage: number;
+  codeContext: number;
+  chatHistory: number;
+  projectMemory: number;
+  fewShotExamples: number;
+  outputReserve: number;
+  total: number;
+  available: number;
+}
+
+export interface TokenUsageReport {
+  allocated: LocalModelAllocation;
+  actual: {
+    systemPrompt: number;
+    userMessage: number;
+    codeContext: number;
+    chatHistory: number;
+    projectMemory: number;
+    fewShotExamples: number;
+    total: number;
+  };
+  utilization: number;
+  warnings: string[];
+}
 
 function getDb() {
   if (!dbInstance) {
@@ -233,6 +279,219 @@ export class ContextBudgetService {
     }
 
     return sections.join("\n");
+  }
+
+  // ============================================================================
+  // LOCAL MODEL OPTIMIZATION METHODS
+  // Dynamic token budgeting for small context windows (8K-32K tokens)
+  // ============================================================================
+
+  private allocationProfiles: Map<TaskProfile, AllocationProfile> = new Map([
+    ["planning", {
+      systemPrompt: 0.10,
+      userMessage: 0.20,
+      codeContext: 0.25,
+      chatHistory: 0.20,
+      projectMemory: 0.10,
+      fewShotExamples: 0.00,
+      outputReserve: 0.15
+    }],
+    ["coding", {
+      systemPrompt: 0.08,
+      userMessage: 0.12,
+      codeContext: 0.40,
+      chatHistory: 0.10,
+      projectMemory: 0.05,
+      fewShotExamples: 0.05,
+      outputReserve: 0.20
+    }],
+    ["debugging", {
+      systemPrompt: 0.08,
+      userMessage: 0.15,
+      codeContext: 0.35,
+      chatHistory: 0.15,
+      projectMemory: 0.10,
+      fewShotExamples: 0.02,
+      outputReserve: 0.15
+    }],
+    ["refactoring", {
+      systemPrompt: 0.08,
+      userMessage: 0.10,
+      codeContext: 0.45,
+      chatHistory: 0.08,
+      projectMemory: 0.07,
+      fewShotExamples: 0.02,
+      outputReserve: 0.20
+    }],
+    ["review", {
+      systemPrompt: 0.08,
+      userMessage: 0.10,
+      codeContext: 0.50,
+      chatHistory: 0.10,
+      projectMemory: 0.05,
+      fewShotExamples: 0.02,
+      outputReserve: 0.15
+    }],
+    ["documentation", {
+      systemPrompt: 0.10,
+      userMessage: 0.15,
+      codeContext: 0.30,
+      chatHistory: 0.15,
+      projectMemory: 0.10,
+      fewShotExamples: 0.00,
+      outputReserve: 0.20
+    }]
+  ]);
+
+  detectModelContextSize(modelName: string): number {
+    const profile = localModelOptimizerService.getModelProfile(modelName);
+    return profile.contextWindow;
+  }
+
+  calculateLocalModelAllocation(
+    modelName: string,
+    taskProfile: TaskProfile
+  ): LocalModelAllocation {
+    const contextSize = this.detectModelContextSize(modelName);
+    const profile = this.allocationProfiles.get(taskProfile) || this.allocationProfiles.get("coding")!;
+
+    const outputReserve = Math.floor(contextSize * profile.outputReserve);
+    const available = contextSize - outputReserve;
+
+    return {
+      systemPrompt: Math.floor(available * profile.systemPrompt),
+      userMessage: Math.floor(available * profile.userMessage),
+      codeContext: Math.floor(available * profile.codeContext),
+      chatHistory: Math.floor(available * profile.chatHistory),
+      projectMemory: Math.floor(available * profile.projectMemory),
+      fewShotExamples: Math.floor(available * profile.fewShotExamples),
+      outputReserve,
+      total: contextSize,
+      available
+    };
+  }
+
+  calculateAdaptiveAllocation(
+    modelName: string,
+    taskProfile: TaskProfile,
+    actualUsage: {
+      systemPromptTokens?: number;
+      userMessageTokens?: number;
+      projectMemoryTokens?: number;
+    }
+  ): LocalModelAllocation {
+    const base = this.calculateLocalModelAllocation(modelName, taskProfile);
+    let unusedTokens = 0;
+    const allocation = { ...base };
+
+    if (actualUsage.systemPromptTokens !== undefined) {
+      const saved = base.systemPrompt - actualUsage.systemPromptTokens;
+      if (saved > 0) {
+        unusedTokens += saved;
+        allocation.systemPrompt = actualUsage.systemPromptTokens;
+      }
+    }
+
+    if (actualUsage.userMessageTokens !== undefined) {
+      const saved = base.userMessage - actualUsage.userMessageTokens;
+      if (saved > 0) {
+        unusedTokens += saved;
+        allocation.userMessage = actualUsage.userMessageTokens;
+      }
+    }
+
+    if (actualUsage.projectMemoryTokens !== undefined) {
+      const saved = base.projectMemory - actualUsage.projectMemoryTokens;
+      if (saved > 0) {
+        unusedTokens += saved;
+        allocation.projectMemory = actualUsage.projectMemoryTokens;
+      }
+    }
+
+    if (unusedTokens > 0) {
+      allocation.codeContext += Math.floor(unusedTokens * 0.6);
+      allocation.chatHistory += Math.floor(unusedTokens * 0.3);
+      allocation.fewShotExamples += Math.floor(unusedTokens * 0.1);
+
+      logger.debug("Adaptive allocation redistributed tokens", { unusedTokens });
+    }
+
+    return allocation;
+  }
+
+  validateAndReport(
+    allocation: LocalModelAllocation,
+    actual: {
+      systemPrompt: number;
+      userMessage: number;
+      codeContext: number;
+      chatHistory: number;
+      projectMemory: number;
+      fewShotExamples: number;
+    }
+  ): TokenUsageReport {
+    const warnings: string[] = [];
+    const actualTotal = 
+      actual.systemPrompt + 
+      actual.userMessage + 
+      actual.codeContext + 
+      actual.chatHistory + 
+      actual.projectMemory + 
+      actual.fewShotExamples;
+
+    if (actual.systemPrompt > allocation.systemPrompt) {
+      warnings.push(`System prompt exceeds budget by ${actual.systemPrompt - allocation.systemPrompt} tokens`);
+    }
+    if (actual.codeContext > allocation.codeContext) {
+      warnings.push(`Code context exceeds budget by ${actual.codeContext - allocation.codeContext} tokens`);
+    }
+    if (actualTotal > allocation.available) {
+      warnings.push(`Total usage (${actualTotal}) exceeds available budget (${allocation.available})`);
+    }
+
+    const utilization = actualTotal / allocation.available;
+    if (utilization < 0.5) {
+      warnings.push(`Low context utilization (${(utilization * 100).toFixed(1)}%)`);
+    }
+
+    return {
+      allocated: allocation,
+      actual: { ...actual, total: actualTotal },
+      utilization,
+      warnings
+    };
+  }
+
+  getOptimalProfileForTask(prompt: string): TaskProfile {
+    const lower = prompt.toLowerCase();
+
+    if (lower.match(/plan|design|architect|think|strategy/)) return "planning";
+    if (lower.match(/fix|bug|error|debug|issue|crash|fail/)) return "debugging";
+    if (lower.match(/refactor|clean|improve|optimize|simplify/)) return "refactoring";
+    if (lower.match(/review|check|analyze|evaluate|assess/)) return "review";
+    if (lower.match(/document|readme|comment|jsdoc|explain/)) return "documentation";
+
+    return "coding";
+  }
+
+  fitContentToBudget(
+    content: string,
+    budget: number,
+    preserveStart: number = 0.3,
+    preserveEnd: number = 0.2
+  ): string {
+    const tokens = estimateTokens(content);
+    if (tokens <= budget) return content;
+
+    const ratio = budget / tokens;
+    const targetLength = Math.floor(content.length * ratio);
+    const startChars = Math.floor(targetLength * preserveStart);
+    const endChars = Math.floor(targetLength * preserveEnd);
+
+    const start = content.slice(0, startChars);
+    const end = content.slice(-endChars);
+    
+    return `${start}\n\n... [${tokens - budget} tokens truncated] ...\n\n${end}`;
   }
 }
 

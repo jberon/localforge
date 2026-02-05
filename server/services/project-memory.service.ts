@@ -701,6 +701,270 @@ class ProjectMemoryService {
       }
     };
   }
+
+  // ============================================================================
+  // ERROR HISTORY LEARNING & ACTIVE DEPENDENCY PRIORITIZATION
+  // Track past errors to avoid repeating mistakes and prioritize active files
+  // ============================================================================
+
+  private errorHistory: Map<string, ErrorHistoryEntry[]> = new Map();
+  private activeDependencies: Map<string, ActiveDependency[]> = new Map();
+
+  recordError(
+    projectId: string,
+    error: {
+      type: string;
+      message: string;
+      file?: string;
+      line?: number;
+      fix?: string;
+      fixSuccessful: boolean;
+    }
+  ): void {
+    const history = this.errorHistory.get(projectId) || [];
+    
+    const entry: ErrorHistoryEntry = {
+      id: `err_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      timestamp: Date.now(),
+      type: error.type,
+      message: error.message,
+      file: error.file,
+      line: error.line,
+      fix: error.fix,
+      fixSuccessful: error.fixSuccessful,
+      pattern: this.extractErrorPattern(error.message)
+    };
+
+    history.push(entry);
+    
+    if (history.length > 100) {
+      history.shift();
+    }
+
+    this.errorHistory.set(projectId, history);
+    logger.debug("Error recorded to history", { projectId, errorType: error.type });
+  }
+
+  private extractErrorPattern(message: string): string {
+    return message
+      .replace(/['"`][\w/.-]+['"`]/g, "'<path>'")
+      .replace(/\d+/g, '<n>')
+      .replace(/\b[A-Z][a-z]+[A-Z]\w+\b/g, '<identifier>')
+      .slice(0, 100);
+  }
+
+  getSimilarErrors(projectId: string, errorMessage: string): ErrorHistoryEntry[] {
+    const history = this.errorHistory.get(projectId) || [];
+    const pattern = this.extractErrorPattern(errorMessage);
+    
+    return history.filter(entry => {
+      if (entry.pattern === pattern) return true;
+      
+      const words1 = new Set(entry.message.toLowerCase().split(/\s+/));
+      const words2 = new Set(errorMessage.toLowerCase().split(/\s+/));
+      const intersection = Array.from(words1).filter(w => words2.has(w));
+      const similarity = intersection.length / Math.max(words1.size, words2.size);
+      
+      return similarity > 0.5;
+    });
+  }
+
+  getSuccessfulFixes(projectId: string, errorType: string): string[] {
+    const history = this.errorHistory.get(projectId) || [];
+    
+    return history
+      .filter(entry => 
+        entry.type === errorType && 
+        entry.fixSuccessful && 
+        entry.fix
+      )
+      .map(entry => entry.fix!)
+      .slice(-5);
+  }
+
+  getErrorPatterns(projectId: string): { pattern: string; count: number; successRate: number }[] {
+    const history = this.errorHistory.get(projectId) || [];
+    const patternStats = new Map<string, { total: number; fixed: number }>();
+
+    for (const entry of history) {
+      const stats = patternStats.get(entry.pattern) || { total: 0, fixed: 0 };
+      stats.total++;
+      if (entry.fixSuccessful) stats.fixed++;
+      patternStats.set(entry.pattern, stats);
+    }
+
+    return Array.from(patternStats.entries())
+      .map(([pattern, stats]) => ({
+        pattern,
+        count: stats.total,
+        successRate: stats.fixed / stats.total
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }
+
+  trackActiveDependency(
+    projectId: string,
+    file: string,
+    accessType: "read" | "write" | "import" | "export"
+  ): void {
+    const deps = this.activeDependencies.get(projectId) || [];
+    
+    const existing = deps.find(d => d.file === file);
+    if (existing) {
+      existing.accessCount++;
+      existing.lastAccessed = Date.now();
+      existing.accessTypes.add(accessType);
+    } else {
+      deps.push({
+        file,
+        accessCount: 1,
+        lastAccessed: Date.now(),
+        accessTypes: new Set([accessType]),
+        priority: 1
+      });
+    }
+
+    this.updateDependencyPriorities(deps);
+    this.activeDependencies.set(projectId, deps);
+  }
+
+  private updateDependencyPriorities(deps: ActiveDependency[]): void {
+    const now = Date.now();
+    const hourAgo = now - 60 * 60 * 1000;
+
+    for (const dep of deps) {
+      let priority = 0;
+      
+      priority += Math.min(dep.accessCount / 10, 1) * 30;
+      
+      const recency = (dep.lastAccessed - hourAgo) / (now - hourAgo);
+      priority += Math.max(0, recency) * 40;
+      
+      priority += dep.accessTypes.size * 10;
+      
+      if (dep.accessTypes.has("write")) priority += 20;
+
+      dep.priority = Math.min(priority, 100);
+    }
+  }
+
+  getActiveDependencies(projectId: string, limit: number = 20): ActiveDependency[] {
+    const deps = this.activeDependencies.get(projectId) || [];
+    return deps
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, limit);
+  }
+
+  getHighPriorityFiles(projectId: string, tokenBudget: number): string[] {
+    const activeDeps = this.getActiveDependencies(projectId, 50);
+    const context = this.projectContexts.get(projectId);
+    
+    const prioritizedFiles: { file: string; priority: number; tokens: number }[] = [];
+
+    for (const dep of activeDeps) {
+      const metadata = context?.files.get(dep.file);
+      const estimatedTokens = metadata ? Math.ceil(metadata.linesOfCode * 5) : 500;
+      
+      prioritizedFiles.push({
+        file: dep.file,
+        priority: dep.priority,
+        tokens: estimatedTokens
+      });
+    }
+
+    if (context) {
+      context.files.forEach((metadata, file) => {
+        if (!prioritizedFiles.some(p => p.file === file)) {
+          let priority = 0;
+          
+          if (file.includes("index") || file.includes("main") || file.includes("app")) {
+            priority = 30;
+          }
+          if (metadata.type === "model" || metadata.type === "type") {
+            priority = 40;
+          }
+          if (metadata.type === "api_route" || metadata.type === "service") {
+            priority = 35;
+          }
+
+          if (priority > 0) {
+            prioritizedFiles.push({
+              file,
+              priority,
+              tokens: Math.ceil(metadata.linesOfCode * 5)
+            });
+          }
+        }
+      });
+    }
+
+    prioritizedFiles.sort((a, b) => b.priority - a.priority);
+
+    const selected: string[] = [];
+    let usedTokens = 0;
+
+    for (const pf of prioritizedFiles) {
+      if (usedTokens + pf.tokens <= tokenBudget) {
+        selected.push(pf.file);
+        usedTokens += pf.tokens;
+      }
+    }
+
+    return selected;
+  }
+
+  buildContextWithErrorHistory(
+    projectId: string,
+    currentError?: { type: string; message: string }
+  ): {
+    recentErrors: ErrorHistoryEntry[];
+    similarErrors: ErrorHistoryEntry[];
+    successfulFixes: string[];
+    errorPatterns: { pattern: string; count: number; successRate: number }[];
+  } {
+    const recentErrors = (this.errorHistory.get(projectId) || []).slice(-5);
+    const similarErrors = currentError 
+      ? this.getSimilarErrors(projectId, currentError.message) 
+      : [];
+    const successfulFixes = currentError 
+      ? this.getSuccessfulFixes(projectId, currentError.type) 
+      : [];
+    const errorPatterns = this.getErrorPatterns(projectId);
+
+    return {
+      recentErrors,
+      similarErrors,
+      successfulFixes,
+      errorPatterns
+    };
+  }
+
+  clearErrorHistory(projectId: string): void {
+    this.errorHistory.delete(projectId);
+    this.activeDependencies.delete(projectId);
+    logger.info("Error history cleared", { projectId });
+  }
+}
+
+export interface ErrorHistoryEntry {
+  id: string;
+  timestamp: number;
+  type: string;
+  message: string;
+  file?: string;
+  line?: number;
+  fix?: string;
+  fixSuccessful: boolean;
+  pattern: string;
+}
+
+export interface ActiveDependency {
+  file: string;
+  accessCount: number;
+  lastAccessed: number;
+  accessTypes: Set<string>;
+  priority: number;
 }
 
 export const projectMemoryService = ProjectMemoryService.getInstance();

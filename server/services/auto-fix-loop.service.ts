@@ -1,8 +1,17 @@
 import { logger } from "../lib/logger";
 import { codeRunnerService, RunResult, ParsedError } from "./code-runner.service";
 import { projectMemoryService } from "./project-memory.service";
+import { runtimeFeedbackService, RuntimeError } from "./runtime-feedback.service";
+import { localModelOptimizerService } from "./local-model-optimizer.service";
 import * as fs from "fs/promises";
 import * as path from "path";
+
+export interface RuntimeErrorContext {
+  errors: RuntimeError[];
+  recentLogs: string[];
+  affectedFiles: string[];
+  errorHistory: string[];
+}
 
 export interface CodePatch {
   file: string;
@@ -606,6 +615,295 @@ class AutoFixLoopService {
 
   private generateId(): string {
     return `fix_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // ============================================================================
+  // RUNTIME ERROR → LLM PROMPT INTEGRATION
+  // Inject runtime errors into LLM prompts for automatic fix generation
+  // ============================================================================
+
+  /**
+   * Collect runtime errors from the feedback service and format for LLM
+   */
+  async collectRuntimeErrors(projectId: string): Promise<RuntimeErrorContext> {
+    const errors = runtimeFeedbackService.getRecentErrors(projectId, 10);
+    const logs = runtimeFeedbackService.getLogs(projectId, { limit: 20 });
+    const recentLogs = logs.map((log: { level: string; message: string }) => `[${log.level}] ${log.message}`);
+    
+    const affectedFiles = Array.from(new Set(errors
+      .filter((e: RuntimeError) => e.file)
+      .map((e: RuntimeError) => e.file as string)));
+    
+    const errorHistory = errors.map((e: RuntimeError) => 
+      `[${e.type}] ${e.message}${e.file ? ` in ${e.file}` : ''}${e.line ? `:${e.line}` : ''}`
+    );
+
+    return { errors, recentLogs, affectedFiles, errorHistory };
+  }
+
+  /**
+   * Build an enhanced LLM prompt with runtime error context
+   */
+  buildRuntimeErrorPrompt(
+    basePrompt: string,
+    errorContext: RuntimeErrorContext,
+    fileContents: Map<string, string>,
+    modelName?: string
+  ): string {
+    const sections: string[] = [];
+    
+    sections.push("# Runtime Error Fix Request\n");
+    sections.push("## Errors Detected\n");
+    
+    for (const error of errorContext.errors.slice(0, 5)) {
+      sections.push(`### ${error.type.toUpperCase()} Error`);
+      sections.push(`**Message:** ${error.message}`);
+      if (error.file) sections.push(`**File:** ${error.file}${error.line ? `:${error.line}` : ''}`);
+      if (error.stack) sections.push(`**Stack:**\n\`\`\`\n${error.stack.slice(0, 500)}\n\`\`\``);
+      sections.push("");
+    }
+
+    if (errorContext.affectedFiles.length > 0) {
+      sections.push("## Affected File Contents\n");
+      
+      for (const filePath of errorContext.affectedFiles) {
+        const content = fileContents.get(filePath);
+        if (content) {
+          const extension = filePath.split('.').pop() || '';
+          sections.push(`### ${filePath}`);
+          sections.push(`\`\`\`${extension}`);
+          sections.push(content);
+          sections.push("```\n");
+        }
+      }
+    }
+
+    if (errorContext.recentLogs.length > 0) {
+      sections.push("## Recent Console Logs");
+      sections.push("```");
+      sections.push(errorContext.recentLogs.slice(-10).join("\n"));
+      sections.push("```\n");
+    }
+
+    sections.push("## Task");
+    sections.push(basePrompt);
+    sections.push("\n## Instructions");
+    sections.push("Fix the runtime errors above. Provide the corrected code for each affected file.");
+    sections.push("Return the code in markdown code blocks with file paths as headers.");
+
+    let prompt = sections.join("\n");
+    
+    if (modelName) {
+      const profile = localModelOptimizerService.getModelProfile(modelName);
+      if (profile.family === "qwen") {
+        prompt += "\n\nIMPORTANT: Output only the corrected code files without explanations.";
+      }
+    }
+
+    return prompt;
+  }
+
+  /**
+   * Convert ParsedError to RuntimeError format
+   */
+  parsedErrorToRuntimeError(error: ParsedError, projectId: string): RuntimeError {
+    return {
+      id: `runtime_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      projectId,
+      timestamp: Date.now(),
+      source: 'build',
+      type: this.mapErrorTypeToRuntimeType(error.type),
+      message: error.message,
+      stack: error.stack,
+      file: error.file,
+      line: error.line,
+      column: error.column,
+      severity: 'error',
+      handled: false,
+      fixAttempted: false
+    };
+  }
+
+  private mapErrorTypeToRuntimeType(errorType: string): RuntimeError['type'] {
+    const mapping: Record<string, RuntimeError['type']> = {
+      'syntax': 'syntax_error',
+      'reference': 'reference_error',
+      'type': 'type_error',
+      'import': 'import_error',
+      'runtime': 'unknown'
+    };
+    return mapping[errorType] || 'unknown';
+  }
+
+  /**
+   * Run enhanced auto-fix with runtime error injection
+   */
+  async runEnhancedAutoFix(
+    projectId: string,
+    options: {
+      maxIterations?: number;
+      modelName?: string;
+      onProgress?: (status: string, iteration: number) => void;
+    } = {}
+  ): Promise<AutoFixSession> {
+    const { maxIterations = 5, modelName, onProgress } = options;
+    
+    runtimeFeedbackService.startSession(projectId);
+    
+    try {
+      const session = await this.startAutoFixSession(projectId, { maxIterations });
+      
+      while (
+        session.currentIteration < session.maxIterations &&
+        session.unresolvedErrors.length > 0 &&
+        session.status !== "failed"
+      ) {
+        session.currentIteration++;
+        session.status = "analyzing";
+        
+        onProgress?.("Analyzing errors...", session.currentIteration);
+
+        const errorContext = await this.collectRuntimeErrors(projectId);
+        
+        if (errorContext.errors.length === 0 && session.unresolvedErrors.length === 0) {
+          session.status = "completed";
+          break;
+        }
+
+        session.status = "fixing";
+        onProgress?.("Generating fixes...", session.currentIteration);
+
+        const fileContents = new Map<string, string>();
+        for (const filePath of errorContext.affectedFiles) {
+          const content = await this.readFileContent(projectId, filePath);
+          if (content) {
+            fileContents.set(filePath, content);
+          }
+        }
+
+        const basePrompt = "Fix all the errors listed above.";
+        const enhancedPrompt = this.buildRuntimeErrorPrompt(
+          basePrompt,
+          errorContext,
+          fileContents,
+          modelName
+        );
+
+        if (this.llmFixFunction) {
+          try {
+            const fixResponse = await this.llmFixFunction(enhancedPrompt, {
+              projectId,
+              errors: errorContext.errors,
+              iteration: session.currentIteration
+            });
+
+            const patches = this.parseCodePatches(fixResponse);
+            
+            for (const patch of patches) {
+              const success = await this.applyCodePatch(projectId, patch);
+              if (success) {
+                session.fixAttempts.push({
+                  id: this.generateId(),
+                  iteration: session.currentIteration,
+                  error: { 
+                    type: 'runtime', 
+                    message: `Fix for ${patch.file}`,
+                    file: patch.file 
+                  } as ParsedError,
+                  fix: patch.description,
+                  patch,
+                  success: true,
+                  runResult: { success: true, errors: [], warnings: [], exitCode: 0, stdout: '', stderr: '', executionTimeMs: 0 },
+                  timestamp: Date.now()
+                });
+              }
+            }
+          } catch (e) {
+            logger.error("LLM fix generation failed", { error: e, iteration: session.currentIteration });
+          }
+        }
+
+        session.status = "validating";
+        onProgress?.("Validating fixes...", session.currentIteration);
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const newErrors = await this.collectRuntimeErrors(projectId);
+        
+        const resolvedCount = errorContext.errors.length - newErrors.errors.length;
+        if (resolvedCount > 0) {
+          logger.info("Errors resolved in iteration", { 
+            iteration: session.currentIteration, 
+            resolvedCount 
+          });
+        }
+
+        if (newErrors.errors.length === 0) {
+          session.status = "completed";
+          break;
+        }
+      }
+
+      if (session.currentIteration >= session.maxIterations && session.unresolvedErrors.length > 0) {
+        session.status = "max_iterations_reached";
+      }
+
+      session.completedAt = Date.now();
+      session.totalTimeMs = session.completedAt - session.startedAt;
+
+      return session;
+    } finally {
+      runtimeFeedbackService.stopSession(projectId);
+    }
+  }
+
+  /**
+   * Parse LLM response to extract code patches
+   */
+  private parseCodePatches(response: string): CodePatch[] {
+    const patches: CodePatch[] = [];
+    
+    const fileBlockRegex = /###?\s*([^\n`]+?)\s*\n```(?:\w+)?\n([\s\S]*?)```/g;
+    let match;
+
+    while ((match = fileBlockRegex.exec(response)) !== null) {
+      const filePath = match[1].trim();
+      const code = match[2];
+
+      if (filePath && code && (filePath.includes('.') || filePath.includes('/'))) {
+        patches.push({
+          file: filePath,
+          oldContent: '',
+          newContent: code,
+          description: `LLM-generated fix for ${filePath}`
+        });
+      }
+    }
+
+    return patches;
+  }
+
+  /**
+   * Format errors for LLM context (optimized for local models)
+   */
+  formatErrorsForLLM(errors: ParsedError[], maxTokens: number = 2000): string {
+    const formatted: string[] = [];
+    let tokenCount = 0;
+    const tokensPerError = 100;
+
+    for (const error of errors) {
+      if (tokenCount + tokensPerError > maxTokens) break;
+
+      const entry = [
+        `[${error.type.toUpperCase()}] ${error.message}`,
+        error.file ? `  File: ${error.file}${error.line ? `:${error.line}` : ''}` : null,
+        error.suggestion ? `  Suggestion: ${error.suggestion}` : null
+      ].filter(Boolean).join('\n');
+
+      formatted.push(entry);
+      tokenCount += tokensPerError;
+    }
+
+    return formatted.join('\n\n');
   }
 }
 

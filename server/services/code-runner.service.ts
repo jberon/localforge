@@ -434,6 +434,261 @@ class CodeRunnerService {
   private generateId(): string {
     return `run_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
+
+  // ============================================================================
+  // AUTO-RETRY EXECUTION LOOP
+  // Execute code with automatic error detection and retry with context
+  // ============================================================================
+
+  async runWithAutoRetry(
+    command: string,
+    args: string[],
+    options: RunOptions & {
+      maxRetries?: number;
+      retryDelayMs?: number;
+      onRetry?: (attempt: number, error: ParsedError[], fix: string) => void;
+      generateFix?: (errors: ParsedError[], context: AutoRetryContext) => Promise<string>;
+      applyFix?: (fix: string, context: AutoRetryContext) => Promise<boolean>;
+    } = {}
+  ): Promise<AutoRetryResult> {
+    const { 
+      maxRetries = 3, 
+      retryDelayMs = 1000,
+      onRetry,
+      generateFix,
+      applyFix,
+      ...runOptions 
+    } = options;
+
+    const attempts: RunAttempt[] = [];
+    let currentResult: RunResult | null = null;
+    let success = false;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const attemptStart = Date.now();
+      
+      currentResult = await this.runCommand(command, args, runOptions);
+      
+      const attemptRecord: RunAttempt = {
+        attempt,
+        result: currentResult,
+        timestamp: attemptStart,
+        fix: null,
+        fixApplied: false
+      };
+
+      if (currentResult.success || currentResult.errors.length === 0) {
+        attempts.push(attemptRecord);
+        success = true;
+        break;
+      }
+
+      if (attempt < maxRetries && generateFix && applyFix) {
+        const context: AutoRetryContext = {
+          attempt,
+          previousErrors: attempts.flatMap(a => a.result.errors),
+          command,
+          args
+        };
+
+        try {
+          const fix = await generateFix(currentResult.errors, context);
+          attemptRecord.fix = fix;
+          
+          onRetry?.(attempt + 1, currentResult.errors, fix);
+          
+          const fixApplied = await applyFix(fix, context);
+          attemptRecord.fixApplied = fixApplied;
+          
+          if (fixApplied) {
+            await this.delay(retryDelayMs);
+          }
+        } catch (e) {
+          logger.warn("Auto-retry fix generation/application failed", { attempt, error: e });
+        }
+      }
+
+      attempts.push(attemptRecord);
+    }
+
+    return {
+      success,
+      attempts,
+      totalAttempts: attempts.length,
+      finalResult: currentResult!,
+      allErrors: attempts.flatMap(a => a.result.errors)
+    };
+  }
+
+  async runTypeScriptWithRetry(
+    filePath: string,
+    options: RunOptions & {
+      maxRetries?: number;
+      generateFix?: (errors: ParsedError[], context: AutoRetryContext) => Promise<string>;
+      applyFix?: (fix: string, context: AutoRetryContext) => Promise<boolean>;
+    } = {}
+  ): Promise<AutoRetryResult> {
+    return this.runWithAutoRetry("npx", ["tsx", filePath], options);
+  }
+
+  async runTypeCheckWithRetry(
+    projectPath: string = ".",
+    options: RunOptions & {
+      maxRetries?: number;
+      generateFix?: (errors: ParsedError[], context: AutoRetryContext) => Promise<string>;
+      applyFix?: (fix: string, context: AutoRetryContext) => Promise<boolean>;
+    } = {}
+  ): Promise<AutoRetryResult> {
+    return this.runWithAutoRetry("npx", ["tsc", "--noEmit", "--project", projectPath], {
+      ...options,
+      cwd: options.cwd || projectPath
+    });
+  }
+
+  async runESLintWithRetry(
+    targetPath: string,
+    options: RunOptions & {
+      maxRetries?: number;
+      autoFix?: boolean;
+      generateFix?: (errors: ParsedError[], context: AutoRetryContext) => Promise<string>;
+      applyFix?: (fix: string, context: AutoRetryContext) => Promise<boolean>;
+    } = {}
+  ): Promise<AutoRetryResult> {
+    const args = ["eslint", targetPath, "--format", "json"];
+    if (options.autoFix) {
+      args.push("--fix");
+    }
+    return this.runWithAutoRetry("npx", args, options);
+  }
+
+  formatErrorsForContext(errors: ParsedError[]): string {
+    return errors.map(e => {
+      const location = e.file ? `${e.file}${e.line ? `:${e.line}` : ''}` : 'unknown';
+      return `[${e.type.toUpperCase()}] ${location}: ${e.message}`;
+    }).join('\n');
+  }
+
+  async validateAndFix(
+    projectPath: string,
+    options: {
+      maxIterations?: number;
+      validateFn?: () => Promise<RunResult>;
+      fixFn?: (errors: ParsedError[]) => Promise<boolean>;
+      onProgress?: (iteration: number, status: string) => void;
+    } = {}
+  ): Promise<ValidationResult> {
+    const { 
+      maxIterations = 5, 
+      validateFn,
+      fixFn,
+      onProgress 
+    } = options;
+
+    const iterations: ValidationIteration[] = [];
+    let lastResult: RunResult | null = null;
+
+    for (let i = 0; i < maxIterations; i++) {
+      onProgress?.(i + 1, 'validating');
+      
+      const result = validateFn 
+        ? await validateFn() 
+        : await this.runTypeCheck(projectPath);
+      
+      lastResult = result;
+
+      const iteration: ValidationIteration = {
+        number: i + 1,
+        result,
+        fixed: false,
+        timestamp: Date.now()
+      };
+
+      if (result.success || result.errors.length === 0) {
+        iterations.push(iteration);
+        break;
+      }
+
+      if (fixFn && i < maxIterations - 1) {
+        onProgress?.(i + 1, 'fixing');
+        
+        try {
+          const fixed = await fixFn(result.errors);
+          iteration.fixed = fixed;
+        } catch (e) {
+          logger.warn("Fix function failed", { iteration: i + 1, error: e });
+        }
+      }
+
+      iterations.push(iteration);
+    }
+
+    const allErrors = iterations.flatMap(i => i.result.errors);
+    const uniqueErrors = this.deduplicateErrors(allErrors);
+
+    return {
+      success: lastResult?.success || false,
+      iterations,
+      totalIterations: iterations.length,
+      finalResult: lastResult!,
+      errorsFixed: iterations.filter(i => i.fixed).length,
+      remainingErrors: uniqueErrors.filter(e => 
+        lastResult?.errors.some(le => le.message === e.message && le.file === e.file)
+      )
+    };
+  }
+
+  private deduplicateErrors(errors: ParsedError[]): ParsedError[] {
+    const seen = new Set<string>();
+    return errors.filter(e => {
+      const key = `${e.type}:${e.file}:${e.line}:${e.message}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+export interface AutoRetryContext {
+  attempt: number;
+  previousErrors: ParsedError[];
+  command: string;
+  args: string[];
+}
+
+export interface RunAttempt {
+  attempt: number;
+  result: RunResult;
+  timestamp: number;
+  fix: string | null;
+  fixApplied: boolean;
+}
+
+export interface AutoRetryResult {
+  success: boolean;
+  attempts: RunAttempt[];
+  totalAttempts: number;
+  finalResult: RunResult;
+  allErrors: ParsedError[];
+}
+
+export interface ValidationIteration {
+  number: number;
+  result: RunResult;
+  fixed: boolean;
+  timestamp: number;
+}
+
+export interface ValidationResult {
+  success: boolean;
+  iterations: ValidationIteration[];
+  totalIterations: number;
+  finalResult: RunResult;
+  errorsFixed: number;
+  remainingErrors: ParsedError[];
 }
 
 export const codeRunnerService = CodeRunnerService.getInstance();

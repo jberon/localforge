@@ -11,61 +11,10 @@ LocalForge is an AI-powered web application builder that generates working React
 - Cloud LLM provider support: OpenAI, Groq, Together AI (with API key configuration)
 - Test Mode: Built-in Replit AI Integration for testing without local LM Studio
 
-### Test Mode (v1.5.0)
-Test Mode uses Replit AI Integrations (OpenAI) to test LocalForge without requiring local LM Studio setup:
-- Enable via Cloud LLM Settings → Test Mode toggle
-- Uses automatic API key detection (AI_INTEGRATIONS_OPENAI_API_KEY)
-- Default model: gpt-4o-mini
-- Header badge shows connection status (green=connected, amber=not connected)
-- Automatically routes all generation requests to cloud LLM when active
-
-### Enhanced Intelligence Services (v1.6.0)
-New intelligent services that improve code generation quality:
-- **Enhanced Prompts**: Sophisticated system prompts based on Martin Fowler, Kent Beck, and Marty Cagan principles for architecture, quality, and product thinking
-- **Smart Context Management**: Semantic chunking to extract decisions, preferences, errors, and requirements from conversation history
-- **Extended Thinking with Self-Validation**: Step-by-step validation checkpoints with backtracking capability for reasoning
-- **Feedback Learning**: Captures user corrections/refinements and extracts reusable patterns (naming conventions, code style preferences)
-- **Enhanced Code Analysis**: Cyclomatic complexity, cognitive complexity, maintainability index, security scanning, best practice violation detection (SOLID, DRY, KISS)
-- All services are integrated into the orchestrator pipeline for automatic activation during generation
-
-### Intelligence Visibility & Polish (v1.6.5)
-New UI components that expose intelligence services to users:
-- **Intelligence Dashboard**: Real-time status panel showing all AI services, code quality scores (A-F grades), complexity metrics, security findings, and best practice violations
-- **Pattern Manager**: View, search, delete, export/import learned coding patterns from feedback learning with confidence scores and usage frequency
-- **Extended Thinking Panel**: Visualization of multi-step reasoning sessions with step-by-step progress, insights, open questions, and confidence scores
-- **Smart Context Fix**: Improved message role normalization for better conversation summarization (planner→user, builder→assistant)
-- **API Endpoints**: New `/api/intelligence/*` routes for analyzing code, managing patterns, controlling thinking mode, and viewing context
-
-### Integration & Polish (v1.6.6)
-Unified AI Insights panel and improved user experience:
-- **Context Budget Visualization**: Real-time token budget meter showing allocation breakdown (system prompt, user message, code context, chat history, output reserve) with warning indicators when approaching limits
-- **AI Insights Panel**: Unified drawer integrating Intelligence Dashboard, Pattern Manager, Extended Thinking Panel, and Context Budget into a single accessible location from the header
-- **Improved Accessibility**: Enhanced keyboard navigation, aria-labels on interactive elements
-- **Code Quality Improvements**: Removed text-primary violations, fixed query cache invalidation, cleaned up unused imports
-- **Header AI Button**: Quick access to AI services with visual indicator when generation is in progress
-
-### Multi-Agent Architecture (v1.7.0)
-Five specialized services working together for intelligent code generation:
-- **Task Decomposition Service** (`server/services/task-decomposition.service.ts`): Parses complex prompts into subtasks with dependency ordering, priority levels, topological execution, and strategy patterns for request type detection (full_stack_app, api_service, ui_feature, etc.)
-- **Project Memory Service** (`server/services/project-memory.service.ts`): Persistent storage for file metadata (type, purpose, dependencies), architectural decisions, change history, coding conventions, and project context for enhanced generation
-- **Code Runner Service** (`server/services/code-runner.service.ts`): Executes TypeScript/Node.js code in sandbox, runs type checking, ESLint validation, npm scripts with timeout protection and output limits
-- **Auto-Fix Loop Service** (`server/services/auto-fix-loop.service.ts`): Automated error detection with LLM feedback loop, configurable retry logic (default 5 iterations), prioritizes syntax/import errors first
-- **Refactoring Agent Service** (`server/services/refactoring-agent.service.ts`): Post-generation cleanup applying DRY/SOLID patterns, detects code smells (magic numbers, long methods, complex conditions, DRY violations), suggests improvements
-- All services integrate into the orchestrator pipeline with methods: `decomposeRequest()`, `recordToMemory()`, `runEnhancedAutoFix()`, `runRefactoringPass()`, `getProjectContext()`
-
-### Autonomous Development Loop (v1.8.0)
-Enhanced autonomous development capabilities for self-supervised development:
-- **Runtime Feedback Service** (`server/services/runtime-feedback.service.ts`): Real-time error capture from browser/server/build sources with automatic error classification (syntax, reference, type, network, hydration, etc.), session management with proper cleanup, event-based streaming, and LLM-ready error formatting
-- **UI/UX Agent Service** (`server/services/uiux-agent.service.ts`): Automated design system analysis detecting hardcoded colors, spacing inconsistencies, missing alt text, component misuse, dark mode gaps, and accessibility violations with A-F quality grading
-- **Enhanced Auto-Fix Loop**: Applies LLM-generated code patches with line-based and string replacement strategies, generates rule-based fixes for common issues (missing imports, null checks, type assertions), runtime errors are surfaced with suggestions for future fix cycles
-- **Enhanced Project Memory**: Dependency graph building with cycle detection, smart diffing with change impact analysis, file hierarchy visualization, transitive dependency tracking
-- **API Routes** (`server/routes/runtime.ts`): New `/api/runtime/*` endpoints for error reporting, log capture, session management, auto-fix triggering, UI analysis, dependency graphs, and change impact analysis
-- **Orchestrator Integration**: Runtime sessions auto-start during validation with guaranteed cleanup, runtime errors surfaced via events with suggested fixes, UI/UX analysis runs on frontend files after refactoring pass with grade reporting
-
 ## System Architecture
 
 ### Core Functionality
-LocalForge offers a chat-based interface with streaming responses for real-time code generation, project management, live preview, and code validation. It incorporates AI-powered prompt enhancement and iterative refinement, intelligently routing requests to optimize LLM configurations based on intent (plan/build/refine/question).
+LocalForge offers a chat-based interface with streaming responses, project management, live preview, and code validation. It incorporates AI-powered prompt enhancement and iterative refinement, intelligently routing requests to optimize LLM configurations based on intent (plan/build/refine/question).
 
 ### Plan/Build Modes
 A Replit-style Plan/Build mode toggle allows AI to either generate a structured task list for user approval (Plan Mode) or directly write code (Build Mode). Build Mode executes tasks from an approved plan with progress indicators.
@@ -75,17 +24,13 @@ A Replit-style Plan/Build mode toggle allows AI to either generate a structured 
 - **Full Build Mode**: Comprehensive full-stack generation (5-15 minutes) with all automation services, producing production-grade output including tests and documentation. The system auto-detects the appropriate mode.
 
 ### Autonomy Levels
-A four-tier autonomy control system:
-- **Low**: Confirms every action.
-- **Medium** (default): Confirms destructive actions only, auto-runs tests.
-- **High**: Auto-fixes errors, self-testing loops enabled.
-- **Max**: Full autonomy with extended self-supervised development.
+A four-tier autonomy control system: Low, Medium (default), High, and Max, controlling the level of AI intervention and action confirmation.
 
 ### Extended Thinking Mode
-Deep reasoning capabilities for complex tasks, with three levels: Standard (3 steps), Extended (7 steps), and Deep (15 steps). Auto-triggers for complex prompts, detected loops, or ambiguous requirements.
+Deep reasoning capabilities for complex tasks, with three levels (Standard, Extended, Deep) and automatic triggering for complex prompts, detected loops, or ambiguous requirements.
 
 ### Design Mode
-Enables rapid mockup and wireframe generation (~2 minutes) with five design styles and pre-built templates. Approved mockups are then used to automatically generate full code.
+Enables rapid mockup and wireframe generation with five design styles and pre-built templates. Approved mockups are then used to automatically generate full code.
 
 ### AI Dream Team
 When dual LLMs are configured (planner + builder), an "AI Dream Team" orchestrates project planning, task tracking, code generation, validation, and documentation. Actions are logged in a Project Team Panel UI.
@@ -115,40 +60,42 @@ Includes built-in version control with manual and auto-save checkpoints, history
 Supports downloading projects as ZIP files with options for Docker, environment templates, and CI/CD pipelines.
 
 ### One-Click Deployment
-Allows instant publishing of generated apps to Vercel, Netlify, Railway, Render, and Replit. Features platform auto-detection, config generation (vercel.json, netlify.toml, railway.json, render.yaml), Dockerfile generation, environment templates, deployment tracking, and history.
+Allows instant publishing of generated apps to Vercel, Netlify, Railway, Render, and Replit. Features platform auto-detection, config generation, Dockerfile generation, environment templates, deployment tracking, and history.
 
 ### Local LLM Optimization
 Optimized for Mac M4 Pro, integrating with LM Studio via client connection caching, extended timeouts, automatic retry logic, and array-based streaming. Supports configurable temperature presets and token limits.
 
-### Recommended Dual-Model Configuration for M4 Pro
-- **Model A (Reasoning/Planner)**: Ministral 3 14B Reasoning (Temperature: 0.2-0.3)
-- **Model B (Development/Builder)**: Qwen3 Coder 30B or Qwen2.5 Coder 14B (Temperature: 0.5)
+### Multi-Agent Architecture
+Five specialized services collaborate for intelligent code generation:
+- **Task Decomposition Service**: Parses complex prompts into subtasks with dependency ordering and strategy patterns.
+- **Project Memory Service**: Persistent storage for file metadata, architectural decisions, and project context.
+- **Code Runner Service**: Executes TypeScript/Node.js code in a sandbox, runs validation, and npm scripts.
+- **Auto-Fix Loop Service**: Automated error detection with LLM feedback loop and configurable retry logic.
+- **Refactoring Agent Service**: Post-generation cleanup applying DRY/SOLID patterns and detecting code smells.
 
-### Connection Resilience
-A Circuit Breaker pattern is implemented for LLM connection resilience.
+### Autonomous Development Loop
+Enhanced autonomous development capabilities for self-supervised development:
+- **Runtime Feedback Service**: Real-time error capture from various sources with automatic classification and LLM-ready formatting.
+- **UI/UX Agent Service**: Automated design system analysis detecting inconsistencies and accessibility violations.
+- **Enhanced Auto-Fix Loop**: Applies LLM-generated code patches with line-based and string replacement strategies.
+- **Enhanced Project Memory**: Dependency graph building with cycle detection and smart diffing.
 
-### Automation Services (Key Examples)
-- **Auto-Validation Pipeline**: Integrates ESLint, TypeScript, and test runners with auto-fix.
-- **Intelligent Context Pruning**: Manages LLM context via token estimation, summarization, and compression.
-- **Model Hot-Swapping**: Switches to lighter models under memory pressure.
-- **Auto-Documentation Generator**: Generates `README.md` and JSDoc comments.
-- **Security Scanning**: Detects XSS, SQL injection, exposed secrets.
-- **User Preference Learning**: Learns user coding patterns and enhances prompts.
-- **Style Memory**: Remembers project-specific coding conventions.
-- **Feedback Loop**: Refines prompts based on user feedback.
-- **Semantic Code Search**: Embedding-based code similarity search for context.
-- **Auto-Context Injection**: Injects related files based on dependencies.
-- **Error Prevention**: Proactively analyzes code for potential bugs.
-- **Proactive Refactoring**: Suggests improvements based on complexity metrics.
-- **Dependency Health Monitor**: Alerts on outdated/vulnerable dependencies.
-- **Multi-Step Reasoning**: Breaks complex features into validated micro-steps.
-- **Self-Validation Loop**: Builder verifies output before returning.
+### Local LLM Optimization Services (v1.9.0)
+Maximizing local LLM performance through intelligent context management and model-specific optimizations:
+- **Local Model Optimizer Service** (`server/services/local-model-optimizer.service.ts`): Model family detection (Qwen, Ministral, Llama, CodeLlama, DeepSeek, Mistral), model-specific instruction formats (ChatML, Llama, Alpaca, Vicuna), optimal temperature per task type, context window awareness (4K-32K tokens), smart context compression with priority-based line selection
+- **Enhanced Smart Context Service** (`server/services/smart-context.service.ts`): Semantic compression with relevance scoring, priority-based file selection, code compression preserving structure, `buildOptimizedContext()` with 55% files / 25% history / 20% memory allocation
+- **Enhanced Context Budget Service** (`server/services/context-budget.service.ts`): Dynamic token budgeting with model detection, 6 task profiles (planning, coding, debugging, refactoring, review, documentation), adaptive allocation redistributing unused tokens (60% code, 30% history, 10% examples)
+- **Few-Shot Cache Service** (`server/services/few-shot-cache.service.ts`): 5 built-in examples (React component, API route, form handling, error boundary, database CRUD), model-family-specific formatting, relevance scoring based on keyword match + tags + success rate + usage
+- **Enhanced Auto-Fix Loop**: Runtime error injection into LLM prompts, code patch parsing from responses
+- **Code Runner Auto-Retry**: `runWithAutoRetry()` and `validateAndFix()` with automatic retries
+- **Enhanced Project Memory**: Error history learning, similar error detection, successful fix tracking, active dependency prioritization
+- **Orchestrator Integration**: `optimizeForLocalModel()` wired into planning/building phases, `buildOptimizedContext()` for smart context assembly with few-shot examples, `runRuntimeAutoFix()` for enhanced error correction, `recordErrorsToMemory()` for learning from errors
 
 ### In-Browser Bundler
 Uses esbuild-wasm for in-browser bundling of multi-file TypeScript/React projects with a virtual file system and hot refresh.
 
 ### Local Build
-Enables building generated apps locally using npm/Vite tooling on the user's machine, supporting full npm ecosystem, real Vite dev server, auto-scaffolding, port management, real-time logs, and process control.
+Enables building generated apps locally using npm/Vite tooling, supporting full npm ecosystem, real Vite dev server, auto-scaffolding, port management, real-time logs, and process control.
 
 ## External Dependencies
 - **LM Studio**: Local LLM inference.

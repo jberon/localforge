@@ -15,6 +15,9 @@ import { autoFixLoopService, type AutoFixSession } from "./auto-fix-loop.service
 import { refactoringAgentService, type RefactoringResult } from "./refactoring-agent.service";
 import { runtimeFeedbackService } from "./runtime-feedback.service";
 import { uiuxAgentService } from "./uiux-agent.service";
+import { localModelOptimizerService } from "./local-model-optimizer.service";
+import { contextBudgetService } from "./context-budget.service";
+import { fewShotCacheService } from "./few-shot-cache.service";
 
 // ============================================================================
 // MODEL-SPECIFIC INSTRUCTIONS
@@ -467,6 +470,136 @@ export class AIOrchestrator {
     };
   }
 
+  // ============================================================================
+  // LOCAL MODEL OPTIMIZATION INTEGRATION (v1.9.0)
+  // Intelligent context management for small context windows (8K-32K tokens)
+  // ============================================================================
+
+  /**
+   * Optimize prompt and context for local LLM based on model family
+   */
+  private optimizeForLocalModel(
+    systemPrompt: string,
+    userPrompt: string,
+    taskType: "planning" | "coding" | "review" | "general"
+  ): { systemPrompt: string; userPrompt: string; temperature: number; maxTokens: number } {
+    const modelName = this.settings.model || "unknown";
+    
+    const optimized = localModelOptimizerService.optimizePromptForModel(
+      modelName,
+      systemPrompt,
+      userPrompt,
+      taskType
+    );
+
+    return {
+      systemPrompt: optimized.systemPrompt,
+      userPrompt: optimized.userPrompt,
+      temperature: optimized.temperature,
+      maxTokens: optimized.maxTokens
+    };
+  }
+
+  /**
+   * Build optimized context with dynamic token budgeting
+   */
+  private async buildOptimizedContext(
+    prompt: string,
+    files: Array<{ path: string; content: string }>,
+    messages: Array<{ role: string; content: string }>
+  ): Promise<{
+    selectedFiles: Array<{ path: string; content: string }>;
+    summarizedHistory: string;
+    relevantMemory: string;
+    fewShotExamples: string;
+  }> {
+    const modelName = this.settings.model || "unknown";
+    const modelProfile = localModelOptimizerService.getModelProfile(modelName);
+    const taskProfile = contextBudgetService.getOptimalProfileForTask(prompt);
+    const allocation = contextBudgetService.calculateLocalModelAllocation(modelName, taskProfile);
+
+    const projectId = this.projectId || "default";
+    const contextMessages = messages.map(m => ({
+      role: m.role as "user" | "assistant" | "system",
+      content: m.content,
+      timestamp: Date.now()
+    }));
+
+    const optimizedContext = smartContextService.buildOptimizedContext(
+      projectId,
+      prompt,
+      files,
+      contextMessages,
+      {
+        contextWindow: modelProfile.contextWindow,
+        activeFile: files[0]?.path,
+        recentErrors: this.state.validationErrors
+      }
+    );
+
+    const exampleCategory = this.detectExampleCategory(prompt);
+    const examples = fewShotCacheService.getExamplesForTask(prompt, {
+      category: exampleCategory,
+      modelFamily: modelProfile.family,
+      maxTokens: allocation.fewShotExamples,
+      maxExamples: 2
+    });
+    const fewShotExamples = fewShotCacheService.formatExamplesForModelFamily(examples, modelProfile.family);
+
+    return {
+      selectedFiles: optimizedContext.selectedFiles,
+      summarizedHistory: optimizedContext.summarizedHistory,
+      relevantMemory: optimizedContext.relevantMemory,
+      fewShotExamples
+    };
+  }
+
+  private detectExampleCategory(prompt: string): "component_creation" | "api_route" | "form_handling" | "error_handling" | "database_query" | undefined {
+    const lower = prompt.toLowerCase();
+    if (lower.includes("component") || lower.includes("button") || lower.includes("card")) return "component_creation";
+    if (lower.includes("api") || lower.includes("route") || lower.includes("endpoint")) return "api_route";
+    if (lower.includes("form") || lower.includes("validation") || lower.includes("submit")) return "form_handling";
+    if (lower.includes("error") || lower.includes("boundary") || lower.includes("catch")) return "error_handling";
+    if (lower.includes("database") || lower.includes("query") || lower.includes("crud")) return "database_query";
+    return undefined;
+  }
+
+  /**
+   * Run enhanced auto-fix with runtime error injection (v1.9.0)
+   */
+  private async runRuntimeAutoFix(): Promise<AutoFixSession | null> {
+    if (!this.projectId) return null;
+
+    const modelName = this.settings.model || "unknown";
+    
+    return autoFixLoopService.runEnhancedAutoFix(this.projectId, {
+      maxIterations: 5,
+      modelName,
+      onProgress: (status, iteration) => {
+        this.emit({
+          type: "status",
+          message: `Auto-fix: ${status} (iteration ${iteration})`
+        });
+      }
+    });
+  }
+
+  /**
+   * Record errors to project memory for learning
+   */
+  private recordErrorsToMemory(errors: Array<{ type: string; message: string; file?: string }>, fixed: boolean): void {
+    if (!this.projectId) return;
+
+    for (const error of errors) {
+      projectMemoryService.recordError(this.projectId, {
+        type: error.type,
+        message: error.message,
+        file: error.file,
+        fixSuccessful: fixed
+      });
+    }
+  }
+
   abort() {
     this.aborted = true;
   }
@@ -654,11 +787,27 @@ export class AIOrchestrator {
       if (!validation.valid) {
         this.emit({ type: "phase_change", phase: "fixing", message: `${martin.name} is auto-fixing detected issues...` });
         
+        // v1.9.0: Record initial errors to project memory for learning
+        this.recordErrorsToMemory(
+          validation.errors.map(e => ({ type: "validation", message: e })),
+          false
+        );
+        
         if (this.dreamTeam && this.projectId) {
           await this.dreamTeam.logActivity(this.projectId, {
             member: martin,
             action: "fixing",
             content: `Fixing ${validation.errors.length} validation error(s)`,
+          });
+        }
+        
+        // v1.9.0: Try enhanced runtime auto-fix first
+        const runtimeFixResult = await this.runRuntimeAutoFix();
+        if (runtimeFixResult && runtimeFixResult.fixAttempts.length > 0) {
+          this.emit({ 
+            type: "thinking", 
+            model: "builder", 
+            content: `Runtime auto-fix: ${runtimeFixResult.fixAttempts.filter(f => f.success).length}/${runtimeFixResult.fixAttempts.length} fixes applied` 
           });
         }
         
@@ -670,11 +819,24 @@ export class AIOrchestrator {
             model: "builder", 
             content: `Enhanced auto-fix completed: ${enhancedFixResult.session.fixAttempts.length} fix attempts` 
           });
+          
+          // v1.9.0: Record successful fixes to memory for learning
+          this.recordErrorsToMemory(
+            validation.errors.map(e => ({ type: "validation", message: e })),
+            true
+          );
         }
         
         // Fall back to original fix loop for remaining issues
         const fixedCode = await this.fixLoop(code, validation.errors);
         this.state.generatedCode = fixedCode;
+        
+        // v1.9.0: Record that fixes were applied (fallback path)
+        const postFixValidation = this.validateCode(fixedCode);
+        this.recordErrorsToMemory(
+          validation.errors.map(e => ({ type: "validation", message: e })),
+          postFixValidation.valid
+        );
       }
 
       if (this.dreamTeam && this.projectId) {
@@ -796,9 +958,39 @@ export class AIOrchestrator {
     const config = this.getPlannerConfig();
     const maxRetries = 2;
     
+    // v1.9.0: Build optimized context for planning phase
+    const files = existingCode 
+      ? [{ path: "App.tsx", content: existingCode }] 
+      : [];
+    const messagesForContext = this.state.messages.map(m => ({ role: m.role, content: m.content }));
+    const optimizedContext = await this.buildOptimizedContext(userRequest, files, messagesForContext);
+    
+    // v1.9.0: Build context from optimized sources
     let context = "";
-    if (existingCode) {
+    
+    // Use optimized selected files instead of raw existingCode
+    if (optimizedContext.selectedFiles.length > 0) {
+      const selectedFileContext = optimizedContext.selectedFiles
+        .map(f => `// ${f.path}\n${f.content}`)
+        .join("\n\n");
+      context = `\n\nEXISTING CODE (optimized):\n${selectedFileContext}`;
+    } else if (existingCode) {
       context = `\n\nEXISTING CODE TO MODIFY:\n${existingCode.slice(0, 2000)}...`;
+    }
+    
+    // Use summarized history
+    if (optimizedContext.summarizedHistory) {
+      context += `\n\nCONVERSATION SUMMARY:\n${optimizedContext.summarizedHistory}`;
+    }
+    
+    // Use relevant memory
+    if (optimizedContext.relevantMemory) {
+      context += `\n\nPROJECT MEMORY:\n${optimizedContext.relevantMemory}`;
+    }
+    
+    // Use few-shot examples
+    if (optimizedContext.fewShotExamples) {
+      context += `\n\nREFERENCE EXAMPLES:\n${optimizedContext.fewShotExamples}`;
     }
 
     // Multi-Agent: Add project memory context
@@ -843,13 +1035,21 @@ export class AIOrchestrator {
     // Get model-specific instructions based on detected model role
     const modelInstructions = getModelInstructions(config.model, "planner");
     
-    // Build enhanced prompt with learned patterns
+    // Build enhanced prompt with learned patterns - v1.9.0: Use optimized context
+    const optimizedProjectContext = optimizedContext.selectedFiles.length > 0
+      ? optimizedContext.selectedFiles.map(f => f.content).join("\n\n").slice(0, 2000)
+      : existingCode?.slice(0, 2000);
+    
     const enhancedContext: EnhancedPromptContext = {
       userRequest,
-      projectContext: existingCode?.slice(0, 2000),
+      projectContext: optimizedProjectContext,
       additionalContext: patternsContext
     };
     const enhancedPromptSection = buildEnhancedPlanningPrompt(enhancedContext);
+    
+    // v1.9.0: Apply local model optimization for planning
+    const baseSystemPrompt = modelInstructions + PLANNING_PROMPT;
+    const optimized = this.optimizeForLocalModel(baseSystemPrompt, userRequest + context, "planning");
     
     // Retry loop for JSON parsing with exponential backoff
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -857,14 +1057,14 @@ export class AIOrchestrator {
         ? "\n\nIMPORTANT: Your previous response was not valid JSON. Respond with ONLY valid JSON, no markdown or explanations."
         : "";
 
-      // Prepend model-specific instructions to the planning prompt
-      const fullPrompt = modelInstructions + PLANNING_PROMPT + promptSuffix;
+      // Use optimized prompt from local model optimizer
+      const fullPrompt = optimized.systemPrompt + promptSuffix;
 
       const response = await generateCompletion(
         config,
         fullPrompt,
-        userRequest + context,
-        LLM_DEFAULTS.maxTokens.plan
+        optimized.userPrompt,
+        optimized.maxTokens || LLM_DEFAULTS.maxTokens.plan
       );
 
       // Use safe JSON parsing with fallback to simple plan
@@ -953,14 +1153,6 @@ export class AIOrchestrator {
     const config = this.getBuilderConfig();
     const client = createLLMClient(config);
 
-    let context = "";
-    if (this.state.webSearchResults) {
-      context += `WEB SEARCH RESULTS:\n${this.state.webSearchResults}\n\n`;
-    }
-    if (existingCode) {
-      context += `EXISTING CODE:\n${existingCode}\n\n`;
-    }
-
     // Get learned patterns for enhanced building
     const learnedPatterns = this.projectId
       ? feedbackLearningService.getProjectPatterns(this.projectId)
@@ -989,27 +1181,75 @@ export class AIOrchestrator {
       }
     }
 
-    // Build enhanced context for builder
+    // v1.9.0: Build optimized context with smart file selection and few-shot examples
+    const files = existingCode 
+      ? [{ path: "App.tsx", content: existingCode }] 
+      : [];
+    const messagesForContext = this.state.messages.map(m => ({ role: m.role, content: m.content }));
+    const optimizedContext = await this.buildOptimizedContext(userRequest, files, messagesForContext);
+    
+    // v1.9.0: Build context from OPTIMIZED sources instead of raw inputs
+    let context = "";
+    
+    // Use web search results if available
+    if (this.state.webSearchResults) {
+      context += `WEB SEARCH RESULTS:\n${this.state.webSearchResults}\n\n`;
+    }
+    
+    // Use optimized selected files instead of raw existingCode
+    if (optimizedContext.selectedFiles.length > 0) {
+      const selectedFileContext = optimizedContext.selectedFiles
+        .map(f => `// ${f.path}\n${f.content}`)
+        .join("\n\n");
+      context += `EXISTING CODE (optimized):\n${selectedFileContext}\n\n`;
+    } else if (existingCode) {
+      // Fallback to raw existingCode if no files selected
+      context += `EXISTING CODE:\n${existingCode}\n\n`;
+    }
+    
+    // Use summarized history instead of full history
+    if (optimizedContext.summarizedHistory) {
+      context += `CONVERSATION SUMMARY:\n${optimizedContext.summarizedHistory}\n\n`;
+    }
+    
+    // Append few-shot examples from cache
+    if (optimizedContext.fewShotExamples) {
+      context += `REFERENCE EXAMPLES:\n${optimizedContext.fewShotExamples}\n\n`;
+    }
+    
+    // Append relevant memory context
+    if (optimizedContext.relevantMemory) {
+      context += `PROJECT MEMORY:\n${optimizedContext.relevantMemory}\n\n`;
+    }
+
+    // Build enhanced context for builder - v1.9.0: Use optimized context instead of raw
+    const optimizedProjectContext = optimizedContext.selectedFiles.length > 0
+      ? optimizedContext.selectedFiles.map(f => f.content).join("\n\n").slice(0, 3000)
+      : existingCode?.slice(0, 3000);
+    
     const enhancedBuildContext: EnhancedPromptContext = {
       userRequest,
-      projectContext: existingCode?.slice(0, 3000),
+      projectContext: optimizedProjectContext,
       feedbackHistory: learnedPatterns.map(p => p.pattern),
       additionalContext: patternsContext
     };
     const enhancedPromptSection = buildEnhancedBuildingPrompt(enhancedBuildContext, {
-      filePath: "App.tsx",
+      filePath: optimizedContext.selectedFiles[0]?.path || "App.tsx",
       purpose: plan.summary,
       architecture: plan.architecture || "React + TypeScript",
-      relatedFiles: []
+      relatedFiles: optimizedContext.selectedFiles.slice(1).map(f => f.path)
     });
 
     // Get model-specific instructions based on detected model role
     const modelInstructions = getModelInstructions(config.model, "builder");
     
     // Prepend model-specific instructions to the building prompt
-    const prompt = modelInstructions + BUILDING_PROMPT
+    const basePrompt = modelInstructions + BUILDING_PROMPT
       .replace("{context}", context + "\n" + enhancedPromptSection || "No additional context.")
       .replace("{plan}", JSON.stringify(plan, null, 2));
+
+    // v1.9.0: Apply local model optimization for building
+    const optimized = this.optimizeForLocalModel(basePrompt, userRequest, "coding");
 
     this.emit({ type: "thinking", model: "builder", content: "Starting code generation with the implementation plan..." });
 
@@ -1041,11 +1281,11 @@ export class AIOrchestrator {
     const stream = await client.chat.completions.create({
       model: config.model || "local-model",
       messages: [
-        { role: "system", content: prompt },
-        { role: "user", content: userRequest },
+        { role: "system", content: optimized.systemPrompt },
+        { role: "user", content: optimized.userPrompt },
       ],
-      temperature: config.temperature ?? 0.4,
-      max_tokens: LLM_DEFAULTS.maxTokens.fullStack,
+      temperature: optimized.temperature,
+      max_tokens: optimized.maxTokens || LLM_DEFAULTS.maxTokens.fullStack,
       stream: true,
     });
 
