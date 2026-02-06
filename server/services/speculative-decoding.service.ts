@@ -50,6 +50,7 @@ class SpeculativeDecodingService {
   private config: SpeculativeConfig;
   private modelPairs: Map<string, ModelPair> = new Map();
   private performanceStats: Map<string, { avgSpeedup: number; uses: number }> = new Map();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor() {
     this.config = {
@@ -561,6 +562,16 @@ IMPORTANT: Output ONLY the final code. Do not explain changes.`
     }
 
     return true;
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.modelPairs.clear();
+    this.performanceStats.clear();
+    logger.info("SpeculativeDecodingService destroyed");
   }
 
   registerModelPair(name: string, pair: ModelPair): void {

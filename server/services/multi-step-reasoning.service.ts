@@ -54,6 +54,7 @@ interface StepResult {
 
 class MultiStepReasoningService {
   private static instance: MultiStepReasoningService;
+  private readonly MAX_CHAINS = 200;
   private chains: Map<string, ReasoningChain> = new Map();
   private stepTemplates: Map<StepType, Partial<ReasoningStep>> = new Map();
 
@@ -163,6 +164,7 @@ class MultiStepReasoningService {
     };
 
     this.chains.set(chainId, chain);
+    this.evictChainsIfNeeded();
 
     const estimatedTokens = steps.reduce((sum, step) => {
       return sum + this.estimateStepTokens(step);
@@ -489,6 +491,21 @@ class MultiStepReasoningService {
 
     logger.info("Step skipped", { chainId, stepId, reason });
     return true;
+  }
+
+  private evictChainsIfNeeded(): void {
+    if (this.chains.size > this.MAX_CHAINS) {
+      const sorted = Array.from(this.chains.entries())
+        .sort((a, b) => a[1].createdAt - b[1].createdAt);
+      const toRemove = sorted.slice(0, this.chains.size - this.MAX_CHAINS);
+      for (const [key] of toRemove) {
+        this.chains.delete(key);
+      }
+    }
+  }
+
+  destroy(): void {
+    this.chains.clear();
   }
 
   abortChain(chainId: string): boolean {

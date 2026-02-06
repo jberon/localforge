@@ -165,30 +165,56 @@ class HardwareOptimizerService {
 
   private detectAppleSiliconChip(cpuModel: string, memoryGB: number): void {
     const model = cpuModel.toLowerCase();
-    
-    let chipKey = "m1";
-    
-    if (model.includes("m4")) {
-      if (memoryGB > 64) chipKey = "m4-max";
-      else if (memoryGB > 32) chipKey = "m4-pro";
-      else chipKey = "m4";
-    } else if (model.includes("m3")) {
-      if (memoryGB > 96) chipKey = "m3-max";
-      else if (memoryGB > 24) chipKey = "m3-pro";
-      else chipKey = "m3";
-    } else if (model.includes("m2")) {
-      if (memoryGB > 128) chipKey = "m2-ultra";
-      else if (memoryGB > 64) chipKey = "m2-max";
-      else if (memoryGB > 24) chipKey = "m2-pro";
-      else chipKey = "m2";
-    } else if (model.includes("m1")) {
-      if (memoryGB > 96) chipKey = "m1-ultra";
-      else if (memoryGB > 32) chipKey = "m1-max";
-      else if (memoryGB > 16) chipKey = "m1-pro";
-      else chipKey = "m1";
+
+    let chipKey: string | null = null;
+
+    const directMatch = this.matchChipFromModelString(model);
+    if (directMatch) {
+      chipKey = directMatch;
+    } else {
+      chipKey = this.inferChipFromMemory(model, memoryGB);
     }
-    
+
     this.appleSiliconProfile = APPLE_SILICON_PROFILES[chipKey] || null;
+    logger.info("Apple Silicon chip detected", { cpuModel, chipKey, memoryGB, method: directMatch ? "model-string" : "memory-heuristic" });
+  }
+
+  private matchChipFromModelString(model: string): string | null {
+    const generations = ["m4", "m3", "m2", "m1"];
+    for (const gen of generations) {
+      if (!model.includes(gen)) continue;
+      if (model.includes(`${gen} ultra`) || model.includes(`${gen}-ultra`)) return `${gen}-ultra`;
+      if (model.includes(`${gen} max`) || model.includes(`${gen}-max`)) return `${gen}-max`;
+      if (model.includes(`${gen} pro`) || model.includes(`${gen}-pro`)) return `${gen}-pro`;
+      return gen;
+    }
+    return null;
+  }
+
+  private inferChipFromMemory(model: string, memoryGB: number): string {
+    if (model.includes("m4")) {
+      if (memoryGB > 64) return "m4-max";
+      if (memoryGB > 32) return "m4-pro";
+      return "m4";
+    }
+    if (model.includes("m3")) {
+      if (memoryGB > 96) return "m3-max";
+      if (memoryGB > 24) return "m3-pro";
+      return "m3";
+    }
+    if (model.includes("m2")) {
+      if (memoryGB > 128) return "m2-ultra";
+      if (memoryGB > 64) return "m2-max";
+      if (memoryGB > 24) return "m2-pro";
+      return "m2";
+    }
+    if (model.includes("m1")) {
+      if (memoryGB > 96) return "m1-ultra";
+      if (memoryGB > 32) return "m1-max";
+      if (memoryGB > 16) return "m1-pro";
+      return "m1";
+    }
+    return "m1";
   }
 
   private detectDiscreteGPU(): HardwareProfile["gpuType"] {

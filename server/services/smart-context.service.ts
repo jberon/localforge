@@ -31,6 +31,8 @@ class SmartContextService {
   private static instance: SmartContextService;
   private projectMemories: Map<string, ConversationMemory> = new Map();
   private semanticChunks: Map<string, SemanticChunk[]> = new Map();
+  private readonly MAX_PROJECTS = 100;
+  private readonly MAX_CHUNKS_PER_PROJECT = 500;
 
   private constructor() {
     logger.info("SmartContextService initialized");
@@ -214,6 +216,9 @@ class SmartContextService {
 
   updateProjectMemory(projectId: string, messages: Message[]): ConversationMemory {
     const chunks = this.extractSemanticChunks(messages);
+    if (chunks.length > this.MAX_CHUNKS_PER_PROJECT) {
+      chunks.splice(0, chunks.length - this.MAX_CHUNKS_PER_PROJECT);
+    }
     this.semanticChunks.set(projectId, chunks);
 
     const existingMemory = this.projectMemories.get(projectId) || {
@@ -258,6 +263,16 @@ class SmartContextService {
 
     existingMemory.lastUpdated = new Date();
     this.projectMemories.set(projectId, existingMemory);
+
+    if (this.projectMemories.size > this.MAX_PROJECTS) {
+      const oldest = Array.from(this.projectMemories.entries())
+        .sort((a, b) => a[1].lastUpdated.getTime() - b[1].lastUpdated.getTime());
+      const toRemove = oldest.slice(0, this.projectMemories.size - this.MAX_PROJECTS);
+      for (const [removeId] of toRemove) {
+        this.projectMemories.delete(removeId);
+        this.semanticChunks.delete(removeId);
+      }
+    }
 
     logger.info("Project memory updated", {
       projectId,
@@ -775,6 +790,11 @@ class SmartContextService {
         total: fileTokens + historyTokens + memoryTokens
       }
     };
+  }
+
+  destroy(): void {
+    this.projectMemories.clear();
+    this.semanticChunks.clear();
   }
 }
 

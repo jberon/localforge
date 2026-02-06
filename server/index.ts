@@ -4,6 +4,24 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { securityHeaders } from "./middleware/security";
 import logger from "./lib/logger";
+import { healthAlertsService } from "./services/health-alerts.service";
+import { performanceProfilerService } from "./services/performance-profiler.service";
+import { llmCacheService } from "./services/llm-cache.service";
+import { localEmbeddingService } from "./services/local-embedding.service";
+import { quantizationDetectorService } from "./services/quantization-detector.service";
+import { speculativeDecodingService } from "./services/speculative-decoding.service";
+import { runtimeFeedbackService } from "./services/runtime-feedback.service";
+import { modelProviderService } from "./services/model-provider.service";
+import { smartContextService } from "./services/smart-context.service";
+import { semanticCodeSearchService } from "./services/semantic-code-search.service";
+import { buildModeService } from "./services/build-mode.service";
+import { designModeService } from "./services/design-mode.service";
+import { feedbackLoopService } from "./services/feedback-loop.service";
+import { multiStepReasoningService } from "./services/multi-step-reasoning.service";
+import { patternLibraryService } from "./services/pattern-library.service";
+import { smartRetryService } from "./services/smart-retry.service";
+import { userPreferenceLearningService } from "./services/user-preference-learning.service";
+import { validationPipelineService } from "./services/validation-pipeline.service";
 
 const app = express();
 const httpServer = createServer(app);
@@ -104,14 +122,45 @@ app.use((req, res, next) => {
     log(`serving on ${host}:${port}`);
   });
 
-  // Graceful shutdown handling
   const shutdown = () => {
     log("Shutting down gracefully...");
+
+    const destroyables = [
+      { name: "HealthAlerts", svc: healthAlertsService },
+      { name: "PerformanceProfiler", svc: performanceProfilerService },
+      { name: "LLMCache", svc: llmCacheService },
+      { name: "LocalEmbedding", svc: localEmbeddingService },
+      { name: "QuantizationDetector", svc: quantizationDetectorService },
+      { name: "SpeculativeDecoding", svc: speculativeDecodingService },
+      { name: "RuntimeFeedback", svc: runtimeFeedbackService },
+      { name: "ModelProvider", svc: modelProviderService },
+      { name: "SmartContext", svc: smartContextService },
+      { name: "SemanticCodeSearch", svc: semanticCodeSearchService },
+      { name: "BuildMode", svc: buildModeService },
+      { name: "DesignMode", svc: designModeService },
+      { name: "FeedbackLoop", svc: feedbackLoopService },
+      { name: "MultiStepReasoning", svc: multiStepReasoningService },
+      { name: "PatternLibrary", svc: patternLibraryService },
+      { name: "SmartRetry", svc: smartRetryService },
+      { name: "UserPreferenceLearning", svc: userPreferenceLearningService },
+      { name: "ValidationPipeline", svc: validationPipelineService },
+    ];
+
+    for (const { name, svc } of destroyables) {
+      try {
+        if (svc && typeof (svc as any).destroy === "function") {
+          (svc as any).destroy();
+          log(`${name} destroyed`);
+        }
+      } catch (e) {
+        log(`Failed to destroy ${name}: ${e}`);
+      }
+    }
+
     httpServer.close(() => {
       log("Server closed");
       process.exit(0);
     });
-    // Force exit after 5 seconds if graceful shutdown fails
     setTimeout(() => {
       log("Forcing shutdown");
       process.exit(1);

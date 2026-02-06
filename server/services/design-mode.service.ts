@@ -106,6 +106,7 @@ const DEFAULT_COLOR_SCHEMES: Record<DesignStyle, ColorScheme> = {
 
 class DesignModeService {
   private static instance: DesignModeService;
+  private readonly MAX_MOCKUPS = 500;
   private mockups: Map<string, DesignMockup> = new Map();
   private templates: Map<string, DesignTemplate> = new Map();
   private enabled: boolean = true;
@@ -344,9 +345,26 @@ class DesignModeService {
     };
 
     this.mockups.set(mockupId, mockup);
+    this.evictMockupsIfNeeded();
     logger.info("Mockup created", { mockupId, projectId, style: effectiveStyle });
 
     return mockup;
+  }
+
+  private evictMockupsIfNeeded(): void {
+    if (this.mockups.size > this.MAX_MOCKUPS) {
+      const sorted = Array.from(this.mockups.entries())
+        .sort((a, b) => a[1].createdAt.getTime() - b[1].createdAt.getTime());
+      const toRemove = sorted.slice(0, this.mockups.size - this.MAX_MOCKUPS);
+      for (const [key] of toRemove) {
+        this.mockups.delete(key);
+      }
+    }
+  }
+
+  destroy(): void {
+    this.mockups.clear();
+    this.projectStyles.clear();
   }
 
   addComponent(mockupId: string, component: Omit<MockupComponent, "id">): MockupComponent | null {

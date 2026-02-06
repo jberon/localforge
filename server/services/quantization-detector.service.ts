@@ -210,6 +210,7 @@ const MODEL_SIZE_PATTERNS: Array<{ pattern: RegExp; parametersBillion: number }>
 class QuantizationDetectorService {
   private static instance: QuantizationDetectorService;
   private modelCache: Map<string, ModelQuantizationInfo> = new Map();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private systemMemoryMB: number = 48 * 1024;
   private reservedMemoryMB: number = 8 * 1024;
 
@@ -406,6 +407,15 @@ class QuantizationDetectorService {
     }
 
     return "q4_k_m";
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.modelCache.clear();
+    logger.info("QuantizationDetectorService destroyed");
   }
 
   clearCache(): void {

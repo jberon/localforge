@@ -34,6 +34,7 @@ export class LLMCacheService {
   private pendingRequests: Map<string, PendingRequest[]> = new Map();
   private requestQueue: BatchRequest[] = [];
   private batchTimeout: NodeJS.Timeout | null = null;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private stats = {
     hits: 0,
     misses: 0,
@@ -218,6 +219,22 @@ export class LLMCacheService {
       cacheSize: this.cache.size,
       pendingRequests: this.pendingRequests.size,
     };
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    if (this.batchTimeout) {
+      clearTimeout(this.batchTimeout);
+      this.batchTimeout = null;
+    }
+    this.cache.clear();
+    this.pendingRequests.clear();
+    this.requestQueue = [];
+    this.stats = { hits: 0, misses: 0, deduplicated: 0, batched: 0 };
+    logger.info("LLMCacheService destroyed");
   }
 
   clearCache(): void {

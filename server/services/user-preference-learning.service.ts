@@ -48,6 +48,8 @@ class UserPreferenceLearningService {
   private modifications: Map<string, CodeModification[]> = new Map();
   private preferences: Map<string, UserPreference[]> = new Map();
   private patterns: LearningPattern[] = [];
+  private readonly MAX_MODIFICATIONS_PER_PROJECT = 200;
+  private readonly MAX_PATTERNS = 500;
 
   private constructor() {}
 
@@ -64,6 +66,9 @@ class UserPreferenceLearningService {
       ...modification,
       timestamp: Date.now()
     });
+    if (mods.length > this.MAX_MODIFICATIONS_PER_PROJECT) {
+      mods.splice(0, mods.length - this.MAX_MODIFICATIONS_PER_PROJECT);
+    }
     this.modifications.set(projectId, mods);
     
     this.analyzeModification(projectId, modification);
@@ -247,6 +252,12 @@ class UserPreferenceLearningService {
     this.modifications.delete(projectId);
     this.preferences.delete(projectId);
     logger.info("Cleared preference history", { projectId });
+  }
+
+  destroy(): void {
+    this.modifications.clear();
+    this.preferences.clear();
+    this.patterns = [];
   }
 }
 

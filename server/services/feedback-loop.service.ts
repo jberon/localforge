@@ -39,6 +39,8 @@ interface GenerationContext {
 
 class FeedbackLoopService {
   private static instance: FeedbackLoopService;
+  private readonly MAX_FEEDBACK_PER_PROJECT = 200;
+  private readonly MAX_ISSUE_PATTERNS = 500;
   private feedback: Map<string, FeedbackEntry[]> = new Map();
   private refinements: PromptRefinement[] = [];
   private issuePatterns: Map<string, number> = new Map();
@@ -127,6 +129,7 @@ class FeedbackLoopService {
     const projectFeedback = this.feedback.get(projectId) || [];
     projectFeedback.push(entry);
     this.feedback.set(projectId, projectFeedback);
+    this.evictFeedbackIfNeeded(projectId);
 
     if (rating === "negative") {
       this.learnFromNegativeFeedback(entry);
@@ -174,6 +177,7 @@ class FeedbackLoopService {
     for (const category of entry.categories) {
       const count = this.issuePatterns.get(category) || 0;
       this.issuePatterns.set(category, count + 1);
+      this.evictIssuePatternsIfNeeded();
 
       const relevantRefinement = this.refinements.find(r => 
         entry.userComment?.toLowerCase().includes(r.trigger) ||
@@ -292,6 +296,30 @@ class FeedbackLoopService {
       appliedCount: 0
     });
     logger.info("Custom refinement added", { trigger });
+  }
+
+  private evictFeedbackIfNeeded(projectId: string): void {
+    const entries = this.feedback.get(projectId);
+    if (entries && entries.length > this.MAX_FEEDBACK_PER_PROJECT) {
+      this.feedback.set(projectId, entries.slice(-this.MAX_FEEDBACK_PER_PROJECT));
+    }
+  }
+
+  private evictIssuePatternsIfNeeded(): void {
+    if (this.issuePatterns.size > this.MAX_ISSUE_PATTERNS) {
+      const sorted = Array.from(this.issuePatterns.entries())
+        .sort((a, b) => a[1] - b[1]);
+      const toRemove = sorted.slice(0, this.issuePatterns.size - this.MAX_ISSUE_PATTERNS);
+      for (const [key] of toRemove) {
+        this.issuePatterns.delete(key);
+      }
+    }
+  }
+
+  destroy(): void {
+    this.feedback.clear();
+    this.issuePatterns.clear();
+    this.refinements = [];
   }
 
   clearFeedback(projectId: string): void {

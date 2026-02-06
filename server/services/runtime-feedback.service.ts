@@ -496,6 +496,12 @@ class RuntimeFeedbackService extends EventEmitter {
     return formatted;
   }
 
+  destroy(): void {
+    this.activeSessions.clear();
+    this.errorPatterns = [];
+    this.removeAllListeners();
+  }
+
   private generateId(): string {
     return `rt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }

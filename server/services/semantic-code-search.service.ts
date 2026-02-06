@@ -34,6 +34,7 @@ class SemanticCodeSearchService {
   private static instance: SemanticCodeSearchService;
   private indices: Map<string, CodeIndex> = new Map();
   private tokenWeights: Map<string, number> = new Map();
+  private readonly MAX_INDICES = 100;
 
   private constructor() {
     this.initializeTokenWeights();
@@ -77,6 +78,15 @@ class SemanticCodeSearchService {
       chunks,
       lastUpdated: Date.now()
     });
+
+    if (this.indices.size > this.MAX_INDICES) {
+      const oldest = Array.from(this.indices.entries())
+        .sort((a, b) => a[1].lastUpdated - b[1].lastUpdated);
+      const toRemove = oldest.slice(0, this.indices.size - this.MAX_INDICES);
+      for (const [removeId] of toRemove) {
+        this.indices.delete(removeId);
+      }
+    }
 
     logger.info("Project indexed", { projectId, chunkCount: chunks.length });
     return chunks.length;
@@ -369,6 +379,11 @@ class SemanticCodeSearchService {
   clearIndex(projectId: string): void {
     this.indices.delete(projectId);
     logger.info("Index cleared", { projectId });
+  }
+
+  destroy(): void {
+    this.indices.clear();
+    this.tokenWeights.clear();
   }
 }
 

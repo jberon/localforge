@@ -44,6 +44,7 @@ class PatternLibraryService {
   private static instance: PatternLibraryService;
   private patterns: Map<string, CodePattern> = new Map();
   private categoryIndex: Map<PatternCategory, Set<string>> = new Map();
+  private readonly MAX_PATTERNS = 1000;
 
   private constructor() {
     this.initializeBuiltInPatterns();
@@ -363,6 +364,17 @@ function SearchComponent() {
 
     this.patterns.set(id, newPattern);
 
+    if (this.patterns.size > this.MAX_PATTERNS) {
+      const oldest = Array.from(this.patterns.entries())
+        .sort((a, b) => a[1].createdAt - b[1].createdAt);
+      const toRemove = oldest.slice(0, this.patterns.size - this.MAX_PATTERNS);
+      for (const [removeId, removePattern] of toRemove) {
+        this.patterns.delete(removeId);
+        const catSet = this.categoryIndex.get(removePattern.category);
+        if (catSet) catSet.delete(removeId);
+      }
+    }
+
     const categoryPatterns = this.categoryIndex.get(pattern.category) || new Set();
     categoryPatterns.add(id);
     this.categoryIndex.set(pattern.category, categoryPatterns);
@@ -527,6 +539,11 @@ function SearchComponent() {
 
     logger.info("Pattern deleted", { patternId });
     return true;
+  }
+
+  destroy(): void {
+    this.patterns.clear();
+    this.categoryIndex.clear();
   }
 }
 

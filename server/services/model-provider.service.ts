@@ -434,6 +434,13 @@ export class ModelProviderService {
     this.cacheService.clearCache();
   }
 
+  destroy(): void {
+    this.modelRegistry.clear();
+    this.routingPolicies = [];
+    this.hotSwapHistory = [];
+    this.cacheService.clearCache();
+  }
+
   getM4ProRecommendations(): Record<string, any> {
     return {
       hardware: {

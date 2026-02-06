@@ -53,6 +53,7 @@ const DEFAULT_FULL_SETTINGS: FullBuildSettings = {
 
 class BuildModeService {
   private static instance: BuildModeService;
+  private readonly MAX_HISTORY = 500;
   private currentMode: BuildMode = "full";
   private projectModes: Map<string, BuildMode> = new Map();
   private fastSettings: FastModeSettings = { ...DEFAULT_FAST_SETTINGS };
@@ -83,8 +84,20 @@ class BuildModeService {
       timestamp: new Date(),
       reason
     });
+    this.evictHistoryIfNeeded();
 
     logger.info("Build mode changed", { mode, projectId, reason });
+  }
+
+  private evictHistoryIfNeeded(): void {
+    if (this.modeHistory.length > this.MAX_HISTORY) {
+      this.modeHistory = this.modeHistory.slice(-this.MAX_HISTORY);
+    }
+  }
+
+  destroy(): void {
+    this.projectModes.clear();
+    this.modeHistory = [];
   }
 
   getMode(projectId?: string): BuildMode {

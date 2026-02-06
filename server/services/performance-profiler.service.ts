@@ -60,6 +60,7 @@ class PerformanceProfilerService extends EventEmitter {
   private static instance: PerformanceProfilerService;
   private metrics: PerformanceMetric[] = [];
   private activeOperations = new Map<string, ActiveOperation>();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private maxMetrics = 1000;
   private operationTimeout = 300000;
 
@@ -76,7 +77,7 @@ class PerformanceProfilerService extends EventEmitter {
   }
 
   private startCleanupInterval(): void {
-    setInterval(() => {
+    this.cleanupTimer = setInterval(() => {
       this.cleanupOldMetrics();
       this.checkStaleOperations();
     }, 60000);
@@ -362,6 +363,21 @@ class PerformanceProfilerService extends EventEmitter {
       ...op.metric,
       duration: Date.now() - op.metric.startTime,
     }));
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    for (const [, op] of this.activeOperations) {
+      if (op.timeout) {
+        clearTimeout(op.timeout);
+      }
+    }
+    this.activeOperations.clear();
+    this.metrics = [];
+    logger.info("PerformanceProfilerService destroyed");
   }
 
   clearMetrics(): void {

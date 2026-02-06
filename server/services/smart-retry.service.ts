@@ -173,6 +173,7 @@ export class SmartRetryService {
   
   private strategies: RetryStrategy[] = [...STRATEGIES];
   private retryHistory: Map<string, SmartRetryResult> = new Map();
+  private readonly MAX_HISTORY = 500;
 
   private constructor() {}
 
@@ -361,6 +362,21 @@ export class SmartRetryService {
       name: s.name,
       description: s.description,
     }));
+  }
+
+  private evictRetryHistory(): void {
+    if (this.retryHistory.size > this.MAX_HISTORY) {
+      const keys = Array.from(this.retryHistory.keys());
+      const toRemove = keys.slice(0, keys.length - this.MAX_HISTORY);
+      for (const key of toRemove) {
+        this.retryHistory.delete(key);
+      }
+    }
+  }
+
+  destroy(): void {
+    this.retryHistory.clear();
+    this.strategies = [...STRATEGIES];
   }
 
   analyzeError(error: Error): {

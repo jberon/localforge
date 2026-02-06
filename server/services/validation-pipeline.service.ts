@@ -60,6 +60,8 @@ const DEFAULT_CONFIG: ValidationConfig = {
 
 export class ValidationPipelineService {
   private static instance: ValidationPipelineService;
+  private results: Map<string, PipelineResult> = new Map();
+  private readonly MAX_RESULTS = 500;
 
   private constructor() {}
 
@@ -105,6 +107,15 @@ export class ValidationPipelineService {
       summary,
       suggestions,
     };
+
+    this.results.set(`${projectPath}:${Date.now()}`, pipelineResult);
+    if (this.results.size > this.MAX_RESULTS) {
+      const keys = Array.from(this.results.keys());
+      const toRemove = keys.slice(0, keys.length - this.MAX_RESULTS);
+      for (const key of toRemove) {
+        this.results.delete(key);
+      }
+    }
 
     logger.info("Validation pipeline completed", { 
       success: pipelineResult.success,
@@ -500,6 +511,10 @@ export class ValidationPipelineService {
     } finally {
       // Cleanup is handled by caller - files are kept for the project
     }
+  }
+
+  destroy(): void {
+    this.results.clear();
   }
 }
 

@@ -37,6 +37,7 @@ class LocalEmbeddingService {
   private static instance: LocalEmbeddingService;
   private config: EmbeddingConfig;
   private embeddingCache: Map<string, CachedEmbedding> = new Map();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private cacheMaxSize = 10000;
   private cacheTTLMs = 60 * 60 * 1000;
 
@@ -364,7 +365,7 @@ class LocalEmbeddingService {
   }
 
   private startCacheCleanup(): void {
-    setInterval(() => {
+    this.cleanupTimer = setInterval(() => {
       const now = Date.now();
       for (const [key, value] of Array.from(this.embeddingCache.entries())) {
         if (now - value.createdAt >= this.cacheTTLMs) {
@@ -380,6 +381,15 @@ class LocalEmbeddingService {
       maxSize: this.cacheMaxSize,
       hitRate: 0,
     };
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.embeddingCache.clear();
+    logger.info("LocalEmbeddingService destroyed");
   }
 
   clearCache(): void {

@@ -294,6 +294,13 @@ export class HealthAlertsService extends EventEmitter {
       { errors, warnings }
     );
   }
+
+  destroy(): void {
+    this.stopMonitoring();
+    this.alerts = [];
+    this.lastStatus = null;
+    this.removeAllListeners();
+  }
 }
 
 export const healthAlertsService = HealthAlertsService.getInstance();
