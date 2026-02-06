@@ -23,6 +23,11 @@ import { v2OrchestratorService, type V2GenerationContext, type V2GenerationResul
 import { getModelInstructions } from "./orchestrator/model-instructions";
 import { safeParseJSON } from "./orchestrator/json-parser";
 import type { PlannerMode, LLMSettings, OrchestratorTask, QualityProfile, OrchestratorPlan, ReviewSummary, OrchestratorState, OrchestratorEvent } from "./orchestrator/types";
+import { outputParserService } from "./output-parser.service";
+import { adaptiveTemperatureService } from "./adaptive-temperature.service";
+import { conversationMemoryService } from "./conversation-memory.service";
+import { smartRetryService } from "./smart-retry.service";
+import { promptChunkingService } from "./prompt-chunking.service";
 
 export type { OrchestratorTask, QualityProfile, OrchestratorPlan, ReviewSummary, OrchestratorState, OrchestratorEvent, PlannerMode, LLMSettings } from "./orchestrator/types";
 
@@ -313,6 +318,28 @@ export class AIOrchestrator {
       }
     );
 
+    let enhancedHistory = optimizedContext.summarizedHistory;
+    if (messages.length > 6) {
+      try {
+        const compressed = conversationMemoryService.compressHistory(
+          projectId,
+          messages.map(m => ({ role: m.role as "user" | "assistant" | "system", content: m.content }))
+        );
+        const contextPrompt = conversationMemoryService.buildContextPrompt(compressed);
+        if (contextPrompt && compressed.compressionRatio > 1.5) {
+          enhancedHistory = contextPrompt;
+          logger.info("[Intelligence] Conversation memory compressed", {
+            projectId,
+            originalTokens: compressed.totalOriginalTokens,
+            compressedTokens: compressed.totalCompressedTokens,
+            ratio: compressed.compressionRatio.toFixed(2),
+          });
+        }
+      } catch (err) {
+        logger.warn("[Intelligence] Conversation memory compression failed, using default", {}, err as Error);
+      }
+    }
+
     const exampleCategory = this.detectExampleCategory(prompt);
     const examples = fewShotCacheService.getExamplesForTask(prompt, {
       category: exampleCategory,
@@ -324,7 +351,7 @@ export class AIOrchestrator {
 
     return {
       selectedFiles: optimizedContext.selectedFiles,
-      summarizedHistory: optimizedContext.summarizedHistory,
+      summarizedHistory: enhancedHistory,
       relevantMemory: optimizedContext.relevantMemory,
       fewShotExamples
     };
@@ -888,23 +915,49 @@ export class AIOrchestrator {
       enhancedUserPrompt = `${enhancedUserPrompt}\n\nSEMANTIC CONTEXT:\n${v2Result.semanticContext.slice(0, 3).join("\n")}`;
     }
     
-    // Retry loop for JSON parsing with exponential backoff
+    const planTempRec = adaptiveTemperatureService.getRecommendedTemperature(
+      config.model || "local-model",
+      "planning"
+    );
+    const planTemperature = planTempRec.fallback ? optimized.temperature : planTempRec.temperature;
+
+    const retrySessionId = smartRetryService.startSession(enhancedUserPrompt);
+    let lastResponse = "";
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const promptSuffix = attempt > 0 
-        ? "\n\nIMPORTANT: Your previous response was not valid JSON. Respond with ONLY valid JSON, no markdown or explanations."
-        : "";
+      let currentPrompt = enhancedUserPrompt;
+      
+      if (attempt > 0) {
+        const failureMode = smartRetryService.detectFailureMode(lastResponse, enhancedUserPrompt);
+        const retryResult = smartRetryService.getRetryPrompt(
+          enhancedUserPrompt,
+          failureMode,
+          attempt,
+          lastResponse
+        );
+        currentPrompt = retryResult.prompt + '\n\nCRITICAL: Your response MUST be valid JSON only. No text before or after the JSON object. Start with { and end with }.';
+        logger.info("[Intelligence] Smart retry for planning", {
+          attempt,
+          failureMode,
+          strategy: retryResult.strategy,
+          reasoning: retryResult.reasoning,
+        });
+        this.emit({ type: "thinking", model: "planner", content: `Refining approach (${retryResult.strategy})...` });
+      }
 
-      // Use optimized prompt from local model optimizer
-      const fullPrompt = optimized.systemPrompt + promptSuffix;
+      const fullPrompt = optimized.systemPrompt;
 
+      const planConfig = { ...config, temperature: planTemperature };
       const response = await generateCompletion(
-        config,
+        planConfig,
         fullPrompt,
-        enhancedUserPrompt,
+        currentPrompt,
         effectiveMaxTokens
       );
+      lastResponse = response;
 
-      // Use safe JSON parsing with fallback to simple plan
+      const cleanedResponse = outputParserService.parse(response);
+
       const parseResult = safeParseJSON<{
         summary?: string;
         architecture?: string;
@@ -914,11 +967,33 @@ export class AIOrchestrator {
         searchNeeded?: boolean;
         searchQueries?: string[];
         tasks?: Array<{ id?: string; title?: string; description?: string; type?: string }>;
-      }>(response);
+      }>(cleanedResponse.extractedBlocks.length > 0 ? cleanedResponse.extractedBlocks[0].content : response);
 
       if (parseResult.success) {
         const parsed = parseResult.data;
         
+        smartRetryService.recordAttempt(retrySessionId, {
+          attempt,
+          strategy: "rephrase",
+          originalPrompt: enhancedUserPrompt,
+          modifiedPrompt: currentPrompt,
+          failureMode: "unknown",
+          succeeded: true,
+          durationMs: 0,
+        });
+        smartRetryService.completeSession(retrySessionId, true);
+
+        adaptiveTemperatureService.recordOutcome({
+          taskType: "planning",
+          model: config.model || "local-model",
+          temperature: planTemperature,
+          success: true,
+          syntaxErrors: 0,
+          outputLength: response.length,
+          timestamp: Date.now(),
+          retryCount: attempt,
+        });
+
         const tasks: OrchestratorTask[] = (parsed.tasks || []).map((t, i: number) => ({
           id: t.id || String(i + 1),
           title: t.title || `Task ${i + 1}`,
@@ -938,17 +1013,35 @@ export class AIOrchestrator {
         };
       }
 
-      // Log failure and retry if attempts remain
       logger.warn("Plan JSON parse attempt failed", { attempt: attempt + 1, maxRetries: maxRetries + 1, error: parseResult.error });
       
+      smartRetryService.recordAttempt(retrySessionId, {
+        attempt,
+        strategy: attempt === 0 ? "rephrase" : "constrain-output",
+        originalPrompt: enhancedUserPrompt,
+        modifiedPrompt: currentPrompt,
+        failureMode: "wrong-format",
+        succeeded: false,
+        durationMs: 0,
+      });
+
       if (attempt < maxRetries) {
-        this.emit({ type: "thinking", model: "planner", content: "Refining the plan structure..." });
-        // Exponential backoff: 500ms, 1000ms
         await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, attempt)));
       }
     }
 
-    // All retries exhausted, fall back to simple plan
+    smartRetryService.completeSession(retrySessionId, false);
+    adaptiveTemperatureService.recordOutcome({
+      taskType: "planning",
+      model: config.model || "local-model",
+      temperature: planTemperature,
+      success: false,
+      syntaxErrors: 0,
+      outputLength: lastResponse.length,
+      timestamp: Date.now(),
+      retryCount: maxRetries + 1,
+    });
+
     logger.warn("All planning retries exhausted, using simple plan");
     return this.createSimplePlan(userRequest);
   }
@@ -1132,13 +1225,30 @@ export class AIOrchestrator {
       enhancedUserPrompt = `${enhancedUserPrompt}\n\nSEMANTIC CODE CONTEXT:\n${v2Result.semanticContext.slice(0, 5).join("\n\n").slice(0, 2000)}`;
     }
 
+    const tempRecommendation = adaptiveTemperatureService.getRecommendedTemperature(
+      config.model || "local-model",
+      "code-generation"
+    );
+    const effectiveTemperature = tempRecommendation.fallback ? optimized.temperature : tempRecommendation.temperature;
+    
+    logger.info("[Intelligence] Adaptive temperature", {
+      model: config.model,
+      recommended: tempRecommendation.temperature,
+      confidence: tempRecommendation.confidence,
+      fallback: tempRecommendation.fallback,
+      effective: effectiveTemperature,
+    });
+
+    const complexity = promptChunkingService.analyzeComplexity(userRequest);
+    logger.info("[Intelligence] Prompt complexity", { complexity: complexity.complexity, componentCount: complexity.componentCount });
+
     const stream = await client.chat.completions.create({
       model: v2Result?.selectedModel || config.model || "local-model",
       messages: [
         { role: "system", content: optimized.systemPrompt },
         { role: "user", content: enhancedUserPrompt },
       ],
-      temperature: optimized.temperature,
+      temperature: effectiveTemperature,
       max_tokens: effectiveMaxTokens,
       stream: true,
     });
@@ -1154,10 +1264,36 @@ export class AIOrchestrator {
       }
     }
 
-    const cleanedCode = fullCode
-      .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
-      .replace(/```$/gm, "")
-      .trim();
+    const parsed = outputParserService.parse(fullCode);
+    logger.info("[Intelligence] Output parsed", {
+      confidence: parsed.confidence,
+      truncated: parsed.truncationDetected,
+      codeBlocks: parsed.extractedBlocks.length,
+      artifactsRemoved: parsed.artifactsRemoved.length,
+      warnings: parsed.parseWarnings.length,
+    });
+
+    let cleanedCode: string;
+    if (parsed.extractedBlocks.length > 0) {
+      cleanedCode = parsed.extractedBlocks.map(b => b.content).join("\n\n").trim();
+    } else {
+      cleanedCode = fullCode
+        .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+        .replace(/```$/gm, "")
+        .trim();
+    }
+
+    const hasErrors = parsed.truncationDetected || parsed.confidence < 0.5;
+    adaptiveTemperatureService.recordOutcome({
+      taskType: "code-generation",
+      model: config.model || "local-model",
+      temperature: effectiveTemperature,
+      success: !hasErrors,
+      syntaxErrors: parsed.extractedBlocks.filter(b => !b.isComplete).length,
+      outputLength: cleanedCode.length,
+      timestamp: Date.now(),
+      retryCount: 0,
+    });
 
     for (const task of plan.tasks.filter(t => t.type === "build")) {
       task.status = "completed";

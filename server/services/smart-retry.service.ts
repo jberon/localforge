@@ -1,171 +1,72 @@
 import { BaseService, ManagedMap } from "../lib/base-service";
-import { contextPruningService } from "./context-pruning.service";
-import { resilienceService } from "./resilience.service";
 
-export interface RetryContext {
+export type RetryStrategy = "rephrase" | "simplify" | "add-examples" | "decompose" | "constrain-output" | "increase-context";
+
+export type FailureMode = "syntax-error" | "incomplete-output" | "wrong-format" | "off-topic" | "repetition" | "empty-output" | "timeout" | "unknown";
+
+export interface RetryConfig {
+  maxRetries: number;
+  strategies: RetryStrategy[];
+  adaptiveOrder: boolean;
+  cooldownMs: number;
+}
+
+export interface RetryAttempt {
+  attempt: number;
+  strategy: RetryStrategy;
   originalPrompt: string;
-  systemPrompt?: string;
-  context?: string;
-  error: Error;
-  attemptNumber: number;
-  maxAttempts: number;
+  modifiedPrompt: string;
+  failureMode: FailureMode;
+  succeeded: boolean;
+  durationMs: number;
 }
 
-export interface RetryStrategy {
-  name: string;
-  description: string;
-  apply: (ctx: RetryContext) => RetryModification;
+export interface RetrySession {
+  id: string;
+  originalPrompt: string;
+  attempts: RetryAttempt[];
+  finalResult: string | null;
+  totalDurationMs: number;
+  succeeded: boolean;
 }
 
-export interface RetryModification {
+export interface RetryResult {
   prompt: string;
-  systemPrompt?: string;
-  context?: string;
-  temperatureAdjustment?: number;
-  maxTokensAdjustment?: number;
-  strategyUsed: string;
-  reason: string;
+  strategy: RetryStrategy;
+  attempt: number;
+  shouldContinue: boolean;
+  reasoning: string;
 }
 
-export interface SmartRetryResult {
-  success: boolean;
-  finalAttempt: number;
-  strategiesUsed: string[];
-  modifications: RetryModification[];
+interface StrategyStats {
+  uses: number;
+  successes: number;
 }
 
-const STRATEGIES: RetryStrategy[] = [
-  {
-    name: "reduce_context",
-    description: "Reduce context size by 50%",
-    apply: (ctx: RetryContext): RetryModification => {
-      const contextTokens = contextPruningService.estimateTokens(ctx.context || "");
-      const promptTokens = contextPruningService.estimateTokens(ctx.originalPrompt);
-      
-      let reducedContext = ctx.context || "";
-      if (contextTokens > 1000) {
-        const targetLength = Math.floor(reducedContext.length / 2);
-        reducedContext = reducedContext.substring(reducedContext.length - targetLength);
-        reducedContext = "[...earlier context trimmed...]\n" + reducedContext;
-      }
-      
-      return {
-        prompt: ctx.originalPrompt,
-        context: reducedContext,
-        systemPrompt: ctx.systemPrompt,
-        strategyUsed: "reduce_context",
-        reason: `Reduced context from ${contextTokens} to ~${contextTokens / 2} tokens`,
-      };
-    },
-  },
-  {
-    name: "simplify_prompt",
-    description: "Simplify the prompt to focus on core requirements",
-    apply: (ctx: RetryContext): RetryModification => {
-      let simplified = ctx.originalPrompt;
-      
-      simplified = simplified.replace(/\b(please|kindly|if possible|maybe|perhaps|could you|would you)\b/gi, "");
-      simplified = simplified.replace(/\b(I would like|I want|I need|I think|I believe|in my opinion)\b/gi, "");
-      simplified = simplified.replace(/\b(very|really|quite|rather|somewhat|fairly)\b/gi, "");
-      simplified = simplified.replace(/\s+/g, " ").trim();
-      simplified = `TASK (simplified retry): ${simplified}`;
-      
-      return {
-        prompt: simplified,
-        systemPrompt: ctx.systemPrompt,
-        context: ctx.context,
-        strategyUsed: "simplify_prompt",
-        reason: "Removed verbose language and focused on core task",
-      };
-    },
-  },
-  {
-    name: "break_into_steps",
-    description: "Break down complex task into smaller steps",
-    apply: (ctx: RetryContext): RetryModification => {
-      const stepPrompt = `Let's approach this step by step:
+const ALL_STRATEGIES: RetryStrategy[] = ["rephrase", "simplify", "add-examples", "decompose", "constrain-output", "increase-context"];
 
-Original task: ${ctx.originalPrompt}
+const FAILURE_MODE_STRATEGIES: Record<FailureMode, RetryStrategy[]> = {
+  "syntax-error": ["constrain-output", "simplify", "add-examples"],
+  "incomplete-output": ["simplify", "decompose", "constrain-output"],
+  "wrong-format": ["add-examples", "constrain-output", "rephrase"],
+  "off-topic": ["rephrase", "add-examples", "constrain-output"],
+  "repetition": ["rephrase", "simplify", "constrain-output"],
+  "empty-output": ["rephrase", "increase-context", "simplify"],
+  "timeout": ["simplify", "decompose", "constrain-output"],
+  "unknown": ["rephrase", "simplify", "add-examples"],
+};
 
-Please:
-1. First, identify the key components needed
-2. Then, implement the most critical part first
-3. Finally, add supporting functionality
-
-Focus on getting a working solution even if simplified.`;
-
-      return {
-        prompt: stepPrompt,
-        systemPrompt: ctx.systemPrompt,
-        context: ctx.context,
-        strategyUsed: "break_into_steps",
-        reason: "Decomposed task into sequential steps",
-      };
-    },
-  },
-  {
-    name: "lower_temperature",
-    description: "Lower temperature for more deterministic output",
-    apply: (ctx: RetryContext): RetryModification => {
-      return {
-        prompt: ctx.originalPrompt,
-        systemPrompt: ctx.systemPrompt,
-        context: ctx.context,
-        temperatureAdjustment: -0.2,
-        strategyUsed: "lower_temperature",
-        reason: "Reduced temperature for more consistent output",
-      };
-    },
-  },
-  {
-    name: "minimal_output",
-    description: "Request minimal output to avoid token limits",
-    apply: (ctx: RetryContext): RetryModification => {
-      const minimalPrompt = `${ctx.originalPrompt}
-
-IMPORTANT: Provide a minimal, working implementation. Omit comments, tests, and optional features. Focus only on core functionality.`;
-
-      return {
-        prompt: minimalPrompt,
-        systemPrompt: ctx.systemPrompt,
-        context: ctx.context,
-        maxTokensAdjustment: -2000,
-        strategyUsed: "minimal_output",
-        reason: "Requested minimal output to avoid limits",
-      };
-    },
-  },
-  {
-    name: "error_context",
-    description: "Include error information in retry",
-    apply: (ctx: RetryContext): RetryModification => {
-      const errorContext = `Previous attempt failed with error: ${ctx.error.message}
-
-Please try again, avoiding the issue that caused the error.
-
-Original request: ${ctx.originalPrompt}`;
-
-      return {
-        prompt: errorContext,
-        systemPrompt: ctx.systemPrompt,
-        context: ctx.context,
-        strategyUsed: "error_context",
-        reason: "Added error context to inform retry",
-      };
-    },
-  },
-];
-
-export class SmartRetryService extends BaseService {
+class SmartRetryService extends BaseService {
   private static instance: SmartRetryService;
-  
-  private strategies: RetryStrategy[] = [...STRATEGIES];
-  private retryHistory: ManagedMap<string, SmartRetryResult>;
-  private readonly MAX_HISTORY = 500;
+  private sessions: ManagedMap<string, RetrySession>;
+  private strategyStats: ManagedMap<RetryStrategy, StrategyStats>;
+  private completedSessions: RetrySession[];
 
   private constructor() {
     super("SmartRetryService");
-    this.retryHistory = this.createManagedMap<string, SmartRetryResult>({ maxSize: 500, strategy: "lru" });
+    this.sessions = this.createManagedMap<string, RetrySession>({ maxSize: 200, strategy: "lru" });
+    this.strategyStats = this.createManagedMap<RetryStrategy, StrategyStats>({ maxSize: 50, strategy: "lru" });
+    this.completedSessions = [];
   }
 
   static getInstance(): SmartRetryService {
@@ -175,235 +76,253 @@ export class SmartRetryService extends BaseService {
     return SmartRetryService.instance;
   }
 
-  selectStrategy(ctx: RetryContext): RetryStrategy {
-    const errorMessage = ctx.error.message.toLowerCase();
-    
-    if (errorMessage.includes("token") || errorMessage.includes("length") || errorMessage.includes("too long")) {
-      return this.getStrategy("reduce_context") || this.strategies[0];
+  detectFailureMode(output: string, originalPrompt: string): FailureMode {
+    if (!output || output.trim().length < 20) {
+      return "empty-output";
     }
-    
-    if (errorMessage.includes("timeout") || errorMessage.includes("timed out")) {
-      return this.getStrategy("minimal_output") || this.strategies[0];
+
+    const chunks = output.match(/.{50,}/g) || [];
+    for (const chunk of chunks) {
+      const escaped = chunk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "g");
+      const matches = output.match(regex);
+      if (matches && matches.length >= 3) {
+        return "repetition";
+      }
     }
-    
-    if (errorMessage.includes("parse") || errorMessage.includes("syntax") || errorMessage.includes("invalid")) {
-      return this.getStrategy("lower_temperature") || this.strategies[0];
+
+    const openParens = (output.match(/\(/g) || []).length;
+    const closeParens = (output.match(/\)/g) || []).length;
+    const openBrackets = (output.match(/\[/g) || []).length;
+    const closeBrackets = (output.match(/\]/g) || []).length;
+    const openBraces = (output.match(/\{/g) || []).length;
+    const closeBraces = (output.match(/\}/g) || []).length;
+    const singleQuotes = (output.match(/'/g) || []).length;
+    const doubleQuotes = (output.match(/"/g) || []).length;
+    const backticks = (output.match(/`/g) || []).length;
+
+    if (
+      openParens !== closeParens ||
+      openBrackets !== closeBrackets ||
+      openBraces !== closeBraces ||
+      singleQuotes % 2 !== 0 ||
+      doubleQuotes % 2 !== 0 ||
+      backticks % 2 !== 0
+    ) {
+      return "syntax-error";
     }
-    
-    if (errorMessage.includes("complex") || errorMessage.includes("too large")) {
-      return this.getStrategy("break_into_steps") || this.strategies[0];
+
+    const trimmed = output.trimEnd();
+    const endsWithLetter = /[a-zA-Z]$/.test(trimmed) && /\s[a-zA-Z]+$/.test(trimmed);
+    const unclosedCodeFence = (output.match(/```/g) || []).length % 2 !== 0;
+    if (endsWithLetter || unclosedCodeFence) {
+      return "incomplete-output";
     }
-    
-    const strategyOrder = [
-      "error_context",
-      "simplify_prompt",
-      "reduce_context",
-      "lower_temperature",
-      "minimal_output",
-      "break_into_steps",
-    ];
-    
-    const strategyIndex = Math.min(ctx.attemptNumber - 1, strategyOrder.length - 1);
-    return this.getStrategy(strategyOrder[strategyIndex]) || this.strategies[0];
+
+    const promptLower = originalPrompt.toLowerCase();
+    const isCodeRequest = /(generat|creat|writ|implement|build|code|function|component)/i.test(promptLower);
+    if (isCodeRequest) {
+      const hasCodeMarkers = /(function|const|class|import|export|let|var|def|return)\b/.test(output);
+      if (!hasCodeMarkers) {
+        return "wrong-format";
+      }
+    }
+
+    const promptWords = originalPrompt.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    const outputLower = output.toLowerCase();
+    if (promptWords.length > 0) {
+      const matchingWords = promptWords.filter(w => outputLower.includes(w));
+      const overlapRatio = matchingWords.length / promptWords.length;
+      if (overlapRatio < 0.1) {
+        return "off-topic";
+      }
+    }
+
+    return "unknown";
   }
 
-  getStrategy(name: string): RetryStrategy | undefined {
-    return this.strategies.find(s => s.name === name);
-  }
-
-  applyStrategy(ctx: RetryContext): RetryModification {
-    const strategy = this.selectStrategy(ctx);
-    const modification = strategy.apply(ctx);
-    
-    this.log("Smart retry strategy applied", {
-      strategy: strategy.name,
-      attempt: ctx.attemptNumber,
-      reason: modification.reason,
-    });
-    
-    return modification;
-  }
-
-  async executeWithSmartRetry<T>(
-    executor: (prompt: string, systemPrompt?: string, context?: string, temperatureOffset?: number, maxTokensOffset?: number) => Promise<T>,
+  getRetryPrompt(
     originalPrompt: string,
-    options?: {
-      systemPrompt?: string;
-      context?: string;
-      maxAttempts?: number;
-      circuitKey?: string;
-      onRetry?: (attempt: number, strategy: string, modification: RetryModification) => void;
-    }
-  ): Promise<{ result: T; retryInfo: SmartRetryResult }> {
-    const maxAttempts = options?.maxAttempts || 3;
-    const circuitKey = options?.circuitKey || "smart-retry";
-    const strategiesUsed: string[] = [];
-    const modifications: RetryModification[] = [];
-    
-    let currentPrompt = originalPrompt;
-    let currentSystemPrompt = options?.systemPrompt;
-    let currentContext = options?.context;
-    let temperatureOffset = 0;
-    let maxTokensOffset = 0;
+    failureMode: FailureMode,
+    attempt: number,
+    previousOutput?: string,
+    config?: Partial<RetryConfig>
+  ): RetryResult {
+    const mergedConfig: RetryConfig = {
+      maxRetries: config?.maxRetries ?? 3,
+      strategies: config?.strategies ?? ALL_STRATEGIES,
+      adaptiveOrder: config?.adaptiveOrder ?? true,
+      cooldownMs: config?.cooldownMs ?? 500,
+    };
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      if (!resilienceService.canExecute(circuitKey)) {
-        throw new Error(`Circuit breaker open for ${circuitKey}`);
+    let strategy: RetryStrategy;
+
+    if (mergedConfig.adaptiveOrder) {
+      const orderedStrategies = FAILURE_MODE_STRATEGIES[failureMode];
+      const index = (attempt - 1) % orderedStrategies.length;
+      strategy = orderedStrategies[index];
+    } else {
+      const index = (attempt - 1) % mergedConfig.strategies.length;
+      strategy = mergedConfig.strategies[index];
+    }
+
+    const modifiedPrompt = this.applyStrategy(originalPrompt, strategy, failureMode, previousOutput);
+
+    const shouldContinue = attempt < mergedConfig.maxRetries;
+
+    const reasoning = `Attempt ${attempt}: Detected failure mode "${failureMode}", applying "${strategy}" strategy. ${shouldContinue ? "Will retry if this fails." : "This is the final attempt."}`;
+
+    return {
+      prompt: modifiedPrompt,
+      strategy,
+      attempt,
+      shouldContinue,
+      reasoning,
+    };
+  }
+
+  applyStrategy(prompt: string, strategy: RetryStrategy, failureMode: FailureMode, previousOutput?: string): string {
+    switch (strategy) {
+      case "rephrase": {
+        const sentences = prompt.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+        if (sentences.length > 1) {
+          const last = sentences.pop()!;
+          sentences.unshift(`IMPORTANT: ${last}`);
+        } else if (sentences.length === 1) {
+          sentences[0] = `IMPORTANT: ${sentences[0]}`;
+        }
+        return sentences.join(" ");
       }
 
-      try {
-        const result = await executor(
-          currentPrompt,
-          currentSystemPrompt,
-          currentContext,
-          temperatureOffset,
-          maxTokensOffset
-        );
-        
-        resilienceService.recordSuccess(circuitKey);
-        
-        return {
-          result,
-          retryInfo: {
-            success: true,
-            finalAttempt: attempt,
-            strategiesUsed,
-            modifications,
-          },
+      case "simplify": {
+        let simplified = prompt
+          .replace(/\b(beautiful|elegant|sophisticated|comprehensive|robust|advanced|complex|detailed|thorough)\b/gi, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        simplified += "\n\nKeep it simple. Generate ONLY the essential code. Limit scope to one component/function at a time.";
+        return simplified;
+      }
+
+      case "add-examples": {
+        let withExamples = prompt;
+        withExamples += "\n\nExample of expected output format:\n```typescript\nimport { Something } from './module';\n\nexport function myFunction(param: string): Result {\n  return { data: param };\n}\n```";
+        return withExamples;
+      }
+
+      case "decompose": {
+        const words = prompt.split(/\s+/);
+        const thirds = Math.ceil(words.length / 3);
+        const step1 = words.slice(0, thirds).join(" ");
+        const step2 = words.slice(thirds, thirds * 2).join(" ");
+        const step3 = words.slice(thirds * 2).join(" ");
+        return `Complete ONLY step 1 below:\n\n1. ${step1}\n2. ${step2}\n3. ${step3}`;
+      }
+
+      case "constrain-output": {
+        return `${prompt}\n\nRespond with ONLY valid code. No explanations. No markdown outside of code fences. Start with import statements.`;
+      }
+
+      case "increase-context": {
+        return `${prompt}\n\nContext: This is a TypeScript project using modern ES modules. The output should be a valid .ts or .tsx file following standard conventions. Use proper typing, named exports, and follow the existing project patterns.`;
+      }
+
+      default:
+        return prompt;
+    }
+  }
+
+  startSession(originalPrompt: string): string {
+    const id = `retry_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const session: RetrySession = {
+      id,
+      originalPrompt,
+      attempts: [],
+      finalResult: null,
+      totalDurationMs: 0,
+      succeeded: false,
+    };
+    this.sessions.set(id, session);
+    return id;
+  }
+
+  recordAttempt(sessionId: string, attempt: RetryAttempt): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
+    session.attempts.push(attempt);
+    session.totalDurationMs += attempt.durationMs;
+
+    const stats = this.strategyStats.get(attempt.strategy) || { uses: 0, successes: 0 };
+    stats.uses++;
+    if (attempt.succeeded) {
+      stats.successes++;
+    }
+    this.strategyStats.set(attempt.strategy, stats);
+  }
+
+  completeSession(sessionId: string, succeeded: boolean, finalResult?: string): RetrySession | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+
+    session.succeeded = succeeded;
+    session.finalResult = finalResult ?? null;
+    this.completedSessions.push(session);
+    return session;
+  }
+
+  getStats(): {
+    totalSessions: number;
+    successRate: number;
+    averageRetries: number;
+    strategyEffectiveness: Record<RetryStrategy, { uses: number; successes: number; rate: number }>;
+    failureModeDistribution: Record<FailureMode, number>;
+  } {
+    const totalSessions = this.completedSessions.length;
+    const successfulSessions = this.completedSessions.filter(s => s.succeeded).length;
+    const successRate = totalSessions > 0 ? successfulSessions / totalSessions : 0;
+
+    const totalRetries = this.completedSessions.reduce((sum, s) => sum + s.attempts.length, 0);
+    const averageRetries = totalSessions > 0 ? totalRetries / totalSessions : 0;
+
+    const strategyEffectiveness = {} as Record<RetryStrategy, { uses: number; successes: number; rate: number }>;
+    for (const s of ALL_STRATEGIES) {
+      const stats = this.strategyStats.get(s);
+      if (stats) {
+        strategyEffectiveness[s] = {
+          uses: stats.uses,
+          successes: stats.successes,
+          rate: stats.uses > 0 ? stats.successes / stats.uses : 0,
         };
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        
-        resilienceService.recordFailure(circuitKey, err);
-        
-        if (attempt >= maxAttempts) {
-          throw error;
-        }
-
-        const ctx: RetryContext = {
-          originalPrompt,
-          systemPrompt: options?.systemPrompt,
-          context: options?.context,
-          error: err,
-          attemptNumber: attempt,
-          maxAttempts,
-        };
-
-        const modification = this.applyStrategy(ctx);
-        strategiesUsed.push(modification.strategyUsed);
-        modifications.push(modification);
-
-        currentPrompt = modification.prompt;
-        currentSystemPrompt = modification.systemPrompt;
-        currentContext = modification.context;
-        
-        if (modification.temperatureAdjustment) {
-          temperatureOffset += modification.temperatureAdjustment;
-        }
-        if (modification.maxTokensAdjustment) {
-          maxTokensOffset += modification.maxTokensAdjustment;
-        }
-
-        const backoffDelay = resilienceService.calculateBackoff(attempt);
-        
-        if (options?.onRetry) {
-          options.onRetry(attempt, modification.strategyUsed, modification);
-        }
-
-        this.log("Smart retry attempt", {
-          attempt,
-          strategy: modification.strategyUsed,
-          promptLength: currentPrompt.length,
-          contextLength: currentContext?.length || 0,
-          backoffDelay,
-        });
-
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+      } else {
+        strategyEffectiveness[s] = { uses: 0, successes: 0, rate: 0 };
       }
     }
 
-    throw new Error("Max retry attempts exceeded");
-  }
-
-  addStrategy(strategy: RetryStrategy): void {
-    this.strategies.push(strategy);
-    this.log("Custom retry strategy added", { name: strategy.name });
-  }
-
-  removeStrategy(name: string): boolean {
-    const index = this.strategies.findIndex(s => s.name === name);
-    if (index >= 0) {
-      this.strategies.splice(index, 1);
-      return true;
+    const failureModeDistribution = {} as Record<FailureMode, number>;
+    const allModes: FailureMode[] = ["syntax-error", "incomplete-output", "wrong-format", "off-topic", "repetition", "empty-output", "timeout", "unknown"];
+    for (const mode of allModes) {
+      failureModeDistribution[mode] = 0;
     }
-    return false;
-  }
+    for (const session of this.completedSessions) {
+      for (const attempt of session.attempts) {
+        failureModeDistribution[attempt.failureMode] = (failureModeDistribution[attempt.failureMode] || 0) + 1;
+      }
+    }
 
-  getAvailableStrategies(): Array<{ name: string; description: string }> {
-    return this.strategies.map(s => ({
-      name: s.name,
-      description: s.description,
-    }));
+    return {
+      totalSessions,
+      successRate,
+      averageRetries,
+      strategyEffectiveness,
+      failureModeDistribution,
+    };
   }
 
   destroy(): void {
-    this.retryHistory.clear();
-    this.strategies = [...STRATEGIES];
+    this.sessions.clear();
+    this.strategyStats.clear();
+    this.completedSessions = [];
     this.log("SmartRetryService destroyed");
-  }
-
-  analyzeError(error: Error): {
-    category: string;
-    suggestedStrategies: string[];
-    severity: "low" | "medium" | "high";
-  } {
-    const message = error.message.toLowerCase();
-    
-    if (message.includes("token") || message.includes("length")) {
-      return {
-        category: "token_limit",
-        suggestedStrategies: ["reduce_context", "minimal_output"],
-        severity: "medium",
-      };
-    }
-    
-    if (message.includes("timeout")) {
-      return {
-        category: "timeout",
-        suggestedStrategies: ["minimal_output", "break_into_steps"],
-        severity: "high",
-      };
-    }
-    
-    if (message.includes("rate limit") || message.includes("429")) {
-      return {
-        category: "rate_limit",
-        suggestedStrategies: ["lower_temperature"],
-        severity: "medium",
-      };
-    }
-    
-    if (message.includes("parse") || message.includes("json") || message.includes("syntax")) {
-      return {
-        category: "parse_error",
-        suggestedStrategies: ["lower_temperature", "simplify_prompt"],
-        severity: "low",
-      };
-    }
-    
-    if (message.includes("connection") || message.includes("network")) {
-      return {
-        category: "connection",
-        suggestedStrategies: ["error_context"],
-        severity: "high",
-      };
-    }
-    
-    return {
-      category: "unknown",
-      suggestedStrategies: ["error_context", "simplify_prompt"],
-      severity: "medium",
-    };
   }
 }
 

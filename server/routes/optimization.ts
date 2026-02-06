@@ -17,6 +17,7 @@ import { registerDocumentationRoutes } from "./optimization/documentation.routes
 import { registerAnalysisRoutes } from "./optimization/analysis.routes";
 import { registerSecurityRoutes } from "./optimization/security.routes";
 import { registerValidationRoutes } from "./optimization/validation.routes";
+import { registerIntelligenceRoutes } from "./optimization/intelligence.routes";
 
 const router = Router();
 
@@ -126,8 +127,8 @@ router.post("/hot-swap/configure", asyncHandler((req, res) => {
 
 // Get available retry strategies
 router.get("/retry-strategies", asyncHandler((_req, res) => {
-  const strategies = smartRetryService.getAvailableStrategies();
-  res.json(strategies);
+  const stats = smartRetryService.getStats();
+  res.json(stats.strategyEffectiveness);
 }));
 
 // Get checkpoint stats for a project
@@ -217,6 +218,7 @@ registerDocumentationRoutes(router);
 registerAnalysisRoutes(router);
 registerSecurityRoutes(router);
 registerValidationRoutes(router);
+registerIntelligenceRoutes(router);
 
 // Mount extracted sub-route modules
 import subRoutes from "./optimization/index";

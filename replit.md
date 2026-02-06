@@ -71,6 +71,15 @@ Includes built-in version control with manual and auto-save checkpoints, history
 ### Local LLM Optimization & Multi-Agent Architecture
 Optimized for local LLM performance, integrating with LM Studio via client connection caching, extended timeouts, automatic retry logic, and array-based streaming. A multi-agent architecture utilizes specialized services for task decomposition, project memory, code execution, auto-fixing, and refactoring. Recent enhancements focus on speculative decoding, quantization-aware context, KV cache persistence, local embedding, hardware optimization, intelligent model routing, streaming budget management, conversation compression, and performance profiling.
 
+### Intelligence Services (Feb 2026)
+Five specialized services for local LLM optimization, all extending BaseService with ManagedMap for memory safety:
+- **PromptChunkingService** (`server/services/prompt-chunking.service.ts`): Breaks complex requests into 6K-token chunks with dependency tracking and parallel/sequential execution hints. Analyzes prompt complexity (lines, features, dependencies) to decide chunking strategy.
+- **OutputParserService** (`server/services/output-parser.service.ts`): Structural parsing of raw LLM output with code fence extraction, JSON validation, truncation detection, markdown artifact cleanup, and language-aware block parsing.
+- **AdaptiveTemperatureService** (`server/services/adaptive-temperature.service.ts`): Learns optimal temperature per model and task type (planning/building/refining/discussion) from quality signals. Uses exponential moving average with configurable learning rate. Applied to planning phase via config override.
+- **ConversationMemoryService** (`server/services/conversation-memory.service.ts`): Compresses multi-turn history into structured project state summaries (files, components, endpoints, decisions, tech stack). Preserves recent messages while aggressively compressing older ones. Used when messages > 6.
+- **SmartRetryService** (`server/services/smart-retry.service.ts`): Intelligent retry with 6 strategies (rephrase, simplify, add-examples, decompose, constrain-output, increase-context) selected based on failure mode detection (syntax-error, incomplete-output, wrong-format, off-topic, repetition, empty-output, timeout). Planning retries enforce JSON-only output.
+- **API Routes**: All services exposed via `/api/optimization/intelligence/*` endpoints for status, configuration, and manual triggering.
+
 ### Autonomous Development Loop & Error Learning
 Features an autonomous development loop with runtime feedback capture, UI/UX analysis, enhanced auto-fix capabilities, and improved project memory. An error learning service tracks common LLM mistakes, learns new patterns, generates prevention prompts, and provides auto-fix suggestions.
 
