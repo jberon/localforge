@@ -25,13 +25,13 @@ export async function registerRoutes(
   
   app.use("/api/projects", apiRateLimiter, projectRoutes);
   
-  app.use("/api/projects", fileRoutes);
+  app.use("/api/projects", apiRateLimiter, fileRoutes);
   
-  app.use("/api/projects", versionRoutes);
+  app.use("/api/projects", apiRateLimiter, versionRoutes);
   
-  app.use("/api/projects", packageRoutes);
+  app.use("/api/projects", apiRateLimiter, packageRoutes);
   
-  app.use("/api/projects", generationRoutes);
+  app.use("/api/projects", apiRateLimiter, generationRoutes);
   
   app.use("/api/llm", apiRateLimiter, llmRoutes);
   
