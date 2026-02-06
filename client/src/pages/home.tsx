@@ -120,7 +120,7 @@ export default function Home() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [lastError, setLastError] = useState<{ message: string; prompt?: string } | null>(null);
   const [showQuickUndo, setShowQuickUndo] = useState(false);
-  const [showFileExplorer, setShowFileExplorer] = useState(true);
+  const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [showDatabasePanel, setShowDatabasePanel] = useState(false);
   const [showAIInsights, setShowAIInsights] = useState(false);
   const [showHomeSettings, setShowHomeSettings] = useState(false);
@@ -1543,407 +1543,406 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-full">
-      <header className="flex items-center justify-between gap-4 px-3 h-9 min-h-[36px] border-b border-border/40 bg-muted/30 electron-drag-region shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <Hammer className="h-4 w-4 text-primary shrink-0 electron-no-drag cursor-pointer" onClick={() => setActiveProjectId(null)} />
-          <span className="text-sm font-semibold tracking-tight shrink-0 electron-no-drag cursor-pointer" onClick={() => setActiveProjectId(null)}>LocalForge</span>
-          {activeProject && (
-            <span className="text-xs text-muted-foreground truncate max-w-[200px] electron-no-drag" data-testid="text-project-name-header">
-              {activeProject.name}
-            </span>
-          )}
-          {testModeActive && (
-            <Badge 
-              variant="secondary" 
-              className={`${testModeConnected ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'} border text-xs`}
-              data-testid="badge-test-mode"
-              title={testModeConnected ? "Test Mode: Connected to Replit AI" : "Test Mode: Not Connected"}
-            >
-              <FlaskConical className="w-3 h-3 mr-1" />
-              Test
-            </Badge>
-          )}
+    <div className="flex h-screen w-full">
+      <div className="flex flex-col w-12 min-w-[48px] border-r bg-muted/30 shrink-0">
+        <div className="flex flex-col items-center py-2 gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setActiveProjectId(null)}
+            title="Home"
+            data-testid="button-strip-home"
+          >
+            <Hammer className="h-4 w-4 text-primary" />
+          </Button>
         </div>
-        
-        <div className="flex items-center gap-1">
-          {(llmConnected || testModeConnected) && (
-            <div className="flex items-center gap-2 mr-2" data-testid="indicator-connected">
-              <div 
-                className={`w-2 h-2 rounded-full ${
-                  health && !health.isHealthy && health.consecutiveFailures > 0
-                    ? 'bg-amber-500 animate-pulse' 
-                    : 'bg-emerald-500'
-                }`} 
-                title={testModeConnected ? "Connected to Replit AI" : "Connected to LM Studio"}
-              />
-              <span className="text-xs text-muted-foreground">Connected</span>
-            </div>
-          )}
-          {llmConnected === false && !testModeConnected && (
-            <Badge 
-              variant="outline" 
-              className="gap-1.5 text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover-elevate electron-no-drag mr-2"
-              onClick={checkConnection}
-              data-testid="badge-connection-status"
-              title="Click to retry connection"
-            >
-              <WifiOff className="h-3 w-3" />
-              Offline
-            </Badge>
-          )}
-          {activeProject && (
-            <DeployButton
-              projectId={parseInt(activeProject.id) || 0}
-              projectName={activeProject.name}
-              hasBackend={true}
-              hasDatabase={false}
-              disabled={isGenerating || isPlanning || isBuilding}
-            />
-          )}
-          <Button 
-            variant="ghost" 
-            size="icon" 
+        <div className="flex flex-col items-center gap-1 py-2 border-t">
+          <Button
+            variant={showFileExplorer ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => setShowFileExplorer(!showFileExplorer)}
+            title="Files"
+            data-testid="button-strip-files"
+            className={showFileExplorer ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <FolderTree className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={showDatabasePanel ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => setShowDatabasePanel(!showDatabasePanel)}
+            title="Database"
+            data-testid="button-strip-database"
+            className={showDatabasePanel ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <Database className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={showAIInsights ? "secondary" : "ghost"}
+            size="icon"
             onClick={() => setShowAIInsights(!showAIInsights)}
-            data-testid="button-ai-insights"
             title="AI Insights"
+            data-testid="button-strip-ai-insights"
+            className={showAIInsights ? "toggle-elevate toggle-elevated" : ""}
           >
             <Brain className={`h-4 w-4 ${isGenerating || isPlanning ? "text-purple-500 animate-pulse" : ""}`} />
           </Button>
+        </div>
+        <div className="mt-auto flex flex-col items-center gap-1 py-2 border-t">
+          {(llmConnected || testModeConnected) ? (
+            <div
+              className="flex items-center justify-center w-9 h-9 rounded-md"
+              title={testModeConnected ? "Connected to Replit AI" : "Connected to LM Studio"}
+              data-testid="indicator-strip-connected"
+            >
+              <div className={`w-2.5 h-2.5 rounded-full ${
+                health && !health.isHealthy && health.consecutiveFailures > 0
+                  ? 'bg-amber-500 animate-pulse' 
+                  : 'bg-emerald-500'
+              }`} />
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={checkConnection}
+              title="Offline - Click to retry"
+              data-testid="button-strip-reconnect"
+            >
+              <WifiOff className="h-4 w-4 text-yellow-500" />
+            </Button>
+          )}
           <ThemeToggle />
         </div>
-      </header>
-      
-      <div className="flex-1 overflow-hidden relative">
-        <ResizablePanelGroup key={`layout-${showFileExplorer}`} direction="horizontal">
-          <ResizablePanel defaultSize={25} minSize={18} maxSize={40}>
-            <div className="flex flex-col h-full border-r">
-              <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/30 shrink-0">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-1.5 min-w-0 hover-elevate rounded-md px-1.5 py-0.5" data-testid="button-project-selector">
-                      <span className="text-sm font-medium truncate" data-testid="text-chat-project-name">
-                        {activeProject?.name || "New Project"}
-                      </span>
-                      <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-56">
-                    <DropdownMenuItem onClick={() => createProject()} data-testid="menu-new-project">
-                      <Plus className="h-4 w-4 mr-2" />
-                      New Project
-                    </DropdownMenuItem>
-                    {projects.length > 0 && <DropdownMenuSeparator />}
-                    {projects.map((project) => (
-                      <DropdownMenuItem
-                        key={project.id}
-                        onClick={() => setActiveProjectId(project.id)}
-                        className={project.id === activeProjectId ? "bg-accent" : ""}
-                        data-testid={`menu-project-${project.id}`}
-                      >
-                        <span className="truncate">{project.name}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <Button variant="ghost" size="icon" title="History" data-testid="button-chat-history">
-                    <History className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" title="Copy" data-testid="button-chat-copy">
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" title="Open in new window" data-testid="button-chat-external">
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              
-              {lastError && !isGenerating && (
-                <div className="p-3 border-b shrink-0">
-                  <ErrorRecovery
-                    error={lastError.message}
-                    originalPrompt={lastError.prompt}
-                    onRetry={handleRetryFromError}
-                    onCheckConnection={checkConnection}
-                    isRetrying={isGenerating}
-                  />
-                </div>
-              )}
-              
-              {settings.useDualModels && (
-                <div className="px-2 py-2 shrink-0">
-                  <MemoizedDreamTeamThinkingTab
-                    thinking={orchestratorThinking}
-                    phase={orchestratorPhase}
-                    isActive={isGenerating || isPlanning}
-                    isExpanded={dreamTeamExpanded}
-                    onToggleExpand={() => setDreamTeamExpanded(prev => !prev)}
-                  />
-                </div>
-              )}
-              
-              {!settings.useDualModels && (isGenerating || isPlanning) && (
-                <div className="px-2 py-2 shrink-0">
-                  <MemoizedAIThinkingPanel
-                    phase={orchestratorPhase}
-                    thinking={orchestratorThinking}
-                    generationPhase={generationPhase}
-                    isActive={isGenerating || isPlanning}
-                    streamingCode={streamingCode}
-                  />
-                </div>
-              )}
-              
-              {orchestratorTasks.tasks.length > 0 && (
-                <div className="px-2 pb-2 shrink-0">
-                  <TaskProgressPanel
-                    tasks={orchestratorTasks.tasks}
-                    completedCount={orchestratorTasks.completedCount}
-                    totalCount={orchestratorTasks.totalCount}
-                    isVisible={true}
-                  />
-                </div>
-              )}
-              
-              {planTasks.length > 0 && !isBuilding && (
-                <div className="p-3 border-b bg-muted/30 shrink-0">
-                  <PlanModeTaskList
-                    tasks={planTasks}
-                    onTasksChange={setPlanTasks}
-                    onStartBuilding={handleStartBuildingFromPlan}
-                    onEditPlan={() => {
-                      setPlanTasks([]);
-                      setPlanSummary("");
-                      setPlanArchitecture("");
-                    }}
-                    isBuilding={isBuilding}
-                    summary={planSummary}
-                    architecture={planArchitecture}
-                  />
-                </div>
-              )}
+      </div>
 
-              {isBuilding && planTasks.length > 0 && currentPlanTaskIndex >= 0 && (
-                <div className="p-3 border-b bg-muted/30 shrink-0">
-                  <PlanProgress
-                    tasks={planTasks}
-                    currentTaskIndex={currentPlanTaskIndex}
-                  />
-                </div>
-              )}
+      <div className="flex flex-col flex-1 min-w-0">
+        <header className="flex items-center justify-between gap-4 px-3 h-9 min-h-[36px] border-b border-border/40 bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-1.5 min-w-0 hover-elevate rounded-md px-1.5 py-0.5" data-testid="button-project-selector">
+                  <span className="text-sm font-medium truncate" data-testid="text-chat-project-name">
+                    {activeProject?.name || "New Project"}
+                  </span>
+                  <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={() => createProject()} data-testid="menu-new-project">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Project
+                </DropdownMenuItem>
+                {projects.length > 0 && <DropdownMenuSeparator />}
+                {projects.map((project) => (
+                  <DropdownMenuItem
+                    key={project.id}
+                    onClick={() => setActiveProjectId(project.id)}
+                    className={project.id === activeProjectId ? "bg-accent" : ""}
+                    data-testid={`menu-project-${project.id}`}
+                  >
+                    <span className="truncate">{project.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {testModeActive && (
+              <Badge 
+                variant="secondary" 
+                className={`${testModeConnected ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'} border text-xs`}
+                data-testid="badge-test-mode"
+                title={testModeConnected ? "Test Mode: Connected to Replit AI" : "Test Mode: Not Connected"}
+              >
+                <FlaskConical className="w-3 h-3 mr-1" />
+                Test
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {activeProject && (
+              <DeployButton
+                projectId={parseInt(activeProject.id) || 0}
+                projectName={activeProject.name}
+                hasBackend={true}
+                hasDatabase={false}
+                disabled={isGenerating || isPlanning || isBuilding}
+              />
+            )}
+          </div>
+        </header>
 
-              {agentMode === "plan" && planTasks.length === 0 && !isPlanning && (
-                <div className="p-3 border-b shrink-0">
-                  <PlanModeInfo />
+        <div className="flex-1 overflow-hidden relative">
+          <ResizablePanelGroup direction="horizontal">
+            <ResizablePanel defaultSize={30} minSize={20} maxSize={45}>
+              <div className="flex flex-col h-full border-r">
+                <div className="flex items-center justify-between gap-2 px-3 h-9 min-h-[36px] border-b bg-muted/30 shrink-0">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Chat</span>
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <Button variant="ghost" size="icon" title="History" data-testid="button-chat-history">
+                      <History className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" title="Copy" data-testid="button-chat-copy">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              )}
-              
-              <div className="flex-1 overflow-hidden">
-                <MemoizedChatPanel
-                  messages={activeProject?.messages || []}
-                  isLoading={isGenerating || isPlanning}
-                  loadingPhase={generationPhase}
-                  currentActions={currentActions}
-                  onSendMessage={handleIntelligentGenerate}
-                  llmConnected={llmConnected}
-                  onCheckConnection={checkConnection}
-                  queueStatus={queueStatus}
-                  agentMode={agentMode}
-                  onAgentModeChange={setAgentMode}
-                  isModeDisabled={isGenerating || isPlanning || isBuilding}
-                />
-              </div>
-            </div>
-          </ResizablePanel>
-          
-          <ResizableHandle withHandle />
-          
-          <ResizablePanel defaultSize={showFileExplorer ? 55 : 75} minSize={30}>
-            <div className="flex flex-col h-full">
-              <div className="flex items-center gap-1 px-2 h-9 min-h-[36px] border-b bg-muted/30 shrink-0">
-                <button
-                  onClick={() => setCenterTab("preview")}
-                  className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    centerTab === "preview" 
-                      ? "bg-background text-foreground shadow-sm" 
-                      : "text-muted-foreground hover-elevate"
-                  }`}
-                  data-testid="button-tab-preview"
-                >
-                  <span className={`w-2 h-2 rounded-full ${displayCode || isGenerating ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
-                  Preview
-                </button>
-                <button
-                  onClick={() => setCenterTab("console")}
-                  className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    centerTab === "console" 
-                      ? "bg-background text-foreground shadow-sm" 
-                      : "text-muted-foreground hover-elevate"
-                  }`}
-                  data-testid="button-tab-console"
-                >
-                  <Terminal className="h-3 w-3" />
-                  Console
-                </button>
-              </div>
-              
-              <div className="flex-1 overflow-hidden">
-                {!displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
-                  <div className="h-full flex flex-col">
-                    {agentMode === "plan" && (
-                      <div className="p-4 mx-auto max-w-2xl w-full">
-                        <PlanModeInfo />
-                      </div>
-                    )}
-                    <GenerationWizard
-                      onGenerate={handleIntelligentGenerate}
-                      isGenerating={isGenerating || isPlanning}
-                      llmConnected={llmConnected}
+                
+                {lastError && !isGenerating && (
+                  <div className="p-3 border-b shrink-0">
+                    <ErrorRecovery
+                      error={lastError.message}
+                      originalPrompt={lastError.prompt}
+                      onRetry={handleRetryFromError}
                       onCheckConnection={checkConnection}
-                      settings={settings}
-                      planBuildMode={agentMode === "build"}
+                      isRetrying={isGenerating}
                     />
-                  </div>
-                ) : activeProject?.plan && !displayCode && !isBuilding ? (
-                  <div className="h-full max-w-3xl mx-auto">
-                    <PlanReviewPanel
-                      plan={activeProject.plan}
-                      onApprove={handleApprovePlan}
-                      onReject={handleRejectPlan}
-                      onBuild={handleStartBuild}
-                      isApproving={isApproving}
-                      isBuilding={isBuilding}
-                    />
-                  </div>
-                ) : !displayCode && isGenerating ? (
-                  <div className="flex flex-col items-center justify-center h-full">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
-                    <p className="text-sm font-medium text-foreground" data-testid="text-app-starting">Your app is starting</p>
-                    {generationPhase && (
-                      <p className="text-xs text-muted-foreground mt-2">{generationPhase}</p>
-                    )}
-                  </div>
-                ) : centerTab === "preview" ? (
-                  <MemoizedPreviewPanel
-                    code={displayCode}
-                    isGenerating={isGenerating}
-                    onDownload={handleDownload}
-                    generatedFiles={activeProject?.generatedFiles}
-                    projectName={activeProject?.name || "My Project"}
-                    lastPrompt={activeProject?.lastPrompt}
-                    dataModel={activeProject?.dataModel}
-                    validation={activeProject?.validation}
-                    projectId={activeProjectId || undefined}
-                    settings={settings}
-                    onRegenerate={(prompt, dataModel) => {
-                      if (activeProject && dataModel) {
-                        handleSendMessage(prompt, dataModel);
-                      }
-                    }}
-                    onCodeUpdate={(newCode) => {
-                      setStreamingCode(newCode);
-                      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-                    }}
-                    onFilesUpdate={() => {
-                      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-                    }}
-                  />
-                ) : (
-                  <div className="flex flex-col h-full bg-card">
-                    <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
-                      <Terminal className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Console Output</span>
-                    </div>
-                    <div className="flex-1 flex items-center justify-center p-4">
-                      <div className="text-center">
-                        <Terminal className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">No console output yet</p>
-                        <p className="text-xs text-muted-foreground/70 mt-1">Console logs will appear here during generation</p>
-                      </div>
-                    </div>
                   </div>
                 )}
-              </div>
-            </div>
-          </ResizablePanel>
-          
-          {showFileExplorer && (
-            <>
-              <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={20} minSize={15} maxSize={35}>
-                <div className="flex flex-col h-full border-l bg-background">
-                  <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/30 shrink-0">
-                    <div className="flex items-center gap-2">
-                      <FolderTree className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Files</span>
-                    </div>
-                    <div className="flex items-center gap-0.5">
-                      <Button variant="ghost" size="icon" title="Search files" data-testid="button-search-files">
-                        <SearchIcon className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setShowFileExplorer(false)}
-                        data-testid="button-collapse-files"
-                        title="Collapse files"
-                      >
-                        <PanelRightClose className="h-4 w-4" />
-                      </Button>
-                    </div>
+                
+                {settings.useDualModels && (
+                  <div className="px-2 py-2 shrink-0">
+                    <MemoizedDreamTeamThinkingTab
+                      thinking={orchestratorThinking}
+                      phase={orchestratorPhase}
+                      isActive={isGenerating || isPlanning}
+                      isExpanded={dreamTeamExpanded}
+                      onToggleExpand={() => setDreamTeamExpanded(prev => !prev)}
+                    />
                   </div>
-                  <div className="flex-1 overflow-y-auto">
-                    {settings.useDualModels && (
-                      <div className="p-2 border-b">
-                        <MemoizedProjectTeamPanel
-                          projectId={activeProjectId}
-                          llmSettings={{
-                            endpoint: settings.endpoint,
-                            plannerModel: settings.plannerModel,
-                            builderModel: settings.builderModel,
-                          }}
-                        />
-                      </div>
-                    )}
-                    
-                    {activeProject?.generatedFiles && activeProject.generatedFiles.length > 0 ? (
-                      <MemoizedFileExplorer
-                        files={activeProject.generatedFiles}
-                        selectedFile={selectedFile}
-                        onSelectFile={setSelectedFile}
-                        isGenerating={isGenerating}
-                        className="h-full"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-                        <FolderTree className="h-8 w-8 text-muted-foreground/50 mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          No files generated yet
-                        </p>
-                        <p className="text-xs text-muted-foreground/70 mt-1">
-                          Start a conversation to generate your app
-                        </p>
-                      </div>
-                    )}
+                )}
+                
+                {!settings.useDualModels && (isGenerating || isPlanning) && (
+                  <div className="px-2 py-2 shrink-0">
+                    <MemoizedAIThinkingPanel
+                      phase={orchestratorPhase}
+                      thinking={orchestratorThinking}
+                      generationPhase={generationPhase}
+                      isActive={isGenerating || isPlanning}
+                      streamingCode={streamingCode}
+                    />
                   </div>
+                )}
+                
+                {orchestratorTasks.tasks.length > 0 && (
+                  <div className="px-2 pb-2 shrink-0">
+                    <TaskProgressPanel
+                      tasks={orchestratorTasks.tasks}
+                      completedCount={orchestratorTasks.completedCount}
+                      totalCount={orchestratorTasks.totalCount}
+                      isVisible={true}
+                    />
+                  </div>
+                )}
+                
+                {planTasks.length > 0 && !isBuilding && (
+                  <div className="p-3 border-b bg-muted/30 shrink-0">
+                    <PlanModeTaskList
+                      tasks={planTasks}
+                      onTasksChange={setPlanTasks}
+                      onStartBuilding={handleStartBuildingFromPlan}
+                      onEditPlan={() => {
+                        setPlanTasks([]);
+                        setPlanSummary("");
+                        setPlanArchitecture("");
+                      }}
+                      isBuilding={isBuilding}
+                      summary={planSummary}
+                      architecture={planArchitecture}
+                    />
+                  </div>
+                )}
+
+                {isBuilding && planTasks.length > 0 && currentPlanTaskIndex >= 0 && (
+                  <div className="p-3 border-b bg-muted/30 shrink-0">
+                    <PlanProgress
+                      tasks={planTasks}
+                      currentTaskIndex={currentPlanTaskIndex}
+                    />
+                  </div>
+                )}
+
+                {agentMode === "plan" && planTasks.length === 0 && !isPlanning && (
+                  <div className="p-3 border-b shrink-0">
+                    <PlanModeInfo />
+                  </div>
+                )}
+                
+                <div className="flex-1 overflow-hidden">
+                  <MemoizedChatPanel
+                    messages={activeProject?.messages || []}
+                    isLoading={isGenerating || isPlanning}
+                    loadingPhase={generationPhase}
+                    currentActions={currentActions}
+                    onSendMessage={handleIntelligentGenerate}
+                    llmConnected={llmConnected}
+                    onCheckConnection={checkConnection}
+                    queueStatus={queueStatus}
+                    agentMode={agentMode}
+                    onAgentModeChange={setAgentMode}
+                    isModeDisabled={isGenerating || isPlanning || isBuilding}
+                  />
                 </div>
-              </ResizablePanel>
-            </>
-          )}
-        </ResizablePanelGroup>
-        
-        {!showFileExplorer && (
-          <button
-            onClick={() => setShowFileExplorer(true)}
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center w-6 h-20 bg-muted/80 border-l border-y rounded-l-md transition-colors hover-elevate"
-            title="Show Files"
-            data-testid="button-edge-show-files"
-          >
-            <PanelRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-        )}
+              </div>
+            </ResizablePanel>
+            
+            <ResizableHandle withHandle />
+            
+            <ResizablePanel defaultSize={70} minSize={40}>
+              <div className="flex flex-col h-full">
+                <div className="flex items-center gap-1 px-2 h-9 min-h-[36px] border-b bg-muted/30 shrink-0">
+                  <button
+                    onClick={() => setCenterTab("preview")}
+                    className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                      centerTab === "preview" 
+                        ? "bg-background text-foreground shadow-sm" 
+                        : "text-muted-foreground hover-elevate"
+                    }`}
+                    data-testid="button-tab-preview"
+                  >
+                    <span className={`w-2 h-2 rounded-full ${displayCode || isGenerating ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
+                    Preview
+                  </button>
+                  <button
+                    onClick={() => setCenterTab("console")}
+                    className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                      centerTab === "console" 
+                        ? "bg-background text-foreground shadow-sm" 
+                        : "text-muted-foreground hover-elevate"
+                    }`}
+                    data-testid="button-tab-console"
+                  >
+                    <Terminal className="h-3 w-3" />
+                    Console
+                  </button>
+                </div>
+                
+                <div className="flex-1 overflow-hidden">
+                  {!displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
+                    <div className="h-full flex flex-col">
+                      {agentMode === "plan" && (
+                        <div className="p-4 mx-auto max-w-2xl w-full">
+                          <PlanModeInfo />
+                        </div>
+                      )}
+                      <GenerationWizard
+                        onGenerate={handleIntelligentGenerate}
+                        isGenerating={isGenerating || isPlanning}
+                        llmConnected={llmConnected}
+                        onCheckConnection={checkConnection}
+                        settings={settings}
+                        planBuildMode={agentMode === "build"}
+                      />
+                    </div>
+                  ) : activeProject?.plan && !displayCode && !isBuilding ? (
+                    <div className="h-full max-w-3xl mx-auto">
+                      <PlanReviewPanel
+                        plan={activeProject.plan}
+                        onApprove={handleApprovePlan}
+                        onReject={handleRejectPlan}
+                        onBuild={handleStartBuild}
+                        isApproving={isApproving}
+                        isBuilding={isBuilding}
+                      />
+                    </div>
+                  ) : !displayCode && isGenerating ? (
+                    <div className="flex flex-col items-center justify-center h-full">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+                      <p className="text-sm font-medium text-foreground" data-testid="text-app-starting">Your app is starting</p>
+                      {generationPhase && (
+                        <p className="text-xs text-muted-foreground mt-2">{generationPhase}</p>
+                      )}
+                    </div>
+                  ) : centerTab === "preview" ? (
+                    <MemoizedPreviewPanel
+                      code={displayCode}
+                      isGenerating={isGenerating}
+                      onDownload={handleDownload}
+                      generatedFiles={activeProject?.generatedFiles}
+                      projectName={activeProject?.name || "My Project"}
+                      lastPrompt={activeProject?.lastPrompt}
+                      dataModel={activeProject?.dataModel}
+                      validation={activeProject?.validation}
+                      projectId={activeProjectId || undefined}
+                      settings={settings}
+                      onRegenerate={(prompt, dataModel) => {
+                        if (activeProject && dataModel) {
+                          handleSendMessage(prompt, dataModel);
+                        }
+                      }}
+                      onCodeUpdate={(newCode) => {
+                        setStreamingCode(newCode);
+                        queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                      }}
+                      onFilesUpdate={() => {
+                        queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                      }}
+                    />
+                  ) : (
+                    <div className="flex flex-col h-full bg-card">
+                      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+                        <Terminal className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Console Output</span>
+                      </div>
+                      <div className="flex-1 flex items-center justify-center p-4">
+                        <div className="text-center">
+                          <Terminal className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground">No console output yet</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1">Console logs will appear here during generation</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
       </div>
+
+      <Sheet open={showFileExplorer} onOpenChange={setShowFileExplorer}>
+        <SheetContent side="left" className="w-80 p-0 sm:max-w-sm">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle className="flex items-center gap-2 text-sm">
+              <FolderTree className="h-4 w-4 text-muted-foreground" />
+              Files
+            </SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto h-[calc(100vh-57px)]">
+            {settings.useDualModels && (
+              <div className="p-2 border-b">
+                <MemoizedProjectTeamPanel
+                  projectId={activeProjectId}
+                  llmSettings={{
+                    endpoint: settings.endpoint,
+                    plannerModel: settings.plannerModel,
+                    builderModel: settings.builderModel,
+                  }}
+                />
+              </div>
+            )}
+            
+            {activeProject?.generatedFiles && activeProject.generatedFiles.length > 0 ? (
+              <MemoizedFileExplorer
+                files={activeProject.generatedFiles}
+                selectedFile={selectedFile}
+                onSelectFile={setSelectedFile}
+                isGenerating={isGenerating}
+                className="h-full"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64 p-4 text-center">
+                <FolderTree className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  No files generated yet
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Start a conversation to generate your app
+                </p>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
       
       <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
       <OnboardingModal />
