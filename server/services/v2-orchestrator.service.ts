@@ -178,6 +178,8 @@ class V2OrchestratorService {
         })
       : null;
 
+    let sessionId: string | undefined;
+
     try {
       let optimizedContext = context.prompt;
       let selectedModel = context.modelName || "default";
@@ -188,7 +190,6 @@ class V2OrchestratorService {
       const patterns: string[] = [];
       let quantizationType: string | undefined;
       let budgetAllocation = 1.0;
-      let sessionId: string | undefined;
       let routingTier: string | undefined;
       let recommendedMaxTokens = 4096;
       let gpuLayers = 0;
