@@ -10,6 +10,7 @@ LocalForge is an AI-powered web application builder that generates working React
 - Dual model support: Configure separate models for planning vs building phases
 - Cloud LLM provider support: OpenAI, Groq, Together AI (with API key configuration)
 - Test Mode: Built-in Replit AI Integration for testing without local LM Studio
+- Mobile-friendly: Responsive layout with bottom tab navigation (Chat/Preview/Tools) for ideation on-the-go
 
 ## System Architecture
 

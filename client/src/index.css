@@ -453,3 +453,10 @@
 .electron-titlebar-padding {
   padding-left: 80px;
 }
+
+/* Mobile responsiveness */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}

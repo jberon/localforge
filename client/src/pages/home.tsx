@@ -26,6 +26,9 @@ import { PlanModeTaskList, PlanProgress, type PlanTask } from "@/components/plan
 import { HomeHeader } from "@/components/home-header";
 import { HomePanelsProvider, useHomePanels } from "@/contexts/home-panels-context";
 import { GenerationProvider, useGeneration } from "@/contexts/generation-context";
+import { MobileTabBar, type MobileTab } from "@/components/mobile-tab-bar";
+import { MobileToolsPanel } from "@/components/mobile-tools-panel";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -39,7 +42,7 @@ import { usePlanBuild } from "@/hooks/use-plan-build";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown, TestTube, ImageIcon, Router } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown, TestTube, ImageIcon, Router, Eye } from "lucide-react";
 import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
 import { HomeScreen } from "@/components/home-screen";
@@ -129,6 +132,8 @@ function HomeInner() {
   const { toast } = useToast();
   const { isDarkMode, toggleTheme } = useTheme();
   const [, navigate] = useLocation();
+  const isMobile = useIsMobile();
+  const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const {
     isGenerating, setIsGenerating,
@@ -1567,6 +1572,383 @@ function HomeInner() {
           </DialogContent>
         </Dialog>
       </>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-[100dvh] w-full" data-testid="mobile-layout">
+        <HomeHeader
+          activeProject={activeProject}
+          activeProjectId={activeProjectId}
+          projects={projects}
+          testModeActive={testModeActive}
+          testModeConnected={testModeConnected}
+          isGenerating={isGenerating}
+          isPlanning={isPlanning}
+          isBuilding={isBuilding}
+          onCreateProject={() => createProject()}
+          onSelectProject={(id) => setActiveProjectId(id)}
+          isMobile
+        />
+
+        <div className="flex-1 overflow-hidden" style={{ paddingBottom: "calc(3.5rem + env(safe-area-inset-bottom, 0px))" }}>
+          {mobileTab === "chat" && (
+            <div className="flex flex-col h-full" data-testid="mobile-chat-view">
+              {lastError && !isGenerating && (
+                <div className="p-3 border-b shrink-0">
+                  <ErrorRecovery
+                    error={lastError.message}
+                    originalPrompt={lastError.prompt}
+                    onRetry={handleRetryFromError}
+                    onCheckConnection={checkConnection}
+                    isRetrying={isGenerating}
+                  />
+                </div>
+              )}
+
+              {settings.useDualModels && (
+                <div className="px-2 py-2 shrink-0">
+                  <MemoizedDreamTeamThinkingTab
+                    thinking={orchestratorThinking}
+                    phase={orchestratorPhase}
+                    isActive={isGenerating || isPlanning}
+                    isExpanded={dreamTeamExpanded}
+                    onToggleExpand={() => setDreamTeamExpanded(prev => !prev)}
+                  />
+                </div>
+              )}
+
+              {!settings.useDualModels && (isGenerating || isPlanning) && (
+                <div className="px-2 py-2 shrink-0">
+                  <MemoizedAIThinkingPanel
+                    phase={orchestratorPhase}
+                    thinking={orchestratorThinking}
+                    generationPhase={generationPhase}
+                    isActive={isGenerating || isPlanning}
+                    streamingCode={streamingCode}
+                  />
+                </div>
+              )}
+
+              {orchestratorTasks.tasks.length > 0 && (
+                <div className="px-2 pb-2 shrink-0">
+                  <TaskProgressPanel
+                    tasks={orchestratorTasks.tasks}
+                    completedCount={orchestratorTasks.completedCount}
+                    totalCount={orchestratorTasks.totalCount}
+                    isVisible={true}
+                  />
+                </div>
+              )}
+
+              {planTasks.length > 0 && !isBuilding && (
+                <div className="p-3 border-b bg-muted/30 shrink-0">
+                  <PlanModeTaskList
+                    tasks={planTasks}
+                    onTasksChange={setPlanTasks}
+                    onStartBuilding={handleStartBuildingFromPlan}
+                    onEditPlan={() => {
+                      setPlanTasks([]);
+                      setPlanSummary("");
+                      setPlanArchitecture("");
+                    }}
+                    isBuilding={isBuilding}
+                    summary={planSummary}
+                    architecture={planArchitecture}
+                  />
+                </div>
+              )}
+
+              {isBuilding && planTasks.length > 0 && currentPlanTaskIndex >= 0 && (
+                <div className="p-3 border-b bg-muted/30 shrink-0">
+                  <PlanProgress
+                    tasks={planTasks}
+                    currentTaskIndex={currentPlanTaskIndex}
+                  />
+                </div>
+              )}
+
+              {agentMode === "plan" && planTasks.length === 0 && !isPlanning && (
+                <div className="p-3 border-b shrink-0">
+                  <PlanModeInfo />
+                </div>
+              )}
+
+              {agentMode === "discuss" && (
+                <div className="p-3 border-b shrink-0">
+                  <DiscussModeInfo />
+                </div>
+              )}
+
+              <div className="flex-1 overflow-hidden">
+                <MemoizedChatPanel
+                  messages={activeProject?.messages || []}
+                  isLoading={isGenerating || isPlanning}
+                  loadingPhase={generationPhase}
+                  currentActions={currentActions}
+                  onSendMessage={handleIntelligentGenerate}
+                  llmConnected={llmConnected}
+                  onCheckConnection={checkConnection}
+                  queueStatus={queueStatus}
+                  agentMode={agentMode}
+                  onAgentModeChange={setAgentMode}
+                  isModeDisabled={isGenerating || isPlanning || isBuilding}
+                />
+              </div>
+            </div>
+          )}
+
+          {mobileTab === "preview" && (
+            <div className="flex flex-col h-full" data-testid="mobile-preview-view">
+              {!displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
+                <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+                  <Eye className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                  <p className="text-sm text-muted-foreground">No preview yet</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">Start a conversation in Chat to generate your app</p>
+                </div>
+              ) : activeProject?.plan && !displayCode && !isBuilding ? (
+                <div className="h-full max-w-lg mx-auto p-4 overflow-y-auto">
+                  <PlanReviewPanel
+                    plan={activeProject.plan}
+                    onApprove={handleApprovePlan}
+                    onReject={handleRejectPlan}
+                    onBuild={handleStartBuild}
+                    isApproving={isApproving ?? false}
+                    isBuilding={isBuilding}
+                  />
+                </div>
+              ) : !displayCode && isGenerating ? (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+                  <p className="text-sm font-medium text-foreground" data-testid="text-app-starting-mobile">Your app is starting</p>
+                  {generationPhase && (
+                    <p className="text-xs text-muted-foreground mt-2">{generationPhase}</p>
+                  )}
+                </div>
+              ) : (
+                <MemoizedPreviewPanel
+                  code={displayCode}
+                  isGenerating={isGenerating}
+                  onDownload={handleDownload}
+                  generatedFiles={activeProject?.generatedFiles}
+                  projectName={activeProject?.name || "My Project"}
+                  lastPrompt={activeProject?.lastPrompt}
+                  dataModel={activeProject?.dataModel}
+                  validation={activeProject?.validation}
+                  projectId={activeProjectId || undefined}
+                  settings={settings}
+                  onRegenerate={(prompt, dataModel) => {
+                    if (activeProject && dataModel) {
+                      handleSendMessage(prompt, dataModel);
+                    }
+                  }}
+                  onCodeUpdate={(newCode) => {
+                    setStreamingCode(newCode);
+                    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                  }}
+                  onFilesUpdate={() => {
+                    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+                  }}
+                />
+              )}
+            </div>
+          )}
+
+          {mobileTab === "tools" && (
+            <MobileToolsPanel
+              llmConnected={llmConnected ?? false}
+              testModeConnected={testModeConnected}
+              isGenerating={isGenerating}
+              isPlanning={isPlanning}
+              onOpenFiles={() => togglePanel('showFileExplorer')}
+              onOpenDatabase={() => togglePanel('showDatabasePanel')}
+              onOpenAIInsights={() => togglePanel('showAIInsights')}
+              onOpenSelfTesting={() => togglePanel('showSelfTesting')}
+              onOpenSmartModel={() => togglePanel('showSmartModel')}
+              onOpenImageImport={() => setPanel('showImageImport', true)}
+              onOpenSettings={() => setPanel('showHomeSettings', true)}
+              onCheckConnection={checkConnection}
+              onNavigateHome={() => setActiveProjectId(null)}
+              onNavigateAnalytics={() => navigate("/analytics")}
+            />
+          )}
+        </div>
+
+        <MobileTabBar
+          activeTab={mobileTab}
+          onTabChange={setMobileTab}
+          hasCode={!!displayCode}
+          isGenerating={isGenerating}
+        />
+
+        <Sheet open={showFileExplorer} onOpenChange={(v) => setPanel('showFileExplorer', v)}>
+          <SheetContent side="left" className="w-full max-w-full sm:max-w-sm p-0">
+            <SheetHeader className="px-4 py-3 border-b">
+              <SheetTitle className="flex items-center gap-2 text-sm">
+                <FolderTree className="h-4 w-4 text-muted-foreground" />
+                Files
+              </SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 overflow-y-auto h-[calc(100dvh-57px)]">
+              {activeProject?.generatedFiles && activeProject.generatedFiles.length > 0 ? (
+                <MemoizedFileExplorer
+                  files={activeProject.generatedFiles}
+                  selectedFile={selectedFile}
+                  onSelectFile={setSelectedFile}
+                  isGenerating={isGenerating}
+                  className="h-full"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 p-4 text-center">
+                  <FolderTree className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                  <p className="text-sm text-muted-foreground">No files generated yet</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">Start a conversation to generate your app</p>
+                </div>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
+        <OnboardingModal />
+
+        <AlertDialog
+          open={!!webSearchPermissionPending}
+          onOpenChange={(open) => !open && setWebSearchPermissionPending(null)}
+        >
+          <AlertDialogContent className="max-w-[calc(100vw-2rem)]">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-emerald-500" />
+                Enable Web Search?
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-3">
+                <p>{webSearchPermissionPending?.message}</p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setWebSearchPermissionPending(null);
+                  toast({ title: "Continuing without web search" });
+                }}
+                data-testid="button-skip-web-search-mobile"
+              >
+                Continue Without
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (webSearchPermissionPending?.needsApiKey) {
+                    toast({ title: "Add API Key", description: "Open Settings to add your Serper.dev API key" });
+                  } else {
+                    const newSettings = { ...settings, webSearchEnabled: true };
+                    setSettings(newSettings);
+                    toast({ title: "Web Search Enabled" });
+                    if (webSearchPermissionPending?.pendingContent) {
+                      setTimeout(() => { handleSendMessage(webSearchPermissionPending.pendingContent); }, 500);
+                    }
+                  }
+                  setWebSearchPermissionPending(null);
+                }}
+                data-testid="button-enable-web-search-mobile"
+              >
+                Enable
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <CommandPalette
+          onNewProject={() => createProject()}
+          onDownload={activeProject ? handleDownload : undefined}
+          onOpenSettings={() => setPanel('showHomeSettings', true)}
+          onOpenDreamTeam={() => {}}
+          onRefreshConnection={checkConnection}
+          onToggleTheme={toggleTheme}
+          onConsultTeam={dreamTeamSettings.enabled && activeProject ? () => startDreamTeamDiscussion(activeProject.name, "General consultation") : undefined}
+          hasActiveProject={!!activeProject}
+          isGenerating={isGenerating || isPlanning}
+          isDarkMode={isDarkMode}
+        />
+
+        {activeDiscussion && (
+          <DreamTeamPanel
+            settings={dreamTeamSettings}
+            discussion={activeDiscussion}
+            onUserResponse={handleDreamTeamResponse}
+            onDismiss={() => setActiveDiscussion(null)}
+            isGenerating={isDiscussionGenerating}
+          />
+        )}
+
+        <Sheet open={showDatabasePanel} onOpenChange={(v) => setPanel('showDatabasePanel', v)}>
+          <SheetContent side="right" className="w-full max-w-full sm:max-w-[1200px] p-0">
+            <SheetHeader className="px-4 py-3 border-b">
+              <SheetTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Database Explorer
+              </SheetTitle>
+            </SheetHeader>
+            <div className="h-[calc(100dvh-60px)]">
+              <DatabasePanel />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={showAIInsights} onOpenChange={(v) => setPanel('showAIInsights', v)}>
+          <SheetContent side="right" className="w-full max-w-full sm:max-w-[450px] p-0">
+            <div className="h-full">
+              <AIInsightsPanel
+                projectId={activeProjectId || undefined}
+                isThinking={isGenerating || isPlanning}
+                onClose={() => setPanel('showAIInsights', false)}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={showSelfTesting} onOpenChange={(v) => setPanel('showSelfTesting', v)}>
+          <SheetContent side="right" className="w-full max-w-full sm:max-w-[500px] p-0">
+            <SheetHeader className="px-4 py-3 border-b">
+              <SheetTitle className="flex items-center gap-2">
+                <TestTube className="h-5 w-5" />
+                Self-Testing
+              </SheetTitle>
+            </SheetHeader>
+            <div className="h-[calc(100dvh-60px)] overflow-y-auto p-4">
+              <SelfTestingPanel
+                projectId={activeProjectId || "default"}
+                code={activeProject?.generatedCode || streamingCode || undefined}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={showSmartModel} onOpenChange={(v) => setPanel('showSmartModel', v)}>
+          <SheetContent side="right" className="w-full max-w-full sm:max-w-[500px] p-0">
+            <SheetHeader className="px-4 py-3 border-b">
+              <SheetTitle className="flex items-center gap-2">
+                <Router className="h-5 w-5" />
+                Smart Model Routing
+              </SheetTitle>
+            </SheetHeader>
+            <div className="h-[calc(100dvh-60px)] overflow-y-auto p-4">
+              <SmartModelSettings />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <ImageImportDialog
+          projectId={activeProjectId || "default"}
+          open={showImageImport}
+          onOpenChange={(v) => setPanel('showImageImport', v)}
+          onCodeGenerated={(prompt) => {
+            setPanel('showImageImport', false);
+            toast({ title: "Design analyzed", description: "Code generation prompt ready." });
+          }}
+        />
+      </div>
     );
   }
 

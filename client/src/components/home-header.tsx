@@ -22,6 +22,7 @@ interface HomeHeaderProps {
   isBuilding: boolean;
   onCreateProject: () => void;
   onSelectProject: (id: string) => void;
+  isMobile?: boolean;
 }
 
 export function HomeHeader({
@@ -35,13 +36,14 @@ export function HomeHeader({
   isBuilding,
   onCreateProject,
   onSelectProject,
+  isMobile,
 }: HomeHeaderProps) {
   return (
-    <header className="flex items-center justify-between gap-4 px-3 h-9 min-h-[36px] border-b border-border/40 bg-muted/30 shrink-0">
+    <header className={`flex items-center justify-between gap-2 px-3 border-b border-border/40 bg-muted/30 shrink-0 ${isMobile ? 'h-11 min-h-[44px]' : 'h-9 min-h-[36px] gap-4'}`}>
       <div className="flex items-center gap-2 min-w-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-1.5 min-w-0 hover-elevate rounded-md px-1.5 py-0.5" data-testid="button-project-selector">
+            <button className={`flex items-center gap-1.5 min-w-0 hover-elevate rounded-md ${isMobile ? 'px-2 py-1.5 min-h-[36px]' : 'px-1.5 py-0.5'}`} data-testid="button-project-selector">
               <span className="text-sm font-medium truncate" data-testid="text-chat-project-name">
                 {activeProject?.name || "New Project"}
               </span>
