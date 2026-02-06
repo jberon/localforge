@@ -4,30 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { securityHeaders } from "./middleware/security";
 import logger from "./lib/logger";
-import { healthAlertsService } from "./services/health-alerts.service";
-import { performanceProfilerService } from "./services/performance-profiler.service";
-import { llmCacheService } from "./services/llm-cache.service";
-import { localEmbeddingService } from "./services/local-embedding.service";
-import { quantizationDetectorService } from "./services/quantization-detector.service";
-import { speculativeDecodingService } from "./services/speculative-decoding.service";
-import { runtimeFeedbackService } from "./services/runtime-feedback.service";
-import { modelProviderService } from "./services/model-provider.service";
-import { smartContextService } from "./services/smart-context.service";
-import { semanticCodeSearchService } from "./services/semantic-code-search.service";
-import { buildModeService } from "./services/build-mode.service";
-import { designModeService } from "./services/design-mode.service";
-import { feedbackLoopService } from "./services/feedback-loop.service";
-import { multiStepReasoningService } from "./services/multi-step-reasoning.service";
-import { patternLibraryService } from "./services/pattern-library.service";
-import { smartRetryService } from "./services/smart-retry.service";
-import { userPreferenceLearningService } from "./services/user-preference-learning.service";
-import { validationPipelineService } from "./services/validation-pipeline.service";
-import { discussionModeService } from "./services/discussion-mode.service";
-import { visualEditorService } from "./services/visual-editor.service";
-import { modelRouterService } from "./services/model-router.service";
-import { selfTestingService } from "./services/self-testing.service";
-import { imageImportService } from "./services/image-import.service";
-import { authDbTemplatesService } from "./services/auth-db-templates.service";
+import { setupGracefulShutdown } from "./lib/graceful-shutdown";
 
 const app = express();
 const httpServer = createServer(app);
@@ -124,61 +101,9 @@ app.use((req, res, next) => {
   // In development, bind to 0.0.0.0 for external access
   const host = process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0";
   
+  setupGracefulShutdown({ httpServer });
+
   httpServer.listen(port, host, () => {
     log(`serving on ${host}:${port}`);
   });
-
-  const shutdown = () => {
-    log("Shutting down gracefully...");
-
-    const destroyables = [
-      { name: "HealthAlerts", svc: healthAlertsService },
-      { name: "PerformanceProfiler", svc: performanceProfilerService },
-      { name: "LLMCache", svc: llmCacheService },
-      { name: "LocalEmbedding", svc: localEmbeddingService },
-      { name: "QuantizationDetector", svc: quantizationDetectorService },
-      { name: "SpeculativeDecoding", svc: speculativeDecodingService },
-      { name: "RuntimeFeedback", svc: runtimeFeedbackService },
-      { name: "ModelProvider", svc: modelProviderService },
-      { name: "SmartContext", svc: smartContextService },
-      { name: "SemanticCodeSearch", svc: semanticCodeSearchService },
-      { name: "BuildMode", svc: buildModeService },
-      { name: "DesignMode", svc: designModeService },
-      { name: "FeedbackLoop", svc: feedbackLoopService },
-      { name: "MultiStepReasoning", svc: multiStepReasoningService },
-      { name: "PatternLibrary", svc: patternLibraryService },
-      { name: "SmartRetry", svc: smartRetryService },
-      { name: "UserPreferenceLearning", svc: userPreferenceLearningService },
-      { name: "ValidationPipeline", svc: validationPipelineService },
-      { name: "DiscussionMode", svc: discussionModeService },
-      { name: "VisualEditor", svc: visualEditorService },
-      { name: "ModelRouter", svc: modelRouterService },
-      { name: "SelfTesting", svc: selfTestingService },
-      { name: "ImageImport", svc: imageImportService },
-      { name: "AuthDbTemplates", svc: authDbTemplatesService },
-    ];
-
-    for (const { name, svc } of destroyables) {
-      try {
-        if (svc && typeof (svc as any).destroy === "function") {
-          (svc as any).destroy();
-          log(`${name} destroyed`);
-        }
-      } catch (e) {
-        log(`Failed to destroy ${name}: ${e}`);
-      }
-    }
-
-    httpServer.close(() => {
-      log("Server closed");
-      process.exit(0);
-    });
-    setTimeout(() => {
-      log("Forcing shutdown");
-      process.exit(1);
-    }, 5000);
-  };
-
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
 })();

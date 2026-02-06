@@ -23,6 +23,8 @@ import { DreamTeamThinkingTab } from "@/components/dream-team-thinking-tab";
 import { TaskProgressPanel, type TaskItem } from "@/components/task-progress-panel";
 import { PlanBuildModeToggle, ModeIndicator, PlanModeInfo, DiscussModeInfo, type AgentMode } from "@/components/plan-build-mode-toggle";
 import { PlanModeTaskList, PlanProgress, type PlanTask } from "@/components/plan-mode-task-list";
+import { HomePanelsProvider, useHomePanels } from "@/contexts/home-panels-context";
+import { GenerationProvider, useGeneration } from "@/contexts/generation-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -112,24 +114,34 @@ function updateOrAddAction(prev: Action[], newAction: Omit<Action, "id"> & { id?
 }
 
 export default function Home() {
+  return (
+    <GenerationProvider>
+      <HomePanelsProvider>
+        <HomeInner />
+      </HomePanelsProvider>
+    </GenerationProvider>
+  );
+}
+
+function HomeInner() {
   const { toast } = useToast();
   const { isDarkMode, toggleTheme } = useTheme();
   const [, navigate] = useLocation();
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationPhase, setGenerationPhase] = useState<string | null>(null);
+  const {
+    isGenerating, setIsGenerating,
+    generationPhase, setGenerationPhase,
+    streamingCode, setStreamingCode,
+    showCelebration, setShowCelebration,
+    lastError, setLastError,
+  } = useGeneration();
+  const {
+    showQuickUndo, showFileExplorer, showDatabasePanel,
+    showAIInsights, showSelfTesting, showSmartModel,
+    showImageImport, showHomeSettings,
+    togglePanel, setPanel,
+  } = useHomePanels();
   const [currentActions, setCurrentActions] = useState<Action[]>([]);
-  const [streamingCode, setStreamingCode] = useState("");
-  const [showCelebration, setShowCelebration] = useState(false);
-  const [lastError, setLastError] = useState<{ message: string; prompt?: string } | null>(null);
-  const [showQuickUndo, setShowQuickUndo] = useState(false);
-  const [showFileExplorer, setShowFileExplorer] = useState(false);
-  const [showDatabasePanel, setShowDatabasePanel] = useState(false);
-  const [showAIInsights, setShowAIInsights] = useState(false);
-  const [showSelfTesting, setShowSelfTesting] = useState(false);
-  const [showSmartModel, setShowSmartModel] = useState(false);
-  const [showImageImport, setShowImageImport] = useState(false);
-  const [showHomeSettings, setShowHomeSettings] = useState(false);
   const [centerTab, setCenterTab] = useState<"preview" | "console">("preview");
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
   const generationRequestRef = useRef<string | null>(null);
@@ -269,7 +281,7 @@ export default function Home() {
 
   // Clear quick undo when project changes
   useEffect(() => {
-    setShowQuickUndo(false);
+    setPanel('showQuickUndo', false);
   }, [activeProjectId]);
 
   // Fetch test mode status
@@ -488,7 +500,7 @@ export default function Home() {
                   await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                   if (data.success) {
                     setShowCelebration(true);
-                    setShowQuickUndo(true);
+                    setPanel('showQuickUndo', true);
                     toast({
                       title: "AI Dream Team Complete!",
                       description: "Your app was built by the planning & building models working together.",
@@ -614,7 +626,7 @@ export default function Home() {
                   await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                   if (data.success) {
                     setShowCelebration(true);
-                    setShowQuickUndo(true);
+                    setPanel('showQuickUndo', true);
                     toast({
                       title: "Production Build Complete!",
                       description: `Quality Score: ${qualityScore}/100. ${data.files?.length || 0} files generated with tests.`,
@@ -647,7 +659,7 @@ export default function Home() {
       const requestId = Date.now().toString();
       generationRequestRef.current = requestId;
       setLastError(null);
-      setShowQuickUndo(false);
+      setPanel('showQuickUndo', false);
       
       let projectId = activeProjectId;
       const projectName = generateProjectName(content);
@@ -717,7 +729,7 @@ export default function Home() {
           });
           
           setShowCelebration(true);
-          setShowQuickUndo(true);
+          setPanel('showQuickUndo', true);
           toast({
             title: "Full-Stack Project Generated!",
             description: "Check the Files tab to view and download your project.",
@@ -1038,6 +1050,7 @@ export default function Home() {
     
     setIsBuilding(true);
     setStreamingCode("");
+    let accumulatedBuildCode = "";
 
     try {
       const response = await fetch(`/api/projects/${activeProjectId}/build`, {
@@ -1073,11 +1086,12 @@ export default function Home() {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.type === "chunk") {
-                setStreamingCode((prev) => prev + data.content);
+                accumulatedBuildCode += data.content;
+                setStreamingCode(accumulatedBuildCode);
               } else if (data.type === "done") {
                 await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                 setShowCelebration(true);
-                setShowQuickUndo(true);
+                setPanel('showQuickUndo', true);
                 toast({
                   title: "Build Complete!",
                   description: "Your app has been generated successfully.",
@@ -1441,14 +1455,14 @@ export default function Home() {
           isConnected={llmConnected || testModeConnected}
           testModeActive={testModeActive}
           testModeConnected={testModeConnected}
-          onOpenSettings={() => setShowHomeSettings(true)}
+          onOpenSettings={() => setPanel('showHomeSettings', true)}
           onNavigateAnalytics={() => navigate("/analytics")}
         />
         <OnboardingModal />
         <CommandPalette
           onNewProject={() => createProject()}
           onDownload={undefined}
-          onOpenSettings={() => setShowHomeSettings(true)}
+          onOpenSettings={() => setPanel('showHomeSettings', true)}
           onOpenDreamTeam={() => {}}
           onRefreshConnection={checkConnection}
           onToggleTheme={toggleTheme}
@@ -1457,7 +1471,7 @@ export default function Home() {
           isGenerating={isGenerating || isPlanning}
           isDarkMode={isDarkMode}
         />
-        <Dialog open={showHomeSettings} onOpenChange={setShowHomeSettings}>
+        <Dialog open={showHomeSettings} onOpenChange={(v) => setPanel('showHomeSettings', v)}>
           <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -1531,11 +1545,11 @@ export default function Home() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowHomeSettings(false)} data-testid="button-cancel-home-settings">
+              <Button variant="outline" onClick={() => setPanel('showHomeSettings', false)} data-testid="button-cancel-home-settings">
                 Cancel
               </Button>
               <Button onClick={() => {
-                setShowHomeSettings(false);
+                setPanel('showHomeSettings', false);
                 checkConnection();
                 toast({
                   title: "Settings saved",
@@ -1569,7 +1583,7 @@ export default function Home() {
           <Button
             variant={showFileExplorer ? "secondary" : "ghost"}
             size="icon"
-            onClick={() => setShowFileExplorer(!showFileExplorer)}
+            onClick={() => togglePanel('showFileExplorer')}
             title="Files"
             data-testid="button-strip-files"
             className={showFileExplorer ? "toggle-elevate toggle-elevated" : ""}
@@ -1579,7 +1593,7 @@ export default function Home() {
           <Button
             variant={showDatabasePanel ? "secondary" : "ghost"}
             size="icon"
-            onClick={() => setShowDatabasePanel(!showDatabasePanel)}
+            onClick={() => togglePanel('showDatabasePanel')}
             title="Database"
             data-testid="button-strip-database"
             className={showDatabasePanel ? "toggle-elevate toggle-elevated" : ""}
@@ -1589,7 +1603,7 @@ export default function Home() {
           <Button
             variant={showAIInsights ? "secondary" : "ghost"}
             size="icon"
-            onClick={() => setShowAIInsights(!showAIInsights)}
+            onClick={() => togglePanel('showAIInsights')}
             title="AI Insights"
             data-testid="button-strip-ai-insights"
             className={showAIInsights ? "toggle-elevate toggle-elevated" : ""}
@@ -1599,7 +1613,7 @@ export default function Home() {
           <Button
             variant={showSelfTesting ? "secondary" : "ghost"}
             size="icon"
-            onClick={() => setShowSelfTesting(!showSelfTesting)}
+            onClick={() => togglePanel('showSelfTesting')}
             title="Self-Testing"
             data-testid="button-strip-testing"
             className={showSelfTesting ? "toggle-elevate toggle-elevated" : ""}
@@ -1609,7 +1623,7 @@ export default function Home() {
           <Button
             variant={showSmartModel ? "secondary" : "ghost"}
             size="icon"
-            onClick={() => setShowSmartModel(!showSmartModel)}
+            onClick={() => togglePanel('showSmartModel')}
             title="Smart Model Routing"
             data-testid="button-strip-smart-model"
             className={showSmartModel ? "toggle-elevate toggle-elevated" : ""}
@@ -1619,7 +1633,7 @@ export default function Home() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setShowImageImport(true)}
+            onClick={() => setPanel('showImageImport', true)}
             title="Import Design"
             data-testid="button-strip-image-import"
           >
@@ -1948,7 +1962,7 @@ export default function Home() {
         </div>
       </div>
 
-      <Sheet open={showFileExplorer} onOpenChange={setShowFileExplorer}>
+      <Sheet open={showFileExplorer} onOpenChange={(v) => setPanel('showFileExplorer', v)}>
         <SheetContent side="left" className="w-80 p-0 sm:max-w-sm">
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="flex items-center gap-2 text-sm">
@@ -2092,7 +2106,7 @@ export default function Home() {
         />
       )}
       
-      <Sheet open={showDatabasePanel} onOpenChange={setShowDatabasePanel}>
+      <Sheet open={showDatabasePanel} onOpenChange={(v) => setPanel('showDatabasePanel', v)}>
         <SheetContent side="right" className="w-[90vw] max-w-[1200px] sm:max-w-[1200px] p-0">
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="flex items-center gap-2">
@@ -2106,19 +2120,19 @@ export default function Home() {
         </SheetContent>
       </Sheet>
       
-      <Sheet open={showAIInsights} onOpenChange={setShowAIInsights}>
+      <Sheet open={showAIInsights} onOpenChange={(v) => setPanel('showAIInsights', v)}>
         <SheetContent side="right" className="w-[450px] sm:max-w-[450px] p-0">
           <div className="h-full">
             <AIInsightsPanel 
               projectId={activeProjectId || undefined} 
               isThinking={isGenerating || isPlanning}
-              onClose={() => setShowAIInsights(false)}
+              onClose={() => setPanel('showAIInsights', false)}
             />
           </div>
         </SheetContent>
       </Sheet>
 
-      <Sheet open={showSelfTesting} onOpenChange={setShowSelfTesting}>
+      <Sheet open={showSelfTesting} onOpenChange={(v) => setPanel('showSelfTesting', v)}>
         <SheetContent side="right" className="w-[500px] sm:max-w-[500px] p-0">
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="flex items-center gap-2">
@@ -2135,7 +2149,7 @@ export default function Home() {
         </SheetContent>
       </Sheet>
 
-      <Sheet open={showSmartModel} onOpenChange={setShowSmartModel}>
+      <Sheet open={showSmartModel} onOpenChange={(v) => setPanel('showSmartModel', v)}>
         <SheetContent side="right" className="w-[500px] sm:max-w-[500px] p-0">
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="flex items-center gap-2">
@@ -2152,9 +2166,9 @@ export default function Home() {
       <ImageImportDialog
         projectId={activeProjectId || "default"}
         open={showImageImport}
-        onOpenChange={setShowImageImport}
+        onOpenChange={(v) => setPanel('showImageImport', v)}
         onCodeGenerated={(prompt) => {
-          setShowImageImport(false);
+          setPanel('showImageImport', false);
           toast({ title: "Design analyzed", description: "Code generation prompt ready. Paste it in the chat to generate." });
         }}
       />

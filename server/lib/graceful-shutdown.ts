@@ -1,77 +1,62 @@
-const activeRequests: AbortController[] = [];
+import logger from "./logger";
+import { serviceRegistry } from "./service-registry";
+
 let isShuttingDown = false;
-
-export function registerRequest(): AbortController {
-  const controller = new AbortController();
-  activeRequests.push(controller);
-  return controller;
-}
-
-export function unregisterRequest(controller: AbortController): void {
-  const index = activeRequests.indexOf(controller);
-  if (index > -1) {
-    activeRequests.splice(index, 1);
-  }
-}
 
 export function isShutdownInProgress(): boolean {
   return isShuttingDown;
 }
 
-export function getActiveRequestCount(): number {
-  return activeRequests.length;
+export interface ShutdownOptions {
+  httpServer?: { close(cb: () => void): void };
+  pool?: { end(): Promise<void> };
+  forceTimeoutMs?: number;
 }
 
-export interface PoolLike {
-  end(): Promise<void>;
-}
+export function setupGracefulShutdown(options: ShutdownOptions = {}): void {
+  const { httpServer, pool, forceTimeoutMs = 5000 } = options;
 
-export function setupGracefulShutdown(pool?: PoolLike): void {
   const shutdown = async (signal: string) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
-    console.log(`[shutdown] ${signal} received, initiating graceful shutdown`);
-    console.log(`[shutdown] Aborting ${activeRequests.length} active requests`);
+    logger.info(`[shutdown] ${signal} received, initiating graceful shutdown`);
 
-    for (const controller of activeRequests) {
-      controller.abort();
-    }
-
-    const waitForRequests = new Promise<void>((resolve) => {
-      const checkInterval = setInterval(() => {
-        if (activeRequests.length === 0) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 100);
-
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, 5000);
-    });
-
-    await waitForRequests;
+    const serviceNames = serviceRegistry.getRegisteredNames();
+    logger.info(`[shutdown] Destroying ${serviceNames.length} registered services`);
+    serviceRegistry.destroyAll();
 
     if (pool) {
-      console.log("[shutdown] Closing database pool");
-      await pool.end();
+      logger.info("[shutdown] Closing database pool");
+      try {
+        await pool.end();
+      } catch (e) {
+        logger.error("[shutdown] Failed to close database pool", { error: e });
+      }
     }
 
-    console.log("[shutdown] Graceful shutdown complete");
-    process.exit(0);
+    if (httpServer) {
+      httpServer.close(() => {
+        logger.info("[shutdown] Server closed");
+        process.exit(0);
+      });
+    }
+
+    setTimeout(() => {
+      logger.info("[shutdown] Forcing shutdown");
+      process.exit(1);
+    }, forceTimeoutMs);
   };
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   process.on("uncaughtException", (error) => {
-    console.error("[shutdown] Uncaught exception:", error);
+    logger.error("[shutdown] Uncaught exception:", { error });
     shutdown("uncaughtException");
   });
 
   process.on("unhandledRejection", (reason) => {
-    console.error("[shutdown] Unhandled rejection:", reason);
+    logger.error("[shutdown] Unhandled rejection:", { reason });
   });
 }
