@@ -56,7 +56,7 @@ Features an autonomous development loop with runtime feedback capture, UI/UX ana
 Uses esbuild-wasm for in-browser bundling of multi-file TypeScript/React projects with a virtual file system and hot refresh. Enables building generated apps locally using npm/Vite tooling, supporting the full npm ecosystem, a real Vite dev server, auto-scaffolding, port management, real-time logs, and process control.
 
 ### Memory Safety & Performance Optimization
-All singleton services with unbounded Maps now have TTL/eviction policies. The V2 Orchestrator is optimized with `Promise.all` parallelization, prompt hash caching, and streaming session cleanup to prevent leaks. Hardware optimizer service includes accurate Apple Silicon profiles and a `FORCE_M4_PRO_PROFILE` environment variable for testing.
+All 18+ singleton services with unbounded Maps/arrays now have TTL/eviction policies with configurable max sizes (500 for histories, 1000 for caches, 200 for reasoning chains). Every service with `setInterval` timers has a `destroy()` method that clears intervals and resets state. EventEmitter-based services (HealthAlerts, RuntimeFeedback) call `removeAllListeners()` on destroy. The V2 Orchestrator is optimized with `Promise.all` parallelization, prompt hash caching, and streaming session cleanup. A graceful shutdown handler in `server/index.ts` calls `destroy()` on all 18 services on SIGTERM/SIGINT. Hardware optimizer uses direct CPU model string parsing ("Apple M4 Pro") for accurate Apple Silicon chip detection, falling back to memory-based heuristics only when the variant isn't in the model string. `FORCE_M4_PRO_PROFILE` env var enables testing M4 Pro optimizations on non-Mac hardware.
 
 ## External Dependencies
 - **LM Studio**: Local LLM inference.
