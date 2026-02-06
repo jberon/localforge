@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useReducer, useCallback, useMemo, type ReactNode } from "react";
 
 interface HomePanelsState {
   showFileExplorer: boolean;
@@ -64,12 +64,12 @@ export function HomePanelsProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "CLOSE_ALL" });
   }, []);
 
-  const value: HomePanelsContextValue = {
+  const value = useMemo<HomePanelsContextValue>(() => ({
     ...state,
     togglePanel,
     setPanel,
     closeAllPanels,
-  };
+  }), [state, togglePanel, setPanel, closeAllPanels]);
 
   return (
     <HomePanelsContext.Provider value={value}>

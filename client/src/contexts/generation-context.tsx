@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 
 interface GenerationState {
   isGenerating: boolean;
@@ -31,7 +31,7 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   const setShowCelebration = useCallback((v: boolean) => setShowCelebrationRaw(v), []);
   const setLastError = useCallback((v: { message: string; prompt?: string } | null) => setLastErrorRaw(v), []);
 
-  const value: GenerationContextValue = {
+  const value = useMemo<GenerationContextValue>(() => ({
     isGenerating,
     generationPhase,
     streamingCode,
@@ -42,7 +42,8 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
     setStreamingCode,
     setShowCelebration,
     setLastError,
-  };
+  }), [isGenerating, generationPhase, streamingCode, showCelebration, lastError,
+    setIsGenerating, setGenerationPhase, setStreamingCode, setShowCelebration, setLastError]);
 
   return (
     <GenerationContext.Provider value={value}>

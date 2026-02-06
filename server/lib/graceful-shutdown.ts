@@ -40,12 +40,14 @@ export function setupGracefulShutdown(options: ShutdownOptions = {}): void {
         logger.info("[shutdown] Server closed");
         process.exit(0);
       });
+      setTimeout(() => {
+        logger.info("[shutdown] Forcing shutdown");
+        process.exit(1);
+      }, forceTimeoutMs);
+    } else {
+      logger.info("[shutdown] Graceful shutdown complete");
+      process.exit(0);
     }
-
-    setTimeout(() => {
-      logger.info("[shutdown] Forcing shutdown");
-      process.exit(1);
-    }, forceTimeoutMs);
   };
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
