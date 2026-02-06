@@ -46,7 +46,7 @@ router.get("/members", (req, res) => {
 });
 
 router.get("/projects/:projectId/team", asyncHandler(async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = req.params.projectId as string;
   const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
   const model = (req.query.model as string) || "";
   
@@ -60,7 +60,7 @@ router.get("/projects/:projectId/team", asyncHandler(async (req, res) => {
 }));
 
 router.get("/projects/:projectId/activity", asyncHandler(async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = req.params.projectId as string;
   const limit = parseInt(req.query.limit as string) || 50;
   const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
   const model = (req.query.model as string) || "";
@@ -75,7 +75,7 @@ router.get("/projects/:projectId/activity", asyncHandler(async (req, res) => {
 }));
 
 router.get("/projects/:projectId/business-case", asyncHandler(async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = req.params.projectId as string;
   const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
   const model = (req.query.model as string) || "";
   
@@ -89,7 +89,7 @@ router.get("/projects/:projectId/business-case", asyncHandler(async (req, res) =
 }));
 
 router.get("/projects/:projectId/readme", asyncHandler(async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = req.params.projectId as string;
   const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
   const model = (req.query.model as string) || "";
   
@@ -114,6 +114,9 @@ router.post("/business-case/generate", async (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
+  let clientDisconnected = false;
+  req.on("close", () => { clientDisconnected = true; });
+
   const service = createDreamTeamService({
     endpoint,
     reasoningModel: model,
@@ -126,15 +129,21 @@ router.post("/business-case/generate", async (req, res) => {
       userRequest,
       context,
       (chunk) => {
-        res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+        if (!clientDisconnected) {
+          res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+        }
       }
     );
 
-    res.write(`data: ${JSON.stringify({ type: "complete", businessCase })}\n\n`);
-    res.write("data: [DONE]\n\n");
+    if (!clientDisconnected) {
+      res.write(`data: ${JSON.stringify({ type: "complete", businessCase })}\n\n`);
+      res.write("data: [DONE]\n\n");
+    }
     res.end();
   } catch (error: any) {
-    res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    if (!clientDisconnected) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    }
     res.end();
   }
 });
@@ -150,6 +159,9 @@ router.post("/specialists/analyze", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+
+  let clientDisconnected = false;
+  req.on("close", () => { clientDisconnected = true; });
 
   const service = createDreamTeamService({
     endpoint,
@@ -169,15 +181,21 @@ router.post("/specialists/analyze", async (req, res) => {
       projectId,
       businessCase,
       (chunk) => {
-        res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+        if (!clientDisconnected) {
+          res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+        }
       }
     );
 
-    res.write(`data: ${JSON.stringify({ type: "complete", specialists })}\n\n`);
-    res.write("data: [DONE]\n\n");
+    if (!clientDisconnected) {
+      res.write(`data: ${JSON.stringify({ type: "complete", specialists })}\n\n`);
+      res.write("data: [DONE]\n\n");
+    }
     res.end();
   } catch (error: any) {
-    res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    if (!clientDisconnected) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    }
     res.end();
   }
 });
@@ -200,6 +218,9 @@ router.post("/readme/generate", async (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
+  let clientDisconnected = false;
+  req.on("close", () => { clientDisconnected = true; });
+
   const service = createDreamTeamService({
     endpoint,
     reasoningModel: model,
@@ -217,15 +238,21 @@ router.post("/readme/generate", async (req, res) => {
       projectId,
       businessCase,
       (chunk) => {
-        res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+        if (!clientDisconnected) {
+          res.write(`data: ${JSON.stringify({ type: "thinking", content: chunk })}\n\n`);
+        }
       }
     );
 
-    res.write(`data: ${JSON.stringify({ type: "complete", readme })}\n\n`);
-    res.write("data: [DONE]\n\n");
+    if (!clientDisconnected) {
+      res.write(`data: ${JSON.stringify({ type: "complete", readme })}\n\n`);
+      res.write("data: [DONE]\n\n");
+    }
     res.end();
   } catch (error: any) {
-    res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    if (!clientDisconnected) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+    }
     res.end();
   }
 });

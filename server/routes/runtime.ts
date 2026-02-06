@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { z } from "zod";
 import { runtimeFeedbackService, type RuntimeError, type RuntimeLog } from "../services/runtime-feedback.service";
 import { autoFixLoopService } from "../services/auto-fix-loop.service";
 import { uiuxAgentService } from "../services/uiux-agent.service";
@@ -13,15 +14,42 @@ function parseQueryString(value: string | string[] | undefined): string | undefi
   return value;
 }
 
-/**
- * POST /api/runtime/errors - Report a runtime error
- */
-router.post("/errors", asyncHandler(async (req: Request, res: Response) => {
-  const { projectId, message, stack, file, line, column, source } = req.body;
+const reportErrorSchema = z.object({
+  projectId: z.string(),
+  message: z.string(),
+  stack: z.string().optional(),
+  file: z.string().optional(),
+  line: z.number().optional(),
+  column: z.number().optional(),
+  source: z.string().optional(),
+});
 
-  if (!projectId || !message) {
-    return res.status(400).json({ error: "projectId and message are required" });
+const reportLogSchema = z.object({
+  projectId: z.string(),
+  level: z.string().optional(),
+  message: z.string(),
+  args: z.any().optional(),
+  source: z.string().optional(),
+});
+
+const autofixSchema = z.object({
+  maxIterations: z.number().optional(),
+});
+
+const analyzeUiSchema = z.object({
+  files: z.array(z.any()),
+});
+
+const impactSchema = z.object({
+  filePath: z.string(),
+});
+
+router.post("/errors", asyncHandler(async (req: Request, res: Response) => {
+  const parsed = reportErrorSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
   }
+  const { projectId, message, stack, file, line, column, source } = parsed.data;
 
   const error = runtimeFeedbackService.reportError(projectId, {
     message,
@@ -45,9 +73,6 @@ router.post("/errors", asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-/**
- * GET /api/runtime/errors/:projectId - Get recent errors for a project
- */
 router.get("/errors/:projectId", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
   const unhandled = parseQueryString(req.query.unhandled as string | undefined);
@@ -67,25 +92,19 @@ router.get("/errors/:projectId", asyncHandler(async (req: Request, res: Response
   });
 }));
 
-/**
- * POST /api/runtime/errors/:projectId/:errorId/handled - Mark error as handled
- */
-router.post("/errors/:projectId/:errorId/handled", asyncHandler(async (req: Request, res: Response) => {
-  const projectId = req.params.projectId as string;
-  const errorId = req.params.errorId as string;
+router.post("/errors/:projectId/:errorId/handled", asyncHandler(async (_req: Request, res: Response) => {
+  const projectId = _req.params.projectId as string;
+  const errorId = _req.params.errorId as string;
   runtimeFeedbackService.markErrorHandled(projectId, errorId);
   res.json({ success: true });
 }));
 
-/**
- * POST /api/runtime/logs - Report a runtime log
- */
 router.post("/logs", asyncHandler(async (req: Request, res: Response) => {
-  const { projectId, level, message, args, source } = req.body;
-
-  if (!projectId || !message) {
-    return res.status(400).json({ error: "projectId and message are required" });
+  const parsed = reportLogSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
   }
+  const { projectId, level, message, args, source } = parsed.data;
 
   const log = runtimeFeedbackService.reportLog(projectId, {
     level: level || "log",
@@ -103,9 +122,6 @@ router.post("/logs", asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-/**
- * GET /api/runtime/logs/:projectId - Get logs for a project
- */
 router.get("/logs/:projectId", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
   const level = parseQueryString(req.query.level as string | undefined);
@@ -125,9 +141,6 @@ router.get("/logs/:projectId", asyncHandler(async (req: Request, res: Response) 
   });
 }));
 
-/**
- * GET /api/runtime/stats/:projectId - Get session statistics
- */
 router.get("/stats/:projectId", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
   const stats = runtimeFeedbackService.getSessionStats(projectId);
@@ -150,9 +163,6 @@ router.get("/stats/:projectId", asyncHandler(async (req: Request, res: Response)
   });
 }));
 
-/**
- * POST /api/runtime/session/:projectId/start - Start a runtime session
- */
 router.post("/session/:projectId/start", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
   const session = runtimeFeedbackService.startSession(projectId);
@@ -167,30 +177,25 @@ router.post("/session/:projectId/start", asyncHandler(async (req: Request, res: 
   });
 }));
 
-/**
- * POST /api/runtime/session/:projectId/stop - Stop a runtime session
- */
 router.post("/session/:projectId/stop", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
   runtimeFeedbackService.stopSession(projectId);
   res.json({ success: true });
 }));
 
-/**
- * POST /api/runtime/session/:projectId/clear - Clear session data
- */
 router.post("/session/:projectId/clear", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
   runtimeFeedbackService.clearSession(projectId);
   res.json({ success: true });
 }));
 
-/**
- * POST /api/runtime/autofix/:projectId - Trigger auto-fix for unhandled errors
- */
 router.post("/autofix/:projectId", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
-  const { maxIterations } = req.body;
+  const parsed = autofixSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  }
+  const { maxIterations } = parsed.data;
 
   const unhandledErrors = runtimeFeedbackService.getUnhandledErrors(projectId);
   
@@ -214,16 +219,13 @@ router.post("/autofix/:projectId", asyncHandler(async (req: Request, res: Respon
   });
 }));
 
-/**
- * POST /api/runtime/analyze-ui/:projectId - Analyze UI/UX for a project
- */
 router.post("/analyze-ui/:projectId", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
-  const { files } = req.body;
-
-  if (!files || !Array.isArray(files)) {
-    return res.status(400).json({ error: "files array is required" });
+  const parsed = analyzeUiSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
   }
+  const { files } = parsed.data;
 
   const result = await uiuxAgentService.analyzeFiles(files);
 
@@ -233,9 +235,6 @@ router.post("/analyze-ui/:projectId", asyncHandler(async (req: Request, res: Res
   });
 }));
 
-/**
- * GET /api/runtime/dependency-graph/:projectId - Get dependency graph
- */
 router.get("/dependency-graph/:projectId", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
   const graph = await projectMemoryService.buildDependencyGraph(projectId);
@@ -246,16 +245,13 @@ router.get("/dependency-graph/:projectId", asyncHandler(async (req: Request, res
   });
 }));
 
-/**
- * POST /api/runtime/impact/:projectId - Get change impact analysis (pass filePath in body)
- */
 router.post("/impact/:projectId", asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params.projectId as string;
-  const { filePath } = req.body;
-
-  if (!filePath) {
-    return res.status(400).json({ error: "filePath is required in request body" });
+  const parsed = impactSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
   }
+  const { filePath } = parsed.data;
 
   const impact = await projectMemoryService.getChangeImpact(projectId, filePath);
 

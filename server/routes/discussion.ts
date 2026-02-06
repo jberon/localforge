@@ -35,6 +35,9 @@ router.post("/message", async (req: Request, res: Response) => {
       "X-Accel-Buffering": "no",
     });
 
+    let clientDisconnected = false;
+    req.on("close", () => { clientDisconnected = true; });
+
     res.write(`data: ${JSON.stringify({ type: "session", sessionId: session.id })}\n\n`);
     res.write(`data: ${JSON.stringify({ type: "intent", ...intentClassification })}\n\n`);
 
@@ -66,6 +69,7 @@ router.post("/message", async (req: Request, res: Response) => {
       let fullResponse = "";
 
       for await (const chunk of stream) {
+        if (clientDisconnected) break;
         const content = chunk.choices?.[0]?.delta?.content;
         if (content) {
           fullResponse += content;
@@ -73,35 +77,39 @@ router.post("/message", async (req: Request, res: Response) => {
         }
       }
 
-      const analysis = discussionModeService.analyzeConversation(session.id);
-      const canApply = analysis.hasActionableIdeas;
+      if (!clientDisconnected) {
+        const analysis = discussionModeService.analyzeConversation(session.id);
+        const canApply = analysis.hasActionableIdeas;
 
-      discussionModeService.addMessage(session.id, "assistant", fullResponse, {
-        suggestions: analysis.suggestedPrompt ? [analysis.suggestedPrompt] : undefined,
-        canApply,
-      });
+        discussionModeService.addMessage(session.id, "assistant", fullResponse, {
+          suggestions: analysis.suggestedPrompt ? [analysis.suggestedPrompt] : undefined,
+          canApply,
+        });
 
-      if (intentClassification.intent === "build" && intentClassification.confidence > 0.7) {
+        if (intentClassification.intent === "build" && intentClassification.confidence > 0.7) {
+          res.write(`data: ${JSON.stringify({
+            type: "suggestion",
+            action: "switch_to_build",
+            message: "It sounds like you're ready to build! Switch to Build mode to start implementing.",
+            suggestedPrompt: analysis.suggestedPrompt,
+          })}\n\n`);
+        }
+
         res.write(`data: ${JSON.stringify({
-          type: "suggestion",
-          action: "switch_to_build",
-          message: "It sounds like you're ready to build! Switch to Build mode to start implementing.",
-          suggestedPrompt: analysis.suggestedPrompt,
+          type: "analysis",
+          ...analysis,
         })}\n\n`);
+
+        res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
       }
-
-      res.write(`data: ${JSON.stringify({
-        type: "analysis",
-        ...analysis,
-      })}\n\n`);
-
-      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
     } catch (llmError: any) {
       logger.error("Discussion LLM error", { error: llmError.message });
-      const fallbackResponse = generateFallbackResponse(message, intentClassification.intent);
-      res.write(`data: ${JSON.stringify({ type: "chunk", content: fallbackResponse })}\n\n`);
-      discussionModeService.addMessage(session.id, "assistant", fallbackResponse);
-      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+      if (!clientDisconnected) {
+        const fallbackResponse = generateFallbackResponse(message, intentClassification.intent);
+        res.write(`data: ${JSON.stringify({ type: "chunk", content: fallbackResponse })}\n\n`);
+        discussionModeService.addMessage(session.id, "assistant", fallbackResponse);
+        res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+      }
     }
 
     res.end();

@@ -1,6 +1,19 @@
 import { Router } from "express";
+import { z } from "zod";
 import { asyncHandler } from "../../lib/async-handler";
 import { buildModeService } from "../../services/build-mode.service";
+
+const setModeSchema = z.object({
+  mode: z.string(),
+  projectId: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+const detectModeSchema = z.object({
+  prompt: z.string(),
+});
+
+const settingsSchema = z.object({}).passthrough();
 
 export function registerBuildModeRoutes(router: Router): void {
   router.get("/build-mode", asyncHandler((req, res) => {
@@ -10,13 +23,21 @@ export function registerBuildModeRoutes(router: Router): void {
   }));
 
   router.put("/build-mode", asyncHandler((req, res) => {
-    const { mode, projectId, reason } = req.body;
+    const parsed = setModeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { mode, projectId, reason } = parsed.data;
     buildModeService.setMode(mode, projectId, reason);
     res.json({ success: true, mode });
   }));
 
   router.post("/build-mode/detect", asyncHandler((req, res) => {
-    const { prompt } = req.body;
+    const parsed = detectModeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { prompt } = parsed.data;
     const mode = buildModeService.autoDetectMode(prompt);
     res.json({ suggestedMode: mode });
   }));
@@ -33,7 +54,11 @@ export function registerBuildModeRoutes(router: Router): void {
   }));
 
   router.put("/build-mode/fast-settings", asyncHandler((req, res) => {
-    buildModeService.setFastSettings(req.body);
+    const parsed = settingsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    buildModeService.setFastSettings(parsed.data);
     res.json({ success: true });
   }));
 
@@ -43,7 +68,11 @@ export function registerBuildModeRoutes(router: Router): void {
   }));
 
   router.put("/build-mode/full-settings", asyncHandler((req, res) => {
-    buildModeService.setFullSettings(req.body);
+    const parsed = settingsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    buildModeService.setFullSettings(parsed.data);
     res.json({ success: true });
   }));
 

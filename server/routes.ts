@@ -16,13 +16,14 @@ import localBuildRoutes from "./routes/local-build";
 import intelligenceRoutes from "./routes/intelligence";
 import runtimeRoutes from "./routes/runtime";
 import discussionRoutes from "./routes/discussion";
+import { apiRateLimiter } from "./middleware/rate-limit";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   
-  app.use("/api/projects", projectRoutes);
+  app.use("/api/projects", apiRateLimiter, projectRoutes);
   
   app.use("/api/projects", fileRoutes);
   
@@ -32,25 +33,25 @@ export async function registerRoutes(
   
   app.use("/api/projects", generationRoutes);
   
-  app.use("/api/llm", llmRoutes);
+  app.use("/api/llm", apiRateLimiter, llmRoutes);
   
-  app.use("/api/analytics", analyticsRoutes);
+  app.use("/api/analytics", apiRateLimiter, analyticsRoutes);
   
-  app.use("/api/dream-team", dreamTeamRoutes);
+  app.use("/api/dream-team", apiRateLimiter, dreamTeamRoutes);
   
   app.use("/api/health", healthRoutes);
   
-  app.use("/api/database", databaseRoutes);
+  app.use("/api/database", apiRateLimiter, databaseRoutes);
   
-  app.use("/api/optimization", optimizationRoutes);
+  app.use("/api/optimization", apiRateLimiter, optimizationRoutes);
   
-  app.use("/api/local-build", localBuildRoutes);
+  app.use("/api/local-build", apiRateLimiter, localBuildRoutes);
   
-  app.use("/api/intelligence", intelligenceRoutes);
+  app.use("/api/intelligence", apiRateLimiter, intelligenceRoutes);
   
-  app.use("/api/runtime", runtimeRoutes);
+  app.use("/api/runtime", apiRateLimiter, runtimeRoutes);
   
-  app.use("/api/discussion", discussionRoutes);
+  app.use("/api/discussion", apiRateLimiter, discussionRoutes);
 
   return httpServer;
 }

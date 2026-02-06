@@ -1,16 +1,53 @@
 import { Router } from "express";
+import { z } from "zod";
 import { asyncHandler } from "../../lib/async-handler";
 import { performanceProfilerService } from "../../services/performance-profiler.service";
 import { userPreferenceLearningService } from "../../services/user-preference-learning.service";
 import { styleMemoryService } from "../../services/style-memory.service";
 import { feedbackLoopService } from "../../services/feedback-loop.service";
 
+const trackPerformanceSchema = z.object({
+  name: z.string(),
+  category: z.string(),
+  duration: z.number(),
+  success: z.boolean().optional(),
+  metadata: z.any().optional(),
+});
+
+const preferencesTrackSchema = z.object({
+  projectId: z.string(),
+  originalCode: z.string(),
+  modifiedCode: z.string(),
+  filePath: z.string(),
+  changeType: z.string(),
+});
+
+const styleMemoryAnalyzeSchema = z.object({
+  projectId: z.string(),
+  files: z.array(z.any()),
+});
+
+const feedbackSchema = z.object({
+  projectId: z.string(),
+  generationId: z.string(),
+  rating: z.number(),
+  originalPrompt: z.string(),
+  generatedCode: z.string(),
+  userComment: z.string().optional(),
+});
+
+const refinePromptSchema = z.object({
+  prompt: z.string(),
+  context: z.any().optional(),
+});
+
 export function registerPerformanceRoutes(router: Router): void {
   router.post("/performance/track", asyncHandler(async (req, res) => {
-    const { name, category, duration, success = true, metadata } = req.body;
-    if (!name || !category || typeof duration !== "number") {
-      return res.status(400).json({ error: "name, category, and duration are required" });
+    const parsed = trackPerformanceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
+    const { name, category, duration, success = true, metadata } = parsed.data;
 
     const result = await performanceProfilerService.trackOperation(
       name,
@@ -67,7 +104,11 @@ export function registerPerformanceRoutes(router: Router): void {
   }));
 
   router.post("/preferences/track", asyncHandler((req, res) => {
-    const { projectId, originalCode, modifiedCode, filePath, changeType } = req.body;
+    const parsed = preferencesTrackSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { projectId, originalCode, modifiedCode, filePath, changeType } = parsed.data;
     userPreferenceLearningService.trackModification(projectId, {
       originalCode,
       modifiedCode,
@@ -88,7 +129,11 @@ export function registerPerformanceRoutes(router: Router): void {
   }));
 
   router.post("/style-memory/analyze", asyncHandler((req, res) => {
-    const { projectId, files } = req.body;
+    const parsed = styleMemoryAnalyzeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { projectId, files } = parsed.data;
     const analysis = styleMemoryService.analyzeAndRemember(projectId, files);
     res.json(analysis);
   }));
@@ -104,7 +149,11 @@ export function registerPerformanceRoutes(router: Router): void {
   }));
 
   router.post("/feedback", asyncHandler((req, res) => {
-    const { projectId, generationId, rating, originalPrompt, generatedCode, userComment } = req.body;
+    const parsed = feedbackSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { projectId, generationId, rating, originalPrompt, generatedCode, userComment } = parsed.data;
     const entry = feedbackLoopService.recordFeedback(
       projectId,
       generationId,
@@ -123,7 +172,11 @@ export function registerPerformanceRoutes(router: Router): void {
   }));
 
   router.post("/feedback/refine-prompt", asyncHandler((req, res) => {
-    const { prompt, context } = req.body;
+    const parsed = refinePromptSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { prompt, context } = parsed.data;
     const refinedPrompt = feedbackLoopService.refinePrompt(prompt, context);
     res.json({ refinedPrompt });
   }));

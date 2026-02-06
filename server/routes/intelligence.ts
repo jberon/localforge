@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { z } from "zod";
 import { enhancedAnalysisService, AnalysisResult } from "../services/enhanced-analysis.service";
 import { feedbackLearningService, LearnedPattern, LearningStats } from "../services/feedback-learning.service";
 import { extendedThinkingService, ThinkingMode } from "../services/extended-thinking.service";
@@ -19,6 +20,24 @@ interface IntelligenceStatus {
   };
   version: string;
 }
+
+const analyzeSchema = z.object({
+  code: z.string(),
+  filePath: z.string().optional(),
+});
+
+const exportPatternsSchema = z.object({
+  projectId: z.string().optional(),
+});
+
+const importPatternsSchema = z.object({
+  patterns: z.array(z.any()),
+});
+
+const thinkingModeSchema = z.object({
+  mode: z.enum(["standard", "extended", "deep"]),
+  projectId: z.string().optional(),
+});
 
 router.get("/status", asyncHandler(async (_req: Request, res: Response) => {
   const thinkingMode = extendedThinkingService.getMode();
@@ -44,12 +63,11 @@ router.get("/status", asyncHandler(async (_req: Request, res: Response) => {
 }));
 
 router.post("/analyze", asyncHandler(async (req: Request, res: Response) => {
-  const { code, filePath } = req.body;
-
-  if (!code) {
-    return res.status(400).json({ error: "Code is required" });
+  const parsed = analyzeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
   }
-
+  const { code, filePath } = parsed.data;
   const result = enhancedAnalysisService.analyzeCode(code, filePath || "unknown.tsx");
   res.json(result);
 }));
@@ -84,7 +102,11 @@ router.delete("/patterns/:patternId", asyncHandler(async (req: Request, res: Res
 }));
 
 router.post("/patterns/export", asyncHandler(async (req: Request, res: Response) => {
-  const { projectId } = req.body;
+  const parsed = exportPatternsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  }
+  const { projectId } = parsed.data;
   
   let patterns: LearnedPattern[];
   if (projectId) {
@@ -101,11 +123,11 @@ router.post("/patterns/export", asyncHandler(async (req: Request, res: Response)
 }));
 
 router.post("/patterns/import", asyncHandler(async (req: Request, res: Response) => {
-  const { patterns } = req.body;
-  
-  if (!Array.isArray(patterns)) {
-    return res.status(400).json({ error: "Patterns must be an array" });
+  const parsed = importPatternsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
   }
+  const { patterns } = parsed.data;
 
   let imported = 0;
   for (const pattern of patterns) {
@@ -134,11 +156,11 @@ router.get("/thinking/mode", asyncHandler(async (_req: Request, res: Response) =
 }));
 
 router.post("/thinking/mode", asyncHandler(async (req: Request, res: Response) => {
-  const { mode, projectId } = req.body;
-  
-  if (!["standard", "extended", "deep"].includes(mode)) {
-    return res.status(400).json({ error: "Invalid mode" });
+  const parsed = thinkingModeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
   }
+  const { mode, projectId } = parsed.data;
 
   if (projectId) {
     extendedThinkingService.setProjectMode(projectId, mode);

@@ -1,11 +1,38 @@
 import { Router } from "express";
+import { z } from "zod";
 import { asyncHandler } from "../../lib/async-handler";
 import { selfValidationService } from "../../services/self-validation.service";
 import { patternLibraryService } from "../../services/pattern-library.service";
 
+const validateCodeSchema = z.object({
+  code: z.string(),
+  filePath: z.string().optional(),
+});
+
+const validationConfigSchema = z.object({}).passthrough();
+
+const ruleToggleSchema = z.object({
+  enabled: z.boolean(),
+});
+
+const patternSchema = z.object({}).passthrough();
+
+const suggestPatternsSchema = z.object({
+  code: z.string(),
+  filePath: z.string().optional(),
+});
+
+const patternUsageSchema = z.object({
+  successful: z.boolean(),
+});
+
 export function registerValidationRoutes(router: Router): void {
   router.post("/validation/validate", asyncHandler((req, res) => {
-    const { code, filePath } = req.body;
+    const parsed = validateCodeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { code, filePath } = parsed.data;
     const result = selfValidationService.validate(code, filePath);
     res.json(result);
   }));
@@ -16,7 +43,11 @@ export function registerValidationRoutes(router: Router): void {
   }));
 
   router.put("/validation/config", asyncHandler((req, res) => {
-    selfValidationService.setConfig(req.body);
+    const parsed = validationConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    selfValidationService.setConfig(parsed.data);
     res.json({ success: true });
   }));
 
@@ -26,13 +57,21 @@ export function registerValidationRoutes(router: Router): void {
   }));
 
   router.put("/validation/rules/:ruleId", asyncHandler((req, res) => {
-    const { enabled } = req.body;
+    const parsed = ruleToggleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { enabled } = parsed.data;
     selfValidationService.enableRule(req.params.ruleId as string, enabled);
     res.json({ success: true });
   }));
 
   router.post("/patterns", asyncHandler((req, res) => {
-    const pattern = patternLibraryService.addPattern(req.body);
+    const parsed = patternSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const pattern = patternLibraryService.addPattern(parsed.data);
     res.status(201).json(pattern);
   }));
 
@@ -55,13 +94,21 @@ export function registerValidationRoutes(router: Router): void {
   }));
 
   router.post("/patterns/suggest", asyncHandler((req, res) => {
-    const { code, filePath } = req.body;
+    const parsed = suggestPatternsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { code, filePath } = parsed.data;
     const suggestions = patternLibraryService.suggestPatterns(code, filePath);
     res.json(suggestions);
   }));
 
   router.post("/patterns/:patternId/usage", asyncHandler((req, res) => {
-    const { successful } = req.body;
+    const parsed = patternUsageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { successful } = parsed.data;
     patternLibraryService.recordUsage(req.params.patternId as string, successful);
     res.json({ success: true });
   }));

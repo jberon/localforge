@@ -135,8 +135,9 @@ class HardwareOptimizerService extends BaseService {
   private applyM4ProOverride(): void {
     this.appleSiliconProfile = APPLE_SILICON_PROFILES["m4-pro"];
     const m4Pro = this.appleSiliconProfile;
-    const totalMemoryGB = 48;
-    const freeMemoryGB = 40;
+    const envMemory = process.env.M4_PRO_MEMORY_GB ? parseFloat(process.env.M4_PRO_MEMORY_GB) : null;
+    const totalMemoryGB = envMemory || 36;
+    const freeMemoryGB = Math.round(totalMemoryGB * 0.85);
 
     this.profile = {
       platform: "darwin",

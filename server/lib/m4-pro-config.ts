@@ -1,16 +1,16 @@
 export const M4_PRO_OPTIMIZED = {
   memory: {
-    maxModelSizeMB: 32768,
-    contextReservedMB: 16384,
-    systemReservedMB: 8192,
-    totalAvailableMB: 49152,
-    llmPoolSizeMB: 36864,
+    maxModelSizeMB: 24576,
+    contextReservedMB: 8192,
+    systemReservedMB: 4096,
+    totalAvailableMB: 36864,
+    llmPoolSizeMB: 28672,
     appReservedMB: 4096,
   },
   lmStudio: {
     gpuLayers: -1,
-    contextLength: 65536,
-    batchSize: 2048,
+    contextLength: 32768,
+    batchSize: 1024,
     threads: 12,
     flashAttention: true,
     memoryMap: true,
@@ -23,7 +23,7 @@ export const M4_PRO_OPTIMIZED = {
     efficiencyCores: 4,
     gpuCores: 20,
     neuralEngineCores: 16,
-    unifiedMemoryGB: 48,
+    unifiedMemoryGB: 36,
     memoryBandwidthGBps: 273,
     ssdSpeedGBps: 4.0,
     architecture: "Apple Silicon M4 Pro",
@@ -32,11 +32,11 @@ export const M4_PRO_OPTIMIZED = {
     plannerModel: "Ministral 3 14B Reasoning",
     builderModel: "Qwen3 Coder 30B",
     plannerMemoryGB: 12,
-    builderMemoryGB: 24,
+    builderMemoryGB: 20,
     plannerTemperature: 0.25,
     builderTemperature: 0.3,
     plannerContextLength: 32768,
-    builderContextLength: 65536,
+    builderContextLength: 32768,
   },
   connection: {
     maxQueueSize: 30,
@@ -45,8 +45,8 @@ export const M4_PRO_OPTIMIZED = {
     throttleMs: 25,
     maxRetries: 5,
     retryDelayMs: 500,
-    maxConcurrentRequests: 3,
-    connectionPoolSize: 5,
+    maxConcurrentRequests: 1,
+    connectionPoolSize: 3,
     keepAliveMs: 60000,
   },
   circuitBreaker: {
@@ -57,46 +57,63 @@ export const M4_PRO_OPTIMIZED = {
   },
   performance: {
     enableParallelGeneration: true,
-    maxParallelTasks: 4,
+    maxParallelTasks: 3,
     enableStreamingOptimization: true,
     enableMemoryPressureMonitoring: true,
-    memoryPressureThresholdPercent: 85,
+    memoryPressureThresholdPercent: 80,
     enableGCHints: true,
     gcIntervalMs: 30000,
     enableCaching: true,
-    cacheMaxSizeMB: 512,
+    cacheMaxSizeMB: 384,
     cacheTTLMs: 300000,
   },
   concurrency: {
-    maxConcurrentBuilds: 2,
-    maxConcurrentValidations: 4,
+    maxConcurrentBuilds: 1,
+    maxConcurrentValidations: 3,
     maxConcurrentDeployments: 1,
-    taskQueueStrategy: "priority",
-    workerPoolSize: 8,
+    taskQueueStrategy: "priority" as const,
+    workerPoolSize: 6,
   },
 } as const;
 
-export function getOptimalConfig(availableMemoryGB: number = 48) {
+export function getOptimalConfig(availableMemoryGB: number = 36) {
   if (availableMemoryGB >= 48) {
     return {
       ...M4_PRO_OPTIMIZED,
+      memory: {
+        ...M4_PRO_OPTIMIZED.memory,
+        totalAvailableMB: 49152,
+        llmPoolSizeMB: 36864,
+        maxModelSizeMB: 32768,
+        contextReservedMB: 16384,
+      },
+      lmStudio: {
+        ...M4_PRO_OPTIMIZED.lmStudio,
+        contextLength: 65536,
+        batchSize: 2048,
+      },
       recommended: {
         ...M4_PRO_OPTIMIZED.recommended,
-        builderModel: "Qwen3 Coder 30B",
         builderMemoryGB: 24,
+        builderContextLength: 65536,
       },
     };
-  } else if (availableMemoryGB >= 32) {
+  } else if (availableMemoryGB >= 36) {
+    return M4_PRO_OPTIMIZED;
+  } else if (availableMemoryGB >= 24) {
     return {
       ...M4_PRO_OPTIMIZED,
       recommended: {
         ...M4_PRO_OPTIMIZED.recommended,
         builderModel: "Qwen2.5 Coder 14B",
         builderMemoryGB: 12,
+        plannerContextLength: 16384,
+        builderContextLength: 16384,
       },
       lmStudio: {
         ...M4_PRO_OPTIMIZED.lmStudio,
-        contextLength: 32768,
+        contextLength: 16384,
+        batchSize: 512,
       },
     };
   } else {
@@ -109,13 +126,13 @@ export function getOptimalConfig(availableMemoryGB: number = 48) {
         builderMemoryGB: 6,
         plannerTemperature: 0.3,
         builderTemperature: 0.4,
-        plannerContextLength: 16384,
-        builderContextLength: 16384,
+        plannerContextLength: 8192,
+        builderContextLength: 8192,
       },
       lmStudio: {
         ...M4_PRO_OPTIMIZED.lmStudio,
-        contextLength: 16384,
-        batchSize: 512,
+        contextLength: 8192,
+        batchSize: 256,
       },
     };
   }

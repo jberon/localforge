@@ -1,6 +1,42 @@
 import { Router } from "express";
+import { z } from "zod";
 import { asyncHandler } from "../../lib/async-handler";
 import { designModeService } from "../../services/design-mode.service";
+
+const designModeToggleSchema = z.object({
+  enabled: z.boolean(),
+});
+
+const designModeInferSchema = z.object({
+  prompt: z.string(),
+});
+
+const designModeMockupSchema = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  style: z.any().optional(),
+  templateId: z.string().optional(),
+});
+
+const designModeComponentSchema = z.object({}).passthrough();
+
+const designModeLayoutSchema = z.object({}).passthrough();
+
+const designModeColorSchemeSchema = z.object({}).passthrough();
+
+const detectKeywordsSchema = z.object({
+  prompt: z.string(),
+});
+
+const enhancePromptSchema = z.object({
+  prompt: z.string(),
+  keywords: z.array(z.string()).optional(),
+});
+
+const keywordStylesSchema = z.object({
+  keywords: z.array(z.string()),
+});
 
 export function registerDesignModeRoutes(router: Router): void {
   router.get("/design-mode", asyncHandler((_req, res) => {
@@ -9,7 +45,11 @@ export function registerDesignModeRoutes(router: Router): void {
   }));
 
   router.put("/design-mode", asyncHandler((req, res) => {
-    const { enabled } = req.body;
+    const parsed = designModeToggleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { enabled } = parsed.data;
     designModeService.setEnabled(enabled);
     res.json({ success: true, enabled });
   }));
@@ -31,13 +71,21 @@ export function registerDesignModeRoutes(router: Router): void {
   }));
 
   router.post("/design-mode/infer", asyncHandler((req, res) => {
-    const { prompt } = req.body;
+    const parsed = designModeInferSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { prompt } = parsed.data;
     const result = designModeService.inferDesignFromPrompt(prompt);
     res.json(result);
   }));
 
   router.post("/design-mode/mockups", asyncHandler((req, res) => {
-    const { projectId, name, description, style, templateId } = req.body;
+    const parsed = designModeMockupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { projectId, name, description, style, templateId } = parsed.data;
     const mockup = designModeService.createMockup(projectId, name, description, style, templateId);
     res.status(201).json(mockup);
   }));
@@ -53,22 +101,34 @@ export function registerDesignModeRoutes(router: Router): void {
   }));
 
   router.post("/design-mode/mockups/:mockupId/components", asyncHandler((req, res) => {
-    const component = designModeService.addComponent(req.params.mockupId as string, req.body);
+    const parsed = designModeComponentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const component = designModeService.addComponent(req.params.mockupId as string, parsed.data);
     res.json(component || { error: "Failed to add component" });
   }));
 
   router.put("/design-mode/mockups/:mockupId/layout", asyncHandler((req, res) => {
-    const success = designModeService.updateLayout(req.params.mockupId as string, req.body);
+    const parsed = designModeLayoutSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const success = designModeService.updateLayout(req.params.mockupId as string, parsed.data);
     res.json({ success });
   }));
 
   router.put("/design-mode/mockups/:mockupId/colors", asyncHandler((req, res) => {
-    const success = designModeService.updateColorScheme(req.params.mockupId as string, req.body);
+    const parsed = designModeColorSchemeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const success = designModeService.updateColorScheme(req.params.mockupId as string, parsed.data);
     res.json({ success });
   }));
 
-  router.post("/design-mode/mockups/:mockupId/approve", asyncHandler((req, res) => {
-    const success = designModeService.approveMockup(req.params.mockupId as string);
+  router.post("/design-mode/mockups/:mockupId/approve", asyncHandler((_req, res) => {
+    const success = designModeService.approveMockup(_req.params.mockupId as string);
     res.json({ success });
   }));
 
@@ -91,21 +151,33 @@ export function registerDesignModeRoutes(router: Router): void {
   }));
 
   router.post("/design-mode/detect-keywords", asyncHandler((req, res) => {
-    const { prompt } = req.body;
+    const parsed = detectKeywordsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { prompt } = parsed.data;
     const keywords = designModeService.detectKeywordsInPrompt(prompt);
     const definitions = keywords.map(kw => designModeService.getDesignKeyword(kw)).filter(Boolean);
     res.json({ keywords, definitions });
   }));
 
   router.post("/design-mode/enhance-prompt", asyncHandler((req, res) => {
-    const { prompt, keywords } = req.body;
+    const parsed = enhancePromptSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { prompt, keywords } = parsed.data;
     const enhanced = designModeService.enhancePromptWithKeywords(prompt, keywords);
     const detected = designModeService.detectKeywordsInPrompt(prompt);
     res.json({ enhanced, detectedKeywords: detected });
   }));
 
   router.post("/design-mode/keyword-styles", asyncHandler((req, res) => {
-    const { keywords } = req.body;
+    const parsed = keywordStylesSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+    const { keywords } = parsed.data;
     const cssProperties = designModeService.getKeywordCSSProperties(keywords);
     const tailwindClasses = designModeService.getKeywordTailwindClasses(keywords);
     res.json({ cssProperties, tailwindClasses });

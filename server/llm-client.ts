@@ -657,35 +657,30 @@ export { CircuitOpenError } from "./lib/circuit-breaker";
 // M4 Pro Performance Configuration
 // MacBook Pro M4 Pro: 14-core CPU, 20-core GPU, 16-core Neural Engine, 48GB unified memory
 export const M4_PRO_CONFIG = {
-  // Memory allocation for LLM processing (optimized for 48GB)
   memory: {
-    maxModelSizeMB: 32768,         // 32GB for model weights (fits 30B+ models)
-    maxContextMB: 12288,           // 12GB for model context
+    maxModelSizeMB: 24576,         // 24GB for model weights (fits 30B quantized models on 36GB)
+    maxContextMB: 8192,            // 8GB for model context (32K tokens)
     reservedSystemMB: 4096,        // 4GB for system + app overhead
   },
-  // Concurrency limits to prevent memory pressure
   concurrency: {
     maxParallelRequests: 1,        // LM Studio handles one request at a time
-    requestQueueSize: 20,          // Queue up to 20 requests (increased for multi-panel UX)
+    requestQueueSize: 20,          // Queue up to 20 requests (multi-panel UX)
     streamingChunkSize: 1024,      // Optimal chunk size for streaming
   },
-  // Recommended LM Studio settings for best performance on M4 Pro
   lmStudioSettings: {
     gpuLayers: -1,                 // Use all GPU layers (Metal acceleration)
-    contextLength: 65536,          // 64K context for very large apps
-    batchSize: 1024,               // Larger batch size for M4 Pro GPU
-    threads: 10,                   // Leave 4 cores for system (14-core CPU)
+    contextLength: 32768,          // 32K context — safe for 36GB unified memory
+    batchSize: 1024,               // Balanced batch size for M4 Pro GPU
+    threads: 12,                   // Leave 2 cores for system (14-core CPU)
     flashAttention: true,          // Enable flash attention if supported
     mmap: true,                    // Memory-mapped file loading
   },
-  // Performance monitoring thresholds
   thresholds: {
     warningLatencyMs: 30000,       // Warn if request takes > 30s
     errorLatencyMs: 120000,        // Error if request takes > 2min
     minTokensPerSecond: 15,        // Minimum acceptable speed for M4 Pro
     targetTokensPerSecond: 30,     // Target speed for optimal experience
   },
-  // Circuit breaker configuration
   circuitBreaker: {
     failureThreshold: 3,           // Open after 3 consecutive failures
     successThreshold: 2,           // Close after 2 consecutive successes
@@ -693,8 +688,7 @@ export const M4_PRO_CONFIG = {
   },
 } as const;
 
-// Optimized for Mac M4 Pro with 48GB unified memory
-// These higher limits take advantage of larger local models (32B+ params)
+// Optimized for Mac M4 Pro with 36GB unified memory
 export const LLM_DEFAULTS = {
   temperature: {
     planner: 0.2,      // Lower for structured, deterministic planning
