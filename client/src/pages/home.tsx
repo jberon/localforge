@@ -38,6 +38,7 @@ import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIn
 import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown } from "lucide-react";
 import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
+import { HomeScreen } from "@/components/home-screen";
 import { BuildSpeedToggle } from "@/components/build-speed-toggle";
 import { DeployButton } from "@/components/deploy-button";
 import { AutonomySlider } from "@/components/autonomy-slider";
@@ -1401,12 +1402,52 @@ export default function Home() {
     setLastError(null);
   }, [handleIntelligentGenerate, lastError]);
 
+  if (!activeProjectId) {
+    return (
+      <>
+        <HomeScreen
+          projects={projects}
+          onCreateProject={() => createProject()}
+          onSelectProject={(id) => setActiveProjectId(id)}
+          onGenerate={(prompt, mode) => {
+            if (mode === "design") {
+              setAgentMode("plan");
+            }
+            createProject();
+            setTimeout(() => {
+              handleIntelligentGenerate(prompt);
+            }, 200);
+          }}
+          isGenerating={isGenerating || isPlanning}
+          isConnected={llmConnected || testModeConnected}
+          testModeActive={testModeActive}
+          testModeConnected={testModeConnected}
+          onOpenSettings={() => {}}
+          onNavigateAnalytics={() => navigate("/analytics")}
+        />
+        <OnboardingModal />
+        <CommandPalette
+          onNewProject={() => createProject()}
+          onDownload={undefined}
+          onOpenSettings={() => {}}
+          onOpenDreamTeam={() => {}}
+          onRefreshConnection={checkConnection}
+          onToggleTheme={toggleTheme}
+          onConsultTeam={undefined}
+          hasActiveProject={false}
+          isGenerating={isGenerating || isPlanning}
+          isDarkMode={isDarkMode}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-full">
       <header className="flex items-center justify-between gap-4 px-3 h-9 min-h-[36px] border-b border-border/40 bg-muted/30 electron-drag-region shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <Hammer className="h-4 w-4 text-primary shrink-0 electron-no-drag" />
-          <span className="text-sm font-semibold tracking-tight shrink-0 electron-no-drag">LocalForge</span>
+          <Hammer className="h-4 w-4 text-primary shrink-0 electron-no-drag cursor-pointer" onClick={() => setActiveProjectId(null)} />
+          <span className="text-sm font-semibold tracking-tight shrink-0 electron-no-drag cursor-pointer" onClick={() => setActiveProjectId(null)}>LocalForge</span>
           {activeProject && (
             <span className="text-xs text-muted-foreground truncate max-w-[200px] electron-no-drag" data-testid="text-project-name-header">
               {activeProject.name}
@@ -1648,23 +1689,7 @@ export default function Home() {
               </div>
               
               <div className="flex-1 overflow-hidden">
-                {projects.length === 0 && !activeProject ? (
-                  <MinimalLanding
-                    onGenerate={(prompt, mode) => {
-                      if (mode === "design") {
-                        setAgentMode("plan");
-                      }
-                      createProject();
-                      setTimeout(() => {
-                        handleIntelligentGenerate(prompt);
-                      }, 200);
-                    }}
-                    isGenerating={isGenerating || isPlanning}
-                    isConnected={llmConnected || testModeConnected}
-                    testModeActive={testModeActive}
-                    testModeConnected={testModeConnected}
-                  />
-                ) : !displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
+                {!displayCode && !isGenerating && !isPlanning && (!activeProject?.messages || activeProject.messages.length === 0) && !activeProject?.plan && (!activeProject?.generatedFiles || activeProject.generatedFiles.length === 0) ? (
                   <div className="h-full flex flex-col">
                     {agentMode === "plan" && (
                       <div className="p-4 mx-auto max-w-2xl w-full">
