@@ -21,7 +21,7 @@ import { AIThinkingPanel } from "@/components/ai-thinking-panel";
 import { ProjectTeamPanel } from "@/components/project-team-panel";
 import { DreamTeamThinkingTab } from "@/components/dream-team-thinking-tab";
 import { TaskProgressPanel, type TaskItem } from "@/components/task-progress-panel";
-import { PlanBuildModeToggle, ModeIndicator, PlanModeInfo, type AgentMode } from "@/components/plan-build-mode-toggle";
+import { PlanBuildModeToggle, ModeIndicator, PlanModeInfo, DiscussModeInfo, type AgentMode } from "@/components/plan-build-mode-toggle";
 import { PlanModeTaskList, PlanProgress, type PlanTask } from "@/components/plan-mode-task-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ import { useProjectMutations } from "@/hooks/use-project-mutations";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown, TestTube, ImageIcon, Router } from "lucide-react";
 import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
 import { HomeScreen } from "@/components/home-screen";
@@ -45,6 +45,9 @@ import { AutonomySlider } from "@/components/autonomy-slider";
 import { ExtendedThinkingIndicator } from "@/components/extended-thinking-indicator";
 import { DesignModePanel } from "@/components/design-mode-panel";
 import { AIInsightsPanel } from "@/components/ai-insights-panel";
+import { SmartModelSettings } from "@/components/smart-model-settings";
+import { SelfTestingPanel } from "@/components/self-testing-panel";
+import { ImageImportDialog } from "@/components/image-import-dialog";
 import type { Action, ActionType } from "@/components/action-group-row";
 import {
   DropdownMenu,
@@ -123,6 +126,9 @@ export default function Home() {
   const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [showDatabasePanel, setShowDatabasePanel] = useState(false);
   const [showAIInsights, setShowAIInsights] = useState(false);
+  const [showSelfTesting, setShowSelfTesting] = useState(false);
+  const [showSmartModel, setShowSmartModel] = useState(false);
+  const [showImageImport, setShowImageImport] = useState(false);
   const [showHomeSettings, setShowHomeSettings] = useState(false);
   const [centerTab, setCenterTab] = useState<"preview" | "console">("preview");
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
@@ -1249,9 +1255,12 @@ export default function Home() {
   // Intelligent routing handler - automatically routes to plan or build based on request analysis
   const handleIntelligentGenerate = useCallback(
     async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number) => {
-      // In Plan mode, generate a task list instead of building
       if (agentMode === "plan") {
         return handlePlanModeGenerate(content);
+      }
+
+      if (agentMode === "discuss") {
+        return handleSendMessage(content, dataModel, attachments, templateTemperature);
       }
       
       if (!autoRouting) {
@@ -1587,6 +1596,35 @@ export default function Home() {
           >
             <Brain className={`h-4 w-4 ${isGenerating || isPlanning ? "text-purple-500 animate-pulse" : ""}`} />
           </Button>
+          <Button
+            variant={showSelfTesting ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => setShowSelfTesting(!showSelfTesting)}
+            title="Self-Testing"
+            data-testid="button-strip-testing"
+            className={showSelfTesting ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <TestTube className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={showSmartModel ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => setShowSmartModel(!showSmartModel)}
+            title="Smart Model Routing"
+            data-testid="button-strip-smart-model"
+            className={showSmartModel ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <Router className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowImageImport(true)}
+            title="Import Design"
+            data-testid="button-strip-image-import"
+          >
+            <ImageIcon className="h-4 w-4" />
+          </Button>
         </div>
         <div className="mt-auto flex flex-col items-center gap-1 py-2 border-t">
           {(llmConnected || testModeConnected) ? (
@@ -1766,6 +1804,12 @@ export default function Home() {
                     <PlanModeInfo />
                   </div>
                 )}
+
+                {agentMode === "discuss" && (
+                  <div className="p-3 border-b shrink-0">
+                    <DiscussModeInfo />
+                  </div>
+                )}
                 
                 <div className="flex-1 overflow-hidden">
                   <MemoizedChatPanel
@@ -1822,6 +1866,11 @@ export default function Home() {
                       {agentMode === "plan" && (
                         <div className="p-4 mx-auto max-w-2xl w-full">
                           <PlanModeInfo />
+                        </div>
+                      )}
+                      {agentMode === "discuss" && (
+                        <div className="p-4 mx-auto max-w-2xl w-full">
+                          <DiscussModeInfo />
                         </div>
                       )}
                       <GenerationWizard
@@ -2068,6 +2117,47 @@ export default function Home() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <Sheet open={showSelfTesting} onOpenChange={setShowSelfTesting}>
+        <SheetContent side="right" className="w-[500px] sm:max-w-[500px] p-0">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle className="flex items-center gap-2">
+              <TestTube className="h-5 w-5" />
+              Self-Testing
+            </SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(100vh-60px)] overflow-y-auto p-4">
+            <SelfTestingPanel
+              projectId={activeProjectId || "default"}
+              code={activeProject?.generatedCode || streamingCode || undefined}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={showSmartModel} onOpenChange={setShowSmartModel}>
+        <SheetContent side="right" className="w-[500px] sm:max-w-[500px] p-0">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle className="flex items-center gap-2">
+              <Router className="h-5 w-5" />
+              Smart Model Routing
+            </SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(100vh-60px)] overflow-y-auto p-4">
+            <SmartModelSettings />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <ImageImportDialog
+        projectId={activeProjectId || "default"}
+        open={showImageImport}
+        onOpenChange={setShowImageImport}
+        onCodeGenerated={(prompt) => {
+          setShowImageImport(false);
+          toast({ title: "Design analyzed", description: "Code generation prompt ready. Paste it in the chat to generate." });
+        }}
+      />
     </div>
   );
 }

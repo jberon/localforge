@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown, ExternalLink, Loader2, Zap, Hammer, Square, FolderOpen } from "lucide-react";
+import { Eye, Code, Download, Copy, Check, RefreshCw, Maximize2, Minimize2, FolderTree, FileCode, Database, ChevronRight, Rocket, RotateCcw, AlertTriangle, Save, Play, Terminal, Search, Package, Wrench, ChevronDown, ExternalLink, Loader2, Zap, Hammer, Square, FolderOpen, MousePointer2 } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useToast } from "@/hooks/use-toast";
 import { PublishingPanel } from "./publishing-panel";
@@ -19,6 +19,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@shared/schema";
 import type { editor } from "monaco-editor";
 import { useBundler } from "@/hooks/use-bundler";
+import { VisualEditorOverlay } from "./visual-editor-overlay";
 
 interface PreviewPanelProps {
   code: string;
@@ -85,6 +86,8 @@ export function PreviewPanel({
   const [localBuildLogs, setLocalBuildLogs] = useState<string[]>([]);
   const [showLocalBuildLogs, setShowLocalBuildLogs] = useState(false);
   const [localBuildPath, setLocalBuildPath] = useState<string | null>(null);
+  const [visualEditorEnabled, setVisualEditorEnabled] = useState(false);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
@@ -654,6 +657,16 @@ ${localCode}
               <Button
                 size="icon"
                 variant="ghost"
+                onClick={() => setVisualEditorEnabled(!visualEditorEnabled)}
+                className={`toggle-elevate ${visualEditorEnabled ? "toggle-elevated text-primary" : ""}`}
+                data-testid="button-visual-editor"
+                title="Visual Editor - Click to edit elements"
+              >
+                <MousePointer2 className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
                 onClick={handleRefresh}
                 data-testid="button-refresh-preview"
                 title="Refresh preview (⌘R / Ctrl+R)"
@@ -807,25 +820,44 @@ ${localCode}
               <div className="h-full flex flex-col bg-white dark:bg-background transition-opacity duration-300">
                 {code && !isGenerating ? (
                   <>
-                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative">
-                      <iframe
-                        key={iframeKey}
-                        src={previewDataUrl}
-                        className="w-full h-full border-0"
-                        sandbox="allow-scripts"
-                        title="App Preview"
-                        data-testid="iframe-preview"
-                      />
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        onClick={() => setIsFullscreen(!isFullscreen)}
-                        className="absolute bottom-4 right-4 shadow-lg z-10"
-                        data-testid="button-popout-preview"
-                        title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
-                      >
-                        {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
-                      </Button>
+                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative flex">
+                      <div className={`${visualEditorEnabled ? "flex-1" : "w-full"} h-full relative`}>
+                        <iframe
+                          key={iframeKey}
+                          ref={previewIframeRef}
+                          src={previewDataUrl}
+                          className="w-full h-full border-0"
+                          sandbox="allow-scripts"
+                          title="App Preview"
+                          data-testid="iframe-preview"
+                        />
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          onClick={() => setIsFullscreen(!isFullscreen)}
+                          className="absolute bottom-4 right-4 shadow-lg z-10"
+                          data-testid="button-popout-preview"
+                          title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+                        >
+                          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      {visualEditorEnabled && (
+                        <div className="w-64 border-l bg-background shrink-0 overflow-hidden">
+                          <VisualEditorOverlay
+                            enabled={visualEditorEnabled}
+                            onToggle={() => setVisualEditorEnabled(false)}
+                            projectId={projectId}
+                            code={localCode}
+                            onCodeUpdate={(updated) => {
+                              setLocalCode(updated);
+                              setHasUnsavedChanges(true);
+                              saveCode(updated);
+                            }}
+                            iframeRef={previewIframeRef}
+                          />
+                        </div>
+                      )}
                     </div>
                     </>
                 ) : isGenerating ? (
@@ -910,37 +942,56 @@ ${localCode}
                       </div>
                     </div>
                   ) : bundledPreviewHtml ? (
-                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative h-full">
-                      <iframe
-                        key={iframeKey}
-                        src={bundledPreviewHtml}
-                        className="w-full h-full border-0"
-                        sandbox="allow-scripts"
-                        title="App Preview"
-                        data-testid="iframe-bundled-preview"
-                      />
-                      <div className="absolute bottom-4 left-4 flex items-center gap-2">
-                        <Badge variant="secondary" className="gap-1 text-xs">
-                          <Zap className="h-3 w-3" />
-                          Bundled in {lastBundleTime}ms
-                        </Badge>
-                        {bundleWarnings.length > 0 && (
-                          <Badge variant="secondary" className="gap-1 text-xs bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
-                            <AlertTriangle className="h-3 w-3" />
-                            {bundleWarnings.length} warning{bundleWarnings.length > 1 ? "s" : ""}
+                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative h-full flex">
+                      <div className={`${visualEditorEnabled ? "flex-1" : "w-full"} h-full relative`}>
+                        <iframe
+                          key={iframeKey}
+                          ref={previewIframeRef}
+                          src={bundledPreviewHtml}
+                          className="w-full h-full border-0"
+                          sandbox="allow-scripts"
+                          title="App Preview"
+                          data-testid="iframe-bundled-preview"
+                        />
+                        <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                          <Badge variant="secondary" className="gap-1 text-xs">
+                            <Zap className="h-3 w-3" />
+                            Bundled in {lastBundleTime}ms
                           </Badge>
-                        )}
+                          {bundleWarnings.length > 0 && (
+                            <Badge variant="secondary" className="gap-1 text-xs bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
+                              <AlertTriangle className="h-3 w-3" />
+                              {bundleWarnings.length} warning{bundleWarnings.length > 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          onClick={() => setIsFullscreen(!isFullscreen)}
+                          className="absolute bottom-4 right-4 shadow-lg z-10"
+                          data-testid="button-popout-bundled-preview"
+                          title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+                        >
+                          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+                        </Button>
                       </div>
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        onClick={() => setIsFullscreen(!isFullscreen)}
-                        className="absolute bottom-4 right-4 shadow-lg z-10"
-                        data-testid="button-popout-bundled-preview"
-                        title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
-                      >
-                        {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
-                      </Button>
+                      {visualEditorEnabled && (
+                        <div className="w-64 border-l bg-background shrink-0 overflow-hidden">
+                          <VisualEditorOverlay
+                            enabled={visualEditorEnabled}
+                            onToggle={() => setVisualEditorEnabled(false)}
+                            projectId={projectId}
+                            code={localCode}
+                            onCodeUpdate={(updated) => {
+                              setLocalCode(updated);
+                              setHasUnsavedChanges(true);
+                              saveCode(updated);
+                            }}
+                            iframeRef={previewIframeRef}
+                          />
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">

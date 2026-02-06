@@ -50,10 +50,19 @@ class ModelRouterService {
   private config: RoutingConfig;
   private modelTiers: Map<string, ModelTier> = new Map();
   private routingHistory: Array<{ task: string; tier: string; success: boolean; timestamp: number }> = [];
+  private outcomeHistory: Map<string, { taskId: string; model: string; success: boolean; durationMs: number; timestamp: number }> = new Map();
+  private outcomeTTL = 30 * 60 * 1000;
+  private evictionInterval: ReturnType<typeof setInterval> | null = null;
+
+  private static readonly CLOUD_MODELS: Record<"fast" | "balanced" | "powerful", string[]> = {
+    fast: ["gpt-4o-mini", "gemini-2.0-flash"],
+    balanced: ["gpt-4o", "claude-sonnet-4"],
+    powerful: ["o3-mini", "claude-opus-4"],
+  };
 
   private constructor() {
     this.config = {
-      enabled: false,
+      enabled: true,
       fastModel: "qwen2.5-coder-7b",
       balancedModel: "qwen2.5-coder-14b",
       powerfulModel: "qwen3-coder-30b",
@@ -68,6 +77,7 @@ class ModelRouterService {
     };
     
     this.initializeModelTiers();
+    this.evictionInterval = setInterval(() => this.evictExpiredOutcomes(), this.outcomeTTL);
     logger.info("ModelRouterService initialized");
   }
 
@@ -406,6 +416,147 @@ class ModelRouterService {
 
   getAvailableTiers(): ModelTier[] {
     return Array.from(this.modelTiers.values());
+  }
+
+  getConfig(): RoutingConfig {
+    return { ...this.config };
+  }
+
+  routeWithCloudFallback(
+    prompt: string,
+    context?: string,
+    cloudProviders?: string[]
+  ): RoutingDecision {
+    const analysis = this.analyzeTask(prompt, context);
+    const localDecision = this.selectModelForTask(analysis);
+
+    const availableProviders = cloudProviders || ["openai", "anthropic", "google"];
+    const isLocalUnavailable = !this.config.enabled;
+    const isTaskTooComplex = analysis.complexity === "complex" && analysis.features.length >= 3;
+
+    if (!isLocalUnavailable && !isTaskTooComplex) {
+      return localDecision;
+    }
+
+    const tier = localDecision.tier;
+    const cloudModels = ModelRouterService.CLOUD_MODELS[tier];
+
+    const filteredCloudModels = cloudModels.filter((model) => {
+      if (availableProviders.includes("openai") && (model.startsWith("gpt-") || model.startsWith("o3"))) return true;
+      if (availableProviders.includes("anthropic") && model.startsWith("claude")) return true;
+      if (availableProviders.includes("google") && model.startsWith("gemini")) return true;
+      return false;
+    });
+
+    if (filteredCloudModels.length === 0) {
+      return localDecision;
+    }
+
+    const bestCloud = this.pickBestModelByOutcome(filteredCloudModels) || filteredCloudModels[0];
+
+    return {
+      selectedModel: bestCloud,
+      selectedEndpoint: "cloud",
+      tier,
+      reason: isLocalUnavailable
+        ? `Local models unavailable - falling back to cloud model ${bestCloud} (${tier} tier)`
+        : `Task too complex for local models (${analysis.features.join(", ")}) - using cloud model ${bestCloud}`,
+      confidence: localDecision.confidence * 0.9,
+      alternativeModels: filteredCloudModels.filter((m) => m !== bestCloud),
+    };
+  }
+
+  getRoutingExplanation(decision: RoutingDecision): string {
+    const tierLabel = decision.tier === "fast" ? "Fast" : decision.tier === "balanced" ? "Balanced" : "Powerful";
+    const parts: string[] = [
+      `Selected model: ${decision.selectedModel} (${tierLabel} tier)`,
+      `Reason: ${decision.reason}`,
+      `Confidence: ${Math.round(decision.confidence * 100)}%`,
+    ];
+
+    if (decision.selectedEndpoint === "cloud") {
+      parts.push("Source: Cloud provider");
+    } else {
+      parts.push(`Endpoint: ${decision.selectedEndpoint}`);
+    }
+
+    if (decision.alternativeModels.length > 0) {
+      parts.push(`Alternatives: ${decision.alternativeModels.join(", ")}`);
+    }
+
+    return parts.join(". ") + ".";
+  }
+
+  recordOutcome(taskId: string, model: string, success: boolean, durationMs: number): void {
+    if (this.outcomeHistory.size >= 500) {
+      const firstKey = Array.from(this.outcomeHistory.keys())[0];
+      if (firstKey) {
+        this.outcomeHistory.delete(firstKey);
+      }
+    }
+
+    this.outcomeHistory.set(`${taskId}-${Date.now()}`, {
+      taskId,
+      model,
+      success,
+      durationMs,
+      timestamp: Date.now(),
+    });
+  }
+
+  private evictExpiredOutcomes(): void {
+    const now = Date.now();
+    const keysToDelete: string[] = [];
+    for (const [key, entry] of Array.from(this.outcomeHistory.entries())) {
+      if (now - entry.timestamp > this.outcomeTTL) {
+        keysToDelete.push(key);
+      }
+    }
+    for (const key of keysToDelete) {
+      this.outcomeHistory.delete(key);
+    }
+  }
+
+  private pickBestModelByOutcome(candidates: string[]): string | null {
+    if (this.outcomeHistory.size === 0) return null;
+
+    const stats = new Map<string, { successes: number; total: number; avgDuration: number }>();
+
+    for (const entry of Array.from(this.outcomeHistory.values())) {
+      if (!candidates.includes(entry.model)) continue;
+      const existing = stats.get(entry.model) || { successes: 0, total: 0, avgDuration: 0 };
+      existing.total++;
+      if (entry.success) existing.successes++;
+      existing.avgDuration = (existing.avgDuration * (existing.total - 1) + entry.durationMs) / existing.total;
+      stats.set(entry.model, existing);
+    }
+
+    if (stats.size === 0) return null;
+
+    let bestModel: string | null = null;
+    let bestScore = -1;
+
+    for (const [model, s] of Array.from(stats.entries())) {
+      const successRate = s.total > 0 ? s.successes / s.total : 0;
+      const speedBonus = s.avgDuration > 0 ? Math.min(1, 5000 / s.avgDuration) * 0.1 : 0;
+      const score = successRate + speedBonus;
+      if (score > bestScore) {
+        bestScore = score;
+        bestModel = model;
+      }
+    }
+
+    return bestModel;
+  }
+
+  destroy(): void {
+    if (this.evictionInterval) {
+      clearInterval(this.evictionInterval);
+      this.evictionInterval = null;
+    }
+    this.modelTiers.clear();
+    this.outcomeHistory.clear();
+    this.routingHistory = [];
   }
 }
 

@@ -30,6 +30,7 @@ import { autonomyLevelService } from "../services/autonomy-level.service";
 import { extendedThinkingService } from "../services/extended-thinking.service";
 import { designModeService } from "../services/design-mode.service";
 import { deploymentService, type ProjectDeploymentInfo, type DeploymentPlatform } from "../services/deployment.service";
+import { modelRouterService } from "../services/model-router.service";
 import { z } from "zod";
 import logger from "../lib/logger";
 
@@ -1801,6 +1802,128 @@ router.post("/design-mode/mockups/:mockupId/generate", (req, res) => {
 });
 
 // ============================================================================
+// VISUAL EDITOR ROUTES
+// ============================================================================
+
+import { visualEditorService } from "../services/visual-editor.service";
+
+router.get("/visual-editor/inspector-script", (_req, res) => {
+  try {
+    const script = visualEditorService.getInspectorScript();
+    res.json({ script });
+  } catch (error) {
+    logger.error("Failed to get inspector script", { error });
+    res.status(500).json({ error: "Failed to get inspector script" });
+  }
+});
+
+router.post("/visual-editor/parse", (req, res) => {
+  try {
+    const { projectId, files } = req.body;
+    const mappings = visualEditorService.parseSourceCode(projectId, files);
+    res.json({ mappings, count: mappings.length });
+  } catch (error) {
+    logger.error("Failed to parse source code", { error });
+    res.status(500).json({ error: "Failed to parse source code" });
+  }
+});
+
+router.get("/visual-editor/mappings/:projectId", (req, res) => {
+  try {
+    const mappings = visualEditorService.getMappings(req.params.projectId);
+    res.json({ mappings });
+  } catch (error) {
+    logger.error("Failed to get mappings", { error });
+    res.status(500).json({ error: "Failed to get mappings" });
+  }
+});
+
+router.post("/visual-editor/apply-patch", (req, res) => {
+  try {
+    const { projectId, patch, sourceCode } = req.body;
+    const result = visualEditorService.applyPatch(projectId, patch, sourceCode);
+    res.json(result);
+  } catch (error) {
+    logger.error("Failed to apply patch", { error });
+    res.status(500).json({ error: "Failed to apply patch" });
+  }
+});
+
+router.post("/visual-editor/apply-patches", (req, res) => {
+  try {
+    const { projectId, patches, sourceCode } = req.body;
+    const results = visualEditorService.applyPatches(projectId, patches, sourceCode);
+    res.json({ results });
+  } catch (error) {
+    logger.error("Failed to apply patches", { error });
+    res.status(500).json({ error: "Failed to apply patches" });
+  }
+});
+
+// ============================================================================
+// DESIGN STYLE KEYWORDS ROUTES
+// ============================================================================
+
+router.get("/design-mode/keywords", (_req, res) => {
+  try {
+    const keywords = designModeService.getDesignKeywords();
+    res.json(keywords);
+  } catch (error) {
+    logger.error("Failed to get design keywords", { error });
+    res.status(500).json({ error: "Failed to get design keywords" });
+  }
+});
+
+router.get("/design-mode/keywords/:keyword", (req, res) => {
+  try {
+    const keyword = designModeService.getDesignKeyword(req.params.keyword as any);
+    if (!keyword) {
+      return res.status(404).json({ error: "Keyword not found" });
+    }
+    res.json(keyword);
+  } catch (error) {
+    logger.error("Failed to get design keyword", { error });
+    res.status(500).json({ error: "Failed to get design keyword" });
+  }
+});
+
+router.post("/design-mode/detect-keywords", (req, res) => {
+  try {
+    const { prompt } = req.body;
+    const keywords = designModeService.detectKeywordsInPrompt(prompt);
+    const definitions = keywords.map(kw => designModeService.getDesignKeyword(kw)).filter(Boolean);
+    res.json({ keywords, definitions });
+  } catch (error) {
+    logger.error("Failed to detect keywords", { error });
+    res.status(500).json({ error: "Failed to detect keywords" });
+  }
+});
+
+router.post("/design-mode/enhance-prompt", (req, res) => {
+  try {
+    const { prompt, keywords } = req.body;
+    const enhanced = designModeService.enhancePromptWithKeywords(prompt, keywords);
+    const detected = designModeService.detectKeywordsInPrompt(prompt);
+    res.json({ enhanced, detectedKeywords: detected });
+  } catch (error) {
+    logger.error("Failed to enhance prompt", { error });
+    res.status(500).json({ error: "Failed to enhance prompt" });
+  }
+});
+
+router.post("/design-mode/keyword-styles", (req, res) => {
+  try {
+    const { keywords } = req.body;
+    const cssProperties = designModeService.getKeywordCSSProperties(keywords);
+    const tailwindClasses = designModeService.getKeywordTailwindClasses(keywords);
+    res.json({ cssProperties, tailwindClasses });
+  } catch (error) {
+    logger.error("Failed to get keyword styles", { error });
+    res.status(500).json({ error: "Failed to get keyword styles" });
+  }
+});
+
+// ============================================================================
 // DEPLOYMENT SERVICE ROUTES
 // ============================================================================
 
@@ -2214,5 +2337,337 @@ router.post("/v21/autofix/validate-and-fix-multiple", (req, res) => {
     res.status(500).json({ error: "Failed to validate and fix multiple files" });
   }
 });
+
+// ==================== MODEL ROUTER ====================
+
+router.get("/model-router/config", (_req, res) => {
+  try {
+    const config = modelRouterService.getConfig();
+    res.json(config);
+  } catch (error) {
+    logger.error("Failed to get model router config", { error });
+    res.status(500).json({ error: "Failed to get model router config" });
+  }
+});
+
+router.put("/model-router/config", (req, res) => {
+  try {
+    const updates = req.body;
+    modelRouterService.configure(updates);
+    const config = modelRouterService.getConfig();
+    res.json(config);
+  } catch (error) {
+    logger.error("Failed to update model router config", { error });
+    res.status(500).json({ error: "Failed to update model router config" });
+  }
+});
+
+router.post("/model-router/analyze", (req, res) => {
+  try {
+    const { prompt, context } = req.body;
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "prompt string is required" });
+    }
+    const analysis = modelRouterService.analyzeTask(prompt, context);
+    res.json(analysis);
+  } catch (error) {
+    logger.error("Failed to analyze task", { error });
+    res.status(500).json({ error: "Failed to analyze task" });
+  }
+});
+
+router.post("/model-router/route", (req, res) => {
+  try {
+    const { prompt, context } = req.body;
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "prompt string is required" });
+    }
+    const decision = modelRouterService.routeTask(prompt, context);
+    const explanation = modelRouterService.getRoutingExplanation(decision);
+    res.json({ ...decision, explanation });
+  } catch (error) {
+    logger.error("Failed to route task", { error });
+    res.status(500).json({ error: "Failed to route task" });
+  }
+});
+
+router.get("/model-router/stats", (_req, res) => {
+  try {
+    const stats = modelRouterService.getRoutingStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get model router stats", { error });
+    res.status(500).json({ error: "Failed to get model router stats" });
+  }
+});
+
+// ============================================================================
+// SELF-TESTING SERVICE ROUTES
+// ============================================================================
+
+import { selfTestingService } from "../services/self-testing.service";
+
+router.post("/self-testing/generate", (req, res) => {
+  try {
+    const { projectId, code, appType } = req.body;
+    const suite = selfTestingService.generateTestSuite(projectId, code, appType);
+    res.status(201).json(suite);
+  } catch (error) {
+    logger.error("Failed to generate test suite", { error });
+    res.status(500).json({ error: "Failed to generate test suite" });
+  }
+});
+
+router.get("/self-testing/suites/:suiteId", (req, res) => {
+  try {
+    const suite = selfTestingService.getTestSuite(req.params.suiteId);
+    if (!suite) return res.status(404).json({ error: "Suite not found" });
+    res.json(suite);
+  } catch (error) {
+    logger.error("Failed to get test suite", { error });
+    res.status(500).json({ error: "Failed to get test suite" });
+  }
+});
+
+router.get("/self-testing/projects/:projectId/suites", (req, res) => {
+  try {
+    const suites = selfTestingService.getProjectSuites(req.params.projectId);
+    res.json(suites);
+  } catch (error) {
+    logger.error("Failed to get project suites", { error });
+    res.status(500).json({ error: "Failed to get project suites" });
+  }
+});
+
+router.put("/self-testing/suites/:suiteId/scenarios/:scenarioId", (req, res) => {
+  try {
+    const { status, result } = req.body;
+    const success = selfTestingService.updateScenarioStatus(
+      req.params.suiteId, req.params.scenarioId, status, result
+    );
+    res.json({ success });
+  } catch (error) {
+    logger.error("Failed to update scenario", { error });
+    res.status(500).json({ error: "Failed to update scenario" });
+  }
+});
+
+router.post("/self-testing/suites/:suiteId/fix-suggestions", (req, res) => {
+  try {
+    const suggestions = selfTestingService.generateFixSuggestions(req.params.suiteId);
+    res.json(suggestions);
+  } catch (error) {
+    logger.error("Failed to generate fix suggestions", { error });
+    res.status(500).json({ error: "Failed to generate fix suggestions" });
+  }
+});
+
+router.get("/self-testing/stats", (_req, res) => {
+  try {
+    const stats = selfTestingService.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error("Failed to get self-testing stats", { error });
+    res.status(500).json({ error: "Failed to get self-testing stats" });
+  }
+});
+
+// ============================================================================
+// IMAGE/DESIGN IMPORT ROUTES
+// ============================================================================
+
+import { imageImportService } from "../services/image-import.service";
+
+router.post("/image-import/create", (req, res) => {
+  try {
+    const { projectId, sourceType, fileName, imageData } = req.body;
+    const importRecord = imageImportService.createImport(projectId, sourceType, fileName, imageData);
+    res.status(201).json(importRecord);
+  } catch (error) {
+    logger.error("Failed to create import", { error });
+    res.status(500).json({ error: "Failed to create import" });
+  }
+});
+
+router.post("/image-import/:importId/analyze", (req, res) => {
+  try {
+    const prompt = imageImportService.generateAnalysisPrompt(req.params.importId);
+    if (!prompt) return res.status(404).json({ error: "Import not found" });
+    res.json({ prompt });
+  } catch (error) {
+    logger.error("Failed to generate analysis prompt", { error });
+    res.status(500).json({ error: "Failed to generate analysis prompt" });
+  }
+});
+
+router.post("/image-import/:importId/result", (req, res) => {
+  try {
+    const { elements } = req.body;
+    const success = imageImportService.setAnalysisResult(req.params.importId, elements);
+    res.json({ success });
+  } catch (error) {
+    logger.error("Failed to set analysis result", { error });
+    res.status(500).json({ error: "Failed to set analysis result" });
+  }
+});
+
+router.post("/image-import/:importId/generate-prompt", (req, res) => {
+  try {
+    const prompt = imageImportService.generateCodePrompt(req.params.importId);
+    if (!prompt) return res.status(404).json({ error: "Import not found or not analyzed" });
+    res.json({ prompt });
+  } catch (error) {
+    logger.error("Failed to generate code prompt", { error });
+    res.status(500).json({ error: "Failed to generate code prompt" });
+  }
+});
+
+router.get("/image-import/:importId", (req, res) => {
+  try {
+    const importRecord = imageImportService.getImport(req.params.importId);
+    if (!importRecord) return res.status(404).json({ error: "Import not found" });
+    res.json(importRecord);
+  } catch (error) {
+    logger.error("Failed to get import", { error });
+    res.status(500).json({ error: "Failed to get import" });
+  }
+});
+
+router.get("/image-import/projects/:projectId", (req, res) => {
+  try {
+    const imports = imageImportService.getProjectImports(req.params.projectId);
+    res.json(imports);
+  } catch (error) {
+    logger.error("Failed to get project imports", { error });
+    res.status(500).json({ error: "Failed to get project imports" });
+  }
+});
+
+// ============================================================================
+// AUTH & DATABASE TEMPLATE ROUTES
+// ============================================================================
+
+import { authDbTemplatesService } from "../services/auth-db-templates.service";
+
+router.get("/templates/auth", (_req, res) => {
+  try {
+    const templates = authDbTemplatesService.getAuthTemplates();
+    res.json(templates);
+  } catch (error) {
+    logger.error("Failed to get auth templates", { error });
+    res.status(500).json({ error: "Failed to get auth templates" });
+  }
+});
+
+router.get("/templates/auth/:type", (req, res) => {
+  try {
+    const template = authDbTemplatesService.getAuthTemplate(req.params.type as any);
+    if (!template) return res.status(404).json({ error: "Auth template not found" });
+    res.json(template);
+  } catch (error) {
+    logger.error("Failed to get auth template", { error });
+    res.status(500).json({ error: "Failed to get auth template" });
+  }
+});
+
+router.get("/templates/database", (_req, res) => {
+  try {
+    const templates = authDbTemplatesService.getDatabaseTemplates();
+    res.json(templates);
+  } catch (error) {
+    logger.error("Failed to get database templates", { error });
+    res.status(500).json({ error: "Failed to get database templates" });
+  }
+});
+
+router.get("/templates/database/:type", (req, res) => {
+  try {
+    const template = authDbTemplatesService.getDatabaseTemplate(req.params.type as any);
+    if (!template) return res.status(404).json({ error: "Database template not found" });
+    res.json(template);
+  } catch (error) {
+    logger.error("Failed to get database template", { error });
+    res.status(500).json({ error: "Failed to get database template" });
+  }
+});
+
+router.post("/templates/detect-intent", (req, res) => {
+  try {
+    const { prompt } = req.body;
+    const hasAuth = authDbTemplatesService.detectAuthIntent(prompt);
+    const hasDatabase = authDbTemplatesService.detectDatabaseIntent(prompt);
+    res.json({ hasAuth, hasDatabase });
+  } catch (error) {
+    logger.error("Failed to detect intent", { error });
+    res.status(500).json({ error: "Failed to detect intent" });
+  }
+});
+
+router.post("/templates/auth/:type/generate", (req, res) => {
+  try {
+    const files = authDbTemplatesService.generateAuthCode(req.params.type as any);
+    res.json({ files });
+  } catch (error) {
+    logger.error("Failed to generate auth code", { error });
+    res.status(500).json({ error: "Failed to generate auth code" });
+  }
+});
+
+router.post("/templates/database/:type/generate", (req, res) => {
+  try {
+    const { schemaDescription } = req.body || {};
+    const files = authDbTemplatesService.generateDatabaseCode(req.params.type as any, schemaDescription);
+    res.json({ files });
+  } catch (error) {
+    logger.error("Failed to generate database code", { error });
+    res.status(500).json({ error: "Failed to generate database code" });
+  }
+});
+
+// ============================================================================
+// STATIC DEPLOY ROUTES
+// ============================================================================
+
+router.post("/static-deploy/build", (req, res) => {
+  try {
+    const { projectId, code, files } = req.body;
+    const deployableHtml = generateStaticDeployBundle(code, files);
+    res.json({ html: deployableHtml, size: deployableHtml.length });
+  } catch (error) {
+    logger.error("Failed to build static deploy", { error });
+    res.status(500).json({ error: "Failed to build static deploy" });
+  }
+});
+
+function generateStaticDeployBundle(code: string, files?: Array<{path: string; content: string}>): string {
+  if (files && files.length > 0) {
+    const mainFile = files.find(f => f.path.endsWith("App.tsx") || f.path.endsWith("App.jsx") || f.path.endsWith("index.tsx"));
+    const cssFiles = files.filter(f => f.path.endsWith(".css"));
+    const cssContent = cssFiles.map(f => f.content).join("\n");
+    const jsContent = files.filter(f => !f.path.endsWith(".css")).map(f => `// ${f.path}\n${f.content}`).join("\n\n");
+    
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deployed App</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3/dist/tailwind.min.css">
+  <style>${cssContent}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-type="module">
+${jsContent}
+  </script>
+</body>
+</html>`;
+  }
+  
+  return code || "<!DOCTYPE html><html><body><p>No content to deploy</p></body></html>";
+}
 
 export default router;

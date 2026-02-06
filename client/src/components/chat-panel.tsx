@@ -11,6 +11,8 @@ import { AttachmentPreview, DropZoneOverlay } from "./attachment-preview";
 import { ActionGroupRow, type Action } from "./action-group-row";
 import { StatusIndicator, type StatusType } from "./status-indicator";
 import { PlanBuildModeToggle, type AgentMode } from "./plan-build-mode-toggle";
+import { DesignKeywordPicker, type DesignKeyword } from "./design-keyword-picker";
+import { Paintbrush } from "lucide-react";
 
 interface QueueStatus {
   pending: number;
@@ -140,6 +142,8 @@ function getStatusFromPhase(phase: string | null | undefined): StatusType {
 
 export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection, queueStatus, agentMode = "build", onAgentModeChange, isModeDisabled = false }: ChatPanelProps) {
   const [input, setInput] = useState("");
+  const [selectedKeywords, setSelectedKeywords] = useState<DesignKeyword[]>([]);
+  const [showKeywords, setShowKeywords] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -313,6 +317,15 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
                   />
                 </div>
               )}
+              {showKeywords && (
+                <div className="mb-2 p-2 rounded-md border bg-muted/50">
+                  <DesignKeywordPicker
+                    selectedKeywords={selectedKeywords}
+                    onKeywordsChange={setSelectedKeywords}
+                    compact
+                  />
+                </div>
+              )}
               <div className="relative" {...dragHandlers}>
                 <DropZoneOverlay isDragging={isDragging} />
                 <input
@@ -336,6 +349,18 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
                   data-testid="input-chat"
                 />
                 <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowKeywords(!showKeywords)}
+                    disabled={isLoading}
+                    className={`toggle-elevate ${showKeywords || selectedKeywords.length > 0 ? "toggle-elevated text-primary" : ""}`}
+                    data-testid="button-design-keywords"
+                    title="Design style keywords"
+                  >
+                    <Paintbrush className="h-4 w-4" />
+                  </Button>
                   <Button
                     type="button"
                     size="icon"

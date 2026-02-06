@@ -22,8 +22,29 @@ A Replit-style Plan/Build mode toggle allows AI to either generate a structured 
 ### Autonomy Levels & Extended Thinking Mode
 A four-tier autonomy control system (Low, Medium, High, Max) governs AI intervention. For complex tasks, an "Extended Thinking Mode" provides deep reasoning capabilities with three levels (Standard, Extended, Deep), automatically triggering based on prompt complexity or detected issues.
 
-### Design Mode
-Enables rapid mockup and wireframe generation with five design styles and pre-built templates. Approved mockups are then used to automatically generate full code.
+### Discussion Mode
+A third mode alongside Plan and Build, enabling brainstorming and architectural exploration without generating code. Uses teal accent color to differentiate from Plan (purple) and Build (orange). Intent classification detects questions, brainstorming, comparison, and exploration requests.
+
+### Design Mode & Design Style Keywords
+Enables rapid mockup and wireframe generation with five design styles and pre-built templates. Approved mockups are then used to automatically generate full code. 10 design style keywords (glassmorphism, neumorphism, brutalism, retro, gradient-mesh, aurora, cyberpunk, organic, material-3, claymorphism) enhance prompts with CSS properties and Tailwind classes via DesignKeywordPicker in the chat panel.
+
+### Visual Editor
+Click-to-edit UI manipulation via iframe inspector using postMessage communication. VisualEditorOverlay provides property editing panel for inspected elements, supporting style changes, text editing, and layout adjustments.
+
+### Smart Model Auto-Selection
+ModelRouterService with intelligent routing between local LLMs and cloud providers (OpenAI, Groq, Together AI). Features 3-tier routing (fast/balanced/powerful), outcome tracking, cloud fallback, and configurable provider priorities via SmartModelSettings panel.
+
+### Self-Testing Loop
+SelfTestingService generates comprehensive test suites by analyzing code to detect features (forms, navigation, auth, CRUD, lists, modals, accessibility). Produces test scenarios with steps/assertions and generates fix suggestions for failed tests.
+
+### Image/Design Import
+ImageImportService handles design-to-code conversion from uploaded images (PNG, JPG, SVG). Generates analysis prompts for LLM vision processing, extracts design elements (headers, cards, buttons, forms), and produces code generation prompts.
+
+### One-Click Auth & Database Templates
+AuthDbTemplatesService provides 5 auth templates (email-password, social-oauth, JWT, session-based, API-key) and 5 database templates (PostgreSQL, SQLite, MongoDB, Supabase, Firebase) with production-quality code, dependencies, and setup instructions.
+
+### Static Deploy
+Generates deployable static HTML bundles from generated code with inline React/Babel CDN loading and Tailwind CSS. Supports single-file and multi-file projects.
 
 ### AI Dream Team
 When dual LLMs are configured (planner + builder), an "AI Dream Team" orchestrates project planning, task tracking, code generation, validation, and documentation, with actions logged in a Project Team Panel UI.

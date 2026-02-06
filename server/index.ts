@@ -22,6 +22,12 @@ import { patternLibraryService } from "./services/pattern-library.service";
 import { smartRetryService } from "./services/smart-retry.service";
 import { userPreferenceLearningService } from "./services/user-preference-learning.service";
 import { validationPipelineService } from "./services/validation-pipeline.service";
+import { discussionModeService } from "./services/discussion-mode.service";
+import { visualEditorService } from "./services/visual-editor.service";
+import { modelRouterService } from "./services/model-router.service";
+import { selfTestingService } from "./services/self-testing.service";
+import { imageImportService } from "./services/image-import.service";
+import { authDbTemplatesService } from "./services/auth-db-templates.service";
 
 const app = express();
 const httpServer = createServer(app);
@@ -144,6 +150,12 @@ app.use((req, res, next) => {
       { name: "SmartRetry", svc: smartRetryService },
       { name: "UserPreferenceLearning", svc: userPreferenceLearningService },
       { name: "ValidationPipeline", svc: validationPipelineService },
+      { name: "DiscussionMode", svc: discussionModeService },
+      { name: "VisualEditor", svc: visualEditorService },
+      { name: "ModelRouter", svc: modelRouterService },
+      { name: "SelfTesting", svc: selfTestingService },
+      { name: "ImageImport", svc: imageImportService },
+      { name: "AuthDbTemplates", svc: authDbTemplatesService },
     ];
 
     for (const { name, svc } of destroyables) {

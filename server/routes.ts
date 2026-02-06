@@ -15,6 +15,7 @@ import optimizationRoutes from "./routes/optimization";
 import localBuildRoutes from "./routes/local-build";
 import intelligenceRoutes from "./routes/intelligence";
 import runtimeRoutes from "./routes/runtime";
+import discussionRoutes from "./routes/discussion";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -48,6 +49,8 @@ export async function registerRoutes(
   app.use("/api/intelligence", intelligenceRoutes);
   
   app.use("/api/runtime", runtimeRoutes);
+  
+  app.use("/api/discussion", discussionRoutes);
 
   return httpServer;
 }
