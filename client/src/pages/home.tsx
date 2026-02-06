@@ -12,7 +12,8 @@ import { SuccessCelebration } from "@/components/success-celebration";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { PlanReviewPanel } from "@/components/plan-review-panel";
 import { DreamTeamSettings } from "@/components/dream-team-settings";
-import { DreamTeamPanel } from "@/components/dream-team-panel";
+import { DreamTeamFullPanel } from "@/components/dream-team-full-panel";
+import { DreamTeamInlineCard } from "@/components/dream-team-inline-card";
 import { VersionHistory } from "@/components/version-history";
 import { CommandPalette } from "@/components/command-palette";
 import { ErrorRecovery } from "@/components/error-recovery";
@@ -42,7 +43,7 @@ import { usePlanBuild } from "@/hooks/use-plan-build";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown, TestTube, ImageIcon, Router, Eye } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown, TestTube, ImageIcon, Router, Eye, Users } from "lucide-react";
 import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
 import { HomeScreen } from "@/components/home-screen";
@@ -149,7 +150,7 @@ function HomeInner() {
     togglePanel, setPanel,
   } = useHomePanels();
   const [currentActions, setCurrentActions] = useState<Action[]>([]);
-  const [centerTab, setCenterTab] = useState<"preview" | "console">("preview");
+  const [centerTab, setCenterTab] = useState<"preview" | "console" | "team">("preview");
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
   const generationRequestRef = useRef<string | null>(null);
   const [settings, setSettings] = useState<LLMSettings>({
@@ -217,6 +218,7 @@ function HomeInner() {
     personas: [...defaultDreamTeamPersonas],
   });
   const [activeDiscussion, setActiveDiscussion] = useState<DreamTeamDiscussion | null>(null);
+  const [discussionHistory, setDiscussionHistory] = useState<DreamTeamDiscussion[]>([]);
   const [isDiscussionGenerating, setIsDiscussionGenerating] = useState(false);
   const [pendingGeneration, setPendingGeneration] = useState<{
     content: string;
@@ -254,6 +256,11 @@ function HomeInner() {
       if (response.ok) {
         const discussion = await response.json();
         setActiveDiscussion(discussion);
+        if (isMobile) {
+          setMobileTab("team");
+        } else {
+          setCenterTab("team");
+        }
       }
     } catch (error) {
       console.error("Dream Team discussion error:", error);
@@ -984,14 +991,14 @@ function HomeInner() {
   const handleDreamTeamResponse = useCallback(async (response: string) => {
     if (!activeDiscussion) return;
     
+    const resolvedDiscussion = { ...activeDiscussion, status: "resolved" as const };
+    setDiscussionHistory(prev => [resolvedDiscussion, ...prev].slice(0, 50));
     setActiveDiscussion(null);
     
-    // Resume pending generation if user approves
     if (pendingGeneration && (response === "proceed" || response.toLowerCase().includes("proceed"))) {
       const { content, dataModel, usePlanner } = pendingGeneration;
       setPendingGeneration(null);
       
-      // Use full builder settings from dual model settings when in Smart Mode
       const builderSettings: LLMSettings = {
         ...settings,
         ...dualModelSettings.builder,
@@ -1003,7 +1010,6 @@ function HomeInner() {
         await handleSendMessage(content, dataModel, undefined, undefined, builderSettings);
       }
     } else if (pendingGeneration) {
-      // User chose to explore alternatives or cancel - clear pending
       setPendingGeneration(null);
       toast({
         title: "Generation paused",
@@ -1694,6 +1700,9 @@ function HomeInner() {
                   agentMode={agentMode}
                   onAgentModeChange={setAgentMode}
                   isModeDisabled={isGenerating || isPlanning || isBuilding}
+                  completedDiscussions={discussionHistory}
+                  dreamTeamSettings={dreamTeamSettings}
+                  onViewTeamDiscussion={() => setMobileTab("team")}
                 />
               </div>
             </div>
@@ -1755,6 +1764,18 @@ function HomeInner() {
             </div>
           )}
 
+          {mobileTab === "team" && (
+            <div className="flex flex-col h-full" data-testid="mobile-team-view">
+              <DreamTeamFullPanel
+                settings={dreamTeamSettings}
+                activeDiscussion={activeDiscussion}
+                discussionHistory={discussionHistory}
+                onUserResponse={handleDreamTeamResponse}
+                isGenerating={isDiscussionGenerating}
+              />
+            </div>
+          )}
+
           {mobileTab === "tools" && (
             <MobileToolsPanel
               llmConnected={llmConnected ?? false}
@@ -1780,6 +1801,7 @@ function HomeInner() {
           onTabChange={setMobileTab}
           hasCode={!!displayCode}
           isGenerating={isGenerating}
+          hasActiveDiscussion={!!activeDiscussion}
         />
 
         <Sheet open={showFileExplorer} onOpenChange={(v) => setPanel('showFileExplorer', v)}>
@@ -1871,16 +1893,6 @@ function HomeInner() {
           isGenerating={isGenerating || isPlanning}
           isDarkMode={isDarkMode}
         />
-
-        {activeDiscussion && (
-          <DreamTeamPanel
-            settings={dreamTeamSettings}
-            discussion={activeDiscussion}
-            onUserResponse={handleDreamTeamResponse}
-            onDismiss={() => setActiveDiscussion(null)}
-            isGenerating={isDiscussionGenerating}
-          />
-        )}
 
         <Sheet open={showDatabasePanel} onOpenChange={(v) => setPanel('showDatabasePanel', v)}>
           <SheetContent side="right" className="w-full max-w-full sm:max-w-[1200px] p-0">
@@ -2184,6 +2196,9 @@ function HomeInner() {
                     agentMode={agentMode}
                     onAgentModeChange={setAgentMode}
                     isModeDisabled={isGenerating || isPlanning || isBuilding}
+                    completedDiscussions={discussionHistory}
+                    dreamTeamSettings={dreamTeamSettings}
+                    onViewTeamDiscussion={() => setCenterTab("team")}
                   />
                 </div>
               </div>
@@ -2205,6 +2220,23 @@ function HomeInner() {
                   >
                     <span className={`w-2 h-2 rounded-full ${displayCode || isGenerating ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
                     Preview
+                  </button>
+                  <button
+                    onClick={() => setCenterTab("team")}
+                    className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                      centerTab === "team" 
+                        ? "bg-background text-foreground shadow-sm" 
+                        : "text-muted-foreground hover-elevate"
+                    }`}
+                    data-testid="button-tab-team"
+                  >
+                    <div className="relative">
+                      <Users className="h-3 w-3" />
+                      {activeDiscussion && (
+                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                      )}
+                    </div>
+                    Team
                   </button>
                   <button
                     onClick={() => setCenterTab("console")}
@@ -2285,6 +2317,14 @@ function HomeInner() {
                       onFilesUpdate={() => {
                         queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
                       }}
+                    />
+                  ) : centerTab === "team" ? (
+                    <DreamTeamFullPanel
+                      settings={dreamTeamSettings}
+                      activeDiscussion={activeDiscussion}
+                      discussionHistory={discussionHistory}
+                      onUserResponse={handleDreamTeamResponse}
+                      isGenerating={isDiscussionGenerating}
                     />
                   ) : (
                     <div className="flex flex-col h-full bg-card">
@@ -2442,16 +2482,6 @@ function HomeInner() {
         isGenerating={isGenerating || isPlanning}
         isDarkMode={isDarkMode}
       />
-      {activeDiscussion && (
-        <DreamTeamPanel
-          settings={dreamTeamSettings}
-          discussion={activeDiscussion}
-          onUserResponse={handleDreamTeamResponse}
-          onDismiss={() => setActiveDiscussion(null)}
-          isGenerating={isDiscussionGenerating}
-        />
-      )}
-      
       <Sheet open={showDatabasePanel} onOpenChange={(v) => setPanel('showDatabasePanel', v)}>
         <SheetContent side="right" className="w-[90vw] max-w-[1200px] sm:max-w-[1200px] p-0">
           <SheetHeader className="px-4 py-3 border-b">

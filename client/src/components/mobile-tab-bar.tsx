@@ -1,19 +1,21 @@
-import { MessageSquare, Eye, Wrench } from "lucide-react";
+import { MessageSquare, Eye, Wrench, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type MobileTab = "chat" | "preview" | "tools";
+export type MobileTab = "chat" | "preview" | "tools" | "team";
 
 interface MobileTabBarProps {
   activeTab: MobileTab;
   onTabChange: (tab: MobileTab) => void;
   hasCode: boolean;
   isGenerating: boolean;
+  hasActiveDiscussion?: boolean;
 }
 
-export function MobileTabBar({ activeTab, onTabChange, hasCode, isGenerating }: MobileTabBarProps) {
+export function MobileTabBar({ activeTab, onTabChange, hasCode, isGenerating, hasActiveDiscussion }: MobileTabBarProps) {
   const tabs: { id: MobileTab; label: string; icon: typeof MessageSquare }[] = [
     { id: "chat", label: "Chat", icon: MessageSquare },
     { id: "preview", label: "Preview", icon: Eye },
+    { id: "team", label: "Team", icon: Users },
     { id: "tools", label: "Tools", icon: Wrench },
   ];
 
@@ -49,6 +51,9 @@ export function MobileTabBar({ activeTab, onTabChange, hasCode, isGenerating }: 
                 )}
                 {tab.id === "chat" && isGenerating && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                )}
+                {tab.id === "team" && hasActiveDiscussion && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
                 )}
               </div>
               <span className="text-[10px] font-medium">{tab.label}</span>

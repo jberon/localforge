@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, User, Sparkles, FileCode, Loader2, Mic, MicOff, Paperclip, Image } from "lucide-react";
-import type { Message, DataModel, MessageAttachment } from "@shared/schema";
+import type { Message, DataModel, MessageAttachment, DreamTeamDiscussion, DreamTeamSettings as DreamTeamSettingsType } from "@shared/schema";
+import { DreamTeamInlineCard } from "./dream-team-inline-card";
 import { GenerationWizard } from "./generation-wizard";
 import { WorkingIndicator } from "./working-indicator";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
@@ -35,6 +36,9 @@ interface ChatPanelProps {
   agentMode?: AgentMode;
   onAgentModeChange?: (mode: AgentMode) => void;
   isModeDisabled?: boolean;
+  completedDiscussions?: DreamTeamDiscussion[];
+  dreamTeamSettings?: DreamTeamSettingsType;
+  onViewTeamDiscussion?: () => void;
 }
 
 // Memoized message content formatter - prevents re-parsing unchanged content
@@ -140,7 +144,7 @@ function getStatusFromPhase(phase: string | null | undefined): StatusType {
   return "thinking";
 }
 
-export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection, queueStatus, agentMode = "build", onAgentModeChange, isModeDisabled = false }: ChatPanelProps) {
+export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection, queueStatus, agentMode = "build", onAgentModeChange, isModeDisabled = false, completedDiscussions, dreamTeamSettings, onViewTeamDiscussion }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const [selectedKeywords, setSelectedKeywords] = useState<DesignKeyword[]>([]);
   const [showKeywords, setShowKeywords] = useState(false);
@@ -279,6 +283,22 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
               </div>
             ))}
             
+            {completedDiscussions && dreamTeamSettings && completedDiscussions.length > 0 && (
+              <div className="space-y-3">
+                {completedDiscussions.slice(0, 3).map((disc) => (
+                  <div key={disc.id} className="animate-in fade-in slide-up">
+                    <div className="pl-9">
+                      <DreamTeamInlineCard
+                        discussion={disc}
+                        settings={dreamTeamSettings}
+                        onViewDiscussion={onViewTeamDiscussion || (() => {})}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {isLoading && (
               <div className="animate-in fade-in slide-up space-y-3" data-testid="message-loading">
                 <div className="flex items-center gap-2">
