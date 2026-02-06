@@ -1173,13 +1173,18 @@ function HomeInner() {
 
   // Plan mode handler - generates a task list without building (uses SSE streaming)
   const handlePlanModeGenerate = useCallback(async (content: string) => {
-    if (!activeProjectId) {
-      toast({
-        title: "No Project",
-        description: "Please create or select a project first",
-        variant: "destructive",
+    let projectId = activeProjectId;
+
+    if (!projectId) {
+      const projectName = generateProjectName(content);
+      const res = await apiRequest("POST", "/api/projects", {
+        name: projectName,
+        messages: [],
       });
-      return;
+      const newProject = await res.json();
+      await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      projectId = newProject.id;
+      setActiveProjectId(projectId);
     }
 
     setIsPlanning(true);
@@ -1190,7 +1195,7 @@ function HomeInner() {
     setGenerationPhase("Creating plan...");
 
     try {
-      const response = await fetch(`/api/projects/${activeProjectId}/plan`, {
+      const response = await fetch(`/api/projects/${projectId}/plan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
