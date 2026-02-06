@@ -129,7 +129,9 @@ export const projectSchema = z.object({
   updatedAt: z.number(),
 });
 
-export const insertProjectSchema = projectSchema.omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProjectSchema = projectSchema.omit({ id: true, createdAt: true, updatedAt: true }).extend({
+  messages: z.array(messageSchema).default([]),
+});
 export const insertMessageSchema = messageSchema.omit({ id: true, timestamp: true });
 
 export const llmSettingsSchema = z.object({
