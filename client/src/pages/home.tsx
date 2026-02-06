@@ -69,6 +69,15 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Link, useLocation } from "wouter";
 import JSZip from "jszip";
 import type { Project, LLMSettings, DataModel, DualModelSettings as DualModelSettingsType, Plan, DreamTeamSettings as DreamTeamSettingsType, DreamTeamDiscussion, GeneratedFile } from "@shared/schema";
@@ -114,6 +123,7 @@ export default function Home() {
   const [showFileExplorer, setShowFileExplorer] = useState(true);
   const [showDatabasePanel, setShowDatabasePanel] = useState(false);
   const [showAIInsights, setShowAIInsights] = useState(false);
+  const [showHomeSettings, setShowHomeSettings] = useState(false);
   const [centerTab, setCenterTab] = useState<"preview" | "console">("preview");
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
   const generationRequestRef = useRef<string | null>(null);
@@ -1422,14 +1432,14 @@ export default function Home() {
           isConnected={llmConnected || testModeConnected}
           testModeActive={testModeActive}
           testModeConnected={testModeConnected}
-          onOpenSettings={() => {}}
+          onOpenSettings={() => setShowHomeSettings(true)}
           onNavigateAnalytics={() => navigate("/analytics")}
         />
         <OnboardingModal />
         <CommandPalette
           onNewProject={() => createProject()}
           onDownload={undefined}
-          onOpenSettings={() => {}}
+          onOpenSettings={() => setShowHomeSettings(true)}
           onOpenDreamTeam={() => {}}
           onRefreshConnection={checkConnection}
           onToggleTheme={toggleTheme}
@@ -1438,6 +1448,96 @@ export default function Home() {
           isGenerating={isGenerating || isPlanning}
           isDarkMode={isDarkMode}
         />
+        <Dialog open={showHomeSettings} onOpenChange={setShowHomeSettings}>
+          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                LM Studio Connection
+              </DialogTitle>
+              <DialogDescription>
+                Configure your local LM Studio server connection.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-5 py-4">
+              <div className="p-3 rounded-lg bg-muted/50 border text-sm space-y-2">
+                <p className="font-medium">Quick Setup:</p>
+                <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-xs">
+                  <li>Open LM Studio and go to the <strong>Developer</strong> tab</li>
+                  <li>Make sure <strong>Status: Running</strong> is enabled</li>
+                  <li>Copy the URL shown under "Reachable at:" (usually http://127.0.0.1:1234)</li>
+                  <li>Paste it below and add <strong>/v1</strong> at the end</li>
+                </ol>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="home-endpoint">Server URL</label>
+                <Input
+                  id="home-endpoint"
+                  value={settings.endpoint}
+                  onChange={(e) => setSettings({ ...settings, endpoint: e.target.value })}
+                  placeholder="http://127.0.0.1:1234/v1"
+                  className="font-mono text-sm"
+                  data-testid="input-home-endpoint"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Copy from LM Studio's "Reachable at:" and add <strong>/v1</strong>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="home-model">Model</label>
+                <Input
+                  id="home-model"
+                  value={settings.model}
+                  onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                  placeholder="Auto (uses first loaded model)"
+                  className="font-mono text-sm"
+                  data-testid="input-home-model"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave empty to auto-detect the loaded model, or enter a specific model identifier.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium" htmlFor="home-temperature">Temperature</label>
+                  <span className="text-xs text-muted-foreground font-mono" data-testid="text-temperature-value">{settings.temperature.toFixed(1)}</span>
+                </div>
+                <input
+                  id="home-temperature"
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={settings.temperature}
+                  onChange={(e) => setSettings({ ...settings, temperature: parseFloat(e.target.value) })}
+                  className="w-full accent-primary"
+                  data-testid="slider-temperature"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Lower values produce more focused output. Higher values increase creativity.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowHomeSettings(false)} data-testid="button-cancel-home-settings">
+                Cancel
+              </Button>
+              <Button onClick={() => {
+                setShowHomeSettings(false);
+                checkConnection();
+                toast({
+                  title: "Settings saved",
+                  description: "Connection settings have been updated.",
+                });
+              }} data-testid="button-save-home-settings">
+                Save Settings
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
