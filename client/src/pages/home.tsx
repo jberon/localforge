@@ -669,7 +669,7 @@ function HomeInner() {
   );
 
   const handleSendMessage = useCallback(
-    async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings, skipDedup?: boolean) => {
+    async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings, skipDedup?: boolean, projectIdOverride?: string) => {
       if (!skipDedup) {
         if (generationRequestRef.current !== null || isGenerating) {
           return;
@@ -682,7 +682,7 @@ function HomeInner() {
       setLastError(null);
       setPanel('showQuickUndo', false);
       
-      let projectId = activeProjectId;
+      let projectId = projectIdOverride || activeProjectId;
       const projectName = generateProjectName(content);
       
       if (!projectId) {
@@ -1137,8 +1137,11 @@ function HomeInner() {
   }, [activeProjectId, dualModelSettings.builder, toast]);
 
   // Handle starting build from approved plan
-  const handleStartBuildingFromPlan = useCallback(async (selectedTasks: PlanTask[]) => {
+  const handleStartBuildingFromPlan = useCallback(async (selectedTasks: PlanTask[], buildProjectId?: string) => {
     if (selectedTasks.length === 0) return;
+
+    // Use provided projectId or fall back to current activeProjectId
+    const targetProjectId = buildProjectId || activeProjectId;
 
     // Switch to build mode and clear any stale generation locks
     setAgentMode("build");
@@ -1160,7 +1163,8 @@ function HomeInner() {
           undefined,
           undefined,
           undefined,
-          true
+          true,
+          targetProjectId || undefined
         );
       }
 
@@ -1179,7 +1183,7 @@ function HomeInner() {
       setCurrentPlanTaskIndex(-1);
       setPlanTasks([]);
     }
-  }, [handleSendMessage, toast]);
+  }, [handleSendMessage, toast, activeProjectId]);
 
   // Plan mode handler - generates a task list without building (uses SSE streaming)
   const handlePlanModeGenerate = useCallback(async (content: string) => {
@@ -1288,7 +1292,7 @@ function HomeInner() {
           title: "Plan Ready",
           description: "Auto-starting build with all tasks...",
         });
-        handleStartBuildingFromPlan(finalTasks);
+        handleStartBuildingFromPlan(finalTasks, projectId || undefined);
       }
     } catch (error: any) {
       toast({
@@ -1724,6 +1728,7 @@ function HomeInner() {
                   completedDiscussions={discussionHistory}
                   dreamTeamSettings={dreamTeamSettings}
                   onViewTeamDiscussion={() => setMobileTab("team")}
+                  isBuilding={isBuilding}
                 />
               </div>
             </div>
@@ -2220,6 +2225,7 @@ function HomeInner() {
                     completedDiscussions={discussionHistory}
                     dreamTeamSettings={dreamTeamSettings}
                     onViewTeamDiscussion={() => setCenterTab("team")}
+                    isBuilding={isBuilding}
                   />
                 </div>
               </div>

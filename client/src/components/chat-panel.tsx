@@ -39,6 +39,7 @@ interface ChatPanelProps {
   completedDiscussions?: DreamTeamDiscussion[];
   dreamTeamSettings?: DreamTeamSettingsType;
   onViewTeamDiscussion?: () => void;
+  isBuilding?: boolean;
 }
 
 // Memoized message content formatter - prevents re-parsing unchanged content
@@ -144,7 +145,7 @@ function getStatusFromPhase(phase: string | null | undefined): StatusType {
   return "thinking";
 }
 
-export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection, queueStatus, agentMode = "build", onAgentModeChange, isModeDisabled = false, completedDiscussions, dreamTeamSettings, onViewTeamDiscussion }: ChatPanelProps) {
+export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, onSendMessage, llmConnected, onCheckConnection, queueStatus, agentMode = "build", onAgentModeChange, isModeDisabled = false, completedDiscussions, dreamTeamSettings, onViewTeamDiscussion, isBuilding = false }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const [selectedKeywords, setSelectedKeywords] = useState<DesignKeyword[]>([]);
   const [showKeywords, setShowKeywords] = useState(false);
@@ -202,7 +203,7 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {messages.length === 0 ? (
+      {messages.length === 0 && !isBuilding ? (
         <GenerationWizard
           onGenerate={onSendMessage}
           isGenerating={isLoading}
