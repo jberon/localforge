@@ -41,6 +41,7 @@ interface DreamTeamThinkingTabProps {
   isActive: boolean;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  compact?: boolean;
 }
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -186,6 +187,7 @@ export const DreamTeamThinkingTab = memo(function DreamTeamThinkingTab({
   isActive,
   isExpanded = true,
   onToggleExpand,
+  compact = false,
 }: DreamTeamThinkingTabProps) {
   const [messages, setMessages] = useState<ThinkingMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -330,17 +332,22 @@ export const DreamTeamThinkingTab = memo(function DreamTeamThinkingTab({
             </TabsList>
 
             <TabsContent value="discussion" className="m-0">
-              <ScrollArea className="h-[280px]" ref={scrollRef}>
+              <ScrollArea className={compact ? "h-[160px]" : "h-[280px]"} ref={scrollRef}>
                 <div className="p-2 space-y-1">
                   {!isActive && messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-[240px] text-center">
+                    <div className={cn(
+                      "flex flex-col items-center justify-center text-center",
+                      compact ? "h-[120px]" : "h-[240px]"
+                    )}>
                       <Users className="h-8 w-8 text-muted-foreground/50 mb-2" />
                       <p className="text-sm text-muted-foreground">
                         Dream Team discussion will appear here
                       </p>
-                      <p className="text-xs text-muted-foreground/70 mt-1">
-                        Watch the team think and ideate during generation
-                      </p>
+                      {!compact && (
+                        <p className="text-xs text-muted-foreground/70 mt-1">
+                          Watch the team think and ideate during generation
+                        </p>
+                      )}
                     </div>
                   )}
                   

@@ -196,7 +196,10 @@ function HomeInner() {
     orchestratorThinking, setOrchestratorThinking,
     orchestratorTasks, setOrchestratorTasks,
   } = planBuild;
-  const [dreamTeamExpanded, setDreamTeamExpanded] = useState(true);
+  const [dreamTeamExpanded, setDreamTeamExpanded] = useState(!isMobile);
+  useEffect(() => {
+    if (isMobile) setDreamTeamExpanded(false);
+  }, [isMobile]);
   const [dualModelSettings, setDualModelSettings] = useState<DualModelSettingsType>({
     mode: "auto",
     planner: {
@@ -666,10 +669,11 @@ function HomeInner() {
   );
 
   const handleSendMessage = useCallback(
-    async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings) => {
-      // Request deduplication - prevent duplicate calls using in-flight lock
-      if (generationRequestRef.current !== null || isGenerating) {
-        return;
+    async (content: string, dataModel?: DataModel, attachments?: Attachment[], templateTemperature?: number, overrideSettings?: LLMSettings, skipDedup?: boolean) => {
+      if (!skipDedup) {
+        if (generationRequestRef.current !== null || isGenerating) {
+          return;
+        }
       }
       
       // Set lock immediately before any async work
@@ -1136,21 +1140,27 @@ function HomeInner() {
   const handleStartBuildingFromPlan = useCallback(async (selectedTasks: PlanTask[]) => {
     if (selectedTasks.length === 0) return;
 
-    // Switch to build mode
+    // Switch to build mode and clear any stale generation locks
     setAgentMode("build");
     setCurrentPlanTaskIndex(0);
     setIsBuilding(true);
+    generationRequestRef.current = null;
 
     try {
       for (let i = 0; i < selectedTasks.length; i++) {
         setCurrentPlanTaskIndex(i);
         const task = selectedTasks[i];
+
+        // Clear lock before each task to prevent "too many requests" blocking
+        generationRequestRef.current = null;
         
         await handleSendMessage(
           `Build task: ${task.title}${task.description ? `\n\nDetails: ${task.description}` : ""}${task.fileTarget ? `\n\nTarget file: ${task.fileTarget}` : ""}`,
           undefined,
           undefined,
-          undefined
+          undefined,
+          undefined,
+          true
         );
       }
 
@@ -1631,6 +1641,7 @@ function HomeInner() {
                     isActive={isGenerating || isPlanning}
                     isExpanded={dreamTeamExpanded}
                     onToggleExpand={() => setDreamTeamExpanded(prev => !prev)}
+                    compact
                   />
                 </div>
               )}
