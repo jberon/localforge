@@ -1132,6 +1132,45 @@ function HomeInner() {
     }
   }, [activeProjectId, dualModelSettings.builder, toast]);
 
+  // Handle starting build from approved plan
+  const handleStartBuildingFromPlan = useCallback(async (selectedTasks: PlanTask[]) => {
+    if (selectedTasks.length === 0) return;
+
+    // Switch to build mode
+    setAgentMode("build");
+    setCurrentPlanTaskIndex(0);
+    setIsBuilding(true);
+
+    try {
+      for (let i = 0; i < selectedTasks.length; i++) {
+        setCurrentPlanTaskIndex(i);
+        const task = selectedTasks[i];
+        
+        await handleSendMessage(
+          `Build task: ${task.title}${task.description ? `\n\nDetails: ${task.description}` : ""}${task.fileTarget ? `\n\nTarget file: ${task.fileTarget}` : ""}`,
+          undefined,
+          undefined,
+          undefined
+        );
+      }
+
+      toast({
+        title: "Build Complete",
+        description: `Successfully completed ${selectedTasks.length} tasks from your plan.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Build Error",
+        description: error.message || "Failed to complete build",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBuilding(false);
+      setCurrentPlanTaskIndex(-1);
+      setPlanTasks([]);
+    }
+  }, [handleSendMessage, toast]);
+
   // Plan mode handler - generates a task list without building (uses SSE streaming)
   const handlePlanModeGenerate = useCallback(async (content: string) => {
     if (!activeProjectId) {
@@ -1174,6 +1213,7 @@ function HomeInner() {
 
       let buffer = "";
       let planChunks = "";
+      let finalTasks: PlanTask[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1195,7 +1235,7 @@ function HomeInner() {
                 const plan = data.plan;
                 
                 if (plan.steps && Array.isArray(plan.steps)) {
-                  const tasks: PlanTask[] = plan.steps.map((step: any) => ({
+                  finalTasks = plan.steps.map((step: any) => ({
                     id: step.id || `task-${step.id}`,
                     title: step.title || step.description || `Step ${step.id}`,
                     description: step.description,
@@ -1203,7 +1243,7 @@ function HomeInner() {
                     type: step.type || "build",
                     selected: true,
                   }));
-                  setPlanTasks(tasks);
+                  setPlanTasks(finalTasks);
                 }
 
                 if (plan.summary) {
@@ -1225,10 +1265,16 @@ function HomeInner() {
         }
       }
 
-      toast({
-        title: "Plan Ready",
-        description: "Review the plan and click 'Start Building' when ready.",
-      });
+      setIsPlanning(false);
+      setGenerationPhase(null);
+
+      if (finalTasks.length > 0) {
+        toast({
+          title: "Plan Ready",
+          description: "Auto-starting build with all tasks...",
+        });
+        handleStartBuildingFromPlan(finalTasks);
+      }
     } catch (error: any) {
       toast({
         title: "Planning Error",
@@ -1239,48 +1285,7 @@ function HomeInner() {
       setIsPlanning(false);
       setGenerationPhase(null);
     }
-  }, [activeProjectId, settings, toast]);
-
-  // Handle starting build from approved plan
-  const handleStartBuildingFromPlan = useCallback(async (selectedTasks: PlanTask[]) => {
-    if (selectedTasks.length === 0) return;
-
-    // Switch to build mode
-    setAgentMode("build");
-    setCurrentPlanTaskIndex(0);
-    setIsBuilding(true);
-
-    try {
-      // Build each task sequentially
-      for (let i = 0; i < selectedTasks.length; i++) {
-        setCurrentPlanTaskIndex(i);
-        const task = selectedTasks[i];
-        
-        // Send the task as a build request
-        await handleSendMessage(
-          `Build task: ${task.title}${task.description ? `\n\nDetails: ${task.description}` : ""}${task.fileTarget ? `\n\nTarget file: ${task.fileTarget}` : ""}`,
-          undefined,
-          undefined,
-          undefined
-        );
-      }
-
-      toast({
-        title: "Build Complete",
-        description: `Successfully completed ${selectedTasks.length} tasks from your plan.`,
-      });
-    } catch (error: any) {
-      toast({
-        title: "Build Error",
-        description: error.message || "Failed to complete build",
-        variant: "destructive",
-      });
-    } finally {
-      setIsBuilding(false);
-      setCurrentPlanTaskIndex(-1);
-      setPlanTasks([]);
-    }
-  }, [handleSendMessage, toast]);
+  }, [activeProjectId, settings, toast, handleStartBuildingFromPlan]);
 
   // Intelligent routing handler - automatically routes to plan or build based on request analysis
   const handleIntelligentGenerate = useCallback(
