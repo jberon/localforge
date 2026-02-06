@@ -67,10 +67,15 @@ class HardwareOptimizerService {
   private static instance: HardwareOptimizerService;
   private profile: HardwareProfile | null = null;
   private appleSiliconProfile: AppleSiliconProfile | null = null;
+  private forceM4ProProfile: boolean = false;
 
   private constructor() {
+    this.forceM4ProProfile = process.env.FORCE_M4_PRO_PROFILE === "true";
     this.detectHardware();
-    logger.info("HardwareOptimizerService initialized", { profile: this.profile });
+    logger.info("HardwareOptimizerService initialized", {
+      profile: this.profile,
+      forceM4Pro: this.forceM4ProProfile,
+    });
   }
 
   static getInstance(): HardwareOptimizerService {
@@ -81,6 +86,11 @@ class HardwareOptimizerService {
   }
 
   private detectHardware(): void {
+    if (this.forceM4ProProfile) {
+      this.applyM4ProOverride();
+      return;
+    }
+
     const platform = os.platform();
     const arch = os.arch();
     const cpus = os.cpus();
@@ -119,6 +129,38 @@ class HardwareOptimizerService {
       recommendedBatchSize: this.calculateRecommendedBatchSize(gpuType, totalMemoryGB),
       recommendedContextLength: this.calculateRecommendedContextLength(totalMemoryGB),
     };
+  }
+
+  private applyM4ProOverride(): void {
+    this.appleSiliconProfile = APPLE_SILICON_PROFILES["m4-pro"];
+    const m4Pro = this.appleSiliconProfile;
+    const totalMemoryGB = 48;
+    const freeMemoryGB = 40;
+
+    this.profile = {
+      platform: "darwin",
+      arch: "arm64",
+      cpuModel: "Apple M4 Pro (simulated)",
+      cpuCores: 14,
+      physicalCores: 14,
+      totalMemoryGB,
+      freeMemoryGB,
+      gpuType: "apple-silicon",
+      neuralEngine: true,
+      unifiedMemory: true,
+      recommendedGPULayers: -1,
+      recommendedThreads: 12,
+      recommendedBatchSize: this.calculateRecommendedBatchSize("apple-silicon", totalMemoryGB),
+      recommendedContextLength: this.calculateRecommendedContextLength(totalMemoryGB),
+    };
+
+    logger.info("M4 Pro profile override applied", {
+      chip: m4Pro.chip,
+      gpuCores: m4Pro.gpuCores,
+      neuralEngineCores: m4Pro.neuralEngineCores,
+      memoryBandwidthGBps: m4Pro.memoryBandwidthGBps,
+      totalMemoryGB,
+    });
   }
 
   private detectAppleSiliconChip(cpuModel: string, memoryGB: number): void {

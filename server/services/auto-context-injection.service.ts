@@ -27,9 +27,34 @@ interface DependencyGraph {
 class AutoContextInjectionService {
   private static instance: AutoContextInjectionService;
   private dependencyGraphs: Map<string, DependencyGraph> = new Map();
+  private graphLastAccess: Map<string, number> = new Map();
+  private readonly maxGraphs = 50;
+  private readonly graphTTLMs = 30 * 60 * 1000;
   private maxContextTokens: number = 32000;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
-  private constructor() {}
+  private constructor() {
+    this.cleanupTimer = setInterval(() => this.evictStaleGraphs(), 60000);
+  }
+
+  private evictStaleGraphs(): void {
+    const now = Date.now();
+    for (const [projectId, lastAccess] of Array.from(this.graphLastAccess.entries())) {
+      if (now - lastAccess > this.graphTTLMs) {
+        this.dependencyGraphs.delete(projectId);
+        this.graphLastAccess.delete(projectId);
+      }
+    }
+    if (this.dependencyGraphs.size > this.maxGraphs) {
+      const entries = Array.from(this.graphLastAccess.entries())
+        .sort((a, b) => a[1] - b[1]);
+      const toRemove = entries.slice(0, entries.length - this.maxGraphs);
+      for (const [projectId] of toRemove) {
+        this.dependencyGraphs.delete(projectId);
+        this.graphLastAccess.delete(projectId);
+      }
+    }
+  }
 
   static getInstance(): AutoContextInjectionService {
     if (!AutoContextInjectionService.instance) {
@@ -58,6 +83,7 @@ class AutoContextInjectionService {
     }
 
     this.dependencyGraphs.set(projectId, graph);
+    this.graphLastAccess.set(projectId, Date.now());
     logger.info("Dependency graph built", { 
       projectId, 
       nodeCount: graph.nodes.size 

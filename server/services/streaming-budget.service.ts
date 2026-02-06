@@ -41,6 +41,10 @@ class StreamingBudgetService {
   private static instance: StreamingBudgetService;
   private config: StreamingConfig;
   private activeStreams: Map<string, StreamingSession> = new Map();
+  private readonly maxActiveStreams = 50;
+  private readonly sessionTimeoutMs = 5 * 60 * 1000;
+  private sessionStartTimes: Map<string, number> = new Map();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor() {
     this.config = {
@@ -55,7 +59,19 @@ class StreamingBudgetService {
       earlyStopOnCompletion: true,
     };
     
+    this.cleanupTimer = setInterval(() => this.evictStaleSessions(), 30000);
     logger.info("StreamingBudgetService initialized");
+  }
+
+  private evictStaleSessions(): void {
+    const now = Date.now();
+    for (const [id, startTime] of Array.from(this.sessionStartTimes.entries())) {
+      if (now - startTime > this.sessionTimeoutMs) {
+        this.activeStreams.delete(id);
+        this.sessionStartTimes.delete(id);
+        logger.warn("Evicted stale streaming session", { sessionId: id, ageMs: now - startTime });
+      }
+    }
   }
 
   static getInstance(): StreamingBudgetService {
@@ -75,6 +91,19 @@ class StreamingBudgetService {
   }
 
   startSession(sessionId: string, taskType: string, maxTokens?: number): StreamingSession {
+    if (this.activeStreams.size >= this.maxActiveStreams) {
+      this.evictStaleSessions();
+      if (this.activeStreams.size >= this.maxActiveStreams) {
+        const oldest = Array.from(this.sessionStartTimes.entries())
+          .sort((a, b) => a[1] - b[1])[0];
+        if (oldest) {
+          this.activeStreams.delete(oldest[0]);
+          this.sessionStartTimes.delete(oldest[0]);
+          logger.warn("Evicted oldest session to make room", { evictedId: oldest[0] });
+        }
+      }
+    }
+
     const session = new StreamingSession(
       sessionId,
       taskType,
@@ -83,6 +112,7 @@ class StreamingBudgetService {
     );
     
     this.activeStreams.set(sessionId, session);
+    this.sessionStartTimes.set(sessionId, Date.now());
     
     logger.info("Streaming session started", { sessionId, taskType, maxTokens: session.maxTokens });
     
@@ -99,6 +129,7 @@ class StreamingBudgetService {
     
     const metrics = session.getMetrics();
     this.activeStreams.delete(sessionId);
+    this.sessionStartTimes.delete(sessionId);
     
     logger.info("Streaming session ended", {
       sessionId,

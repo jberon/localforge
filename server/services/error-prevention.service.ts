@@ -48,6 +48,8 @@ class ErrorPreventionService {
   private patterns: ErrorPattern[] = [];
   private history: Map<string, HistoricalError[]> = new Map();
   private learnedPatterns: Map<string, number> = new Map();
+  private readonly maxHistoryPerProject = 200;
+  private readonly maxProjects = 100;
 
   private constructor() {
     this.initializePatterns();
@@ -346,6 +348,11 @@ class ErrorPreventionService {
   }
 
   recordError(projectId: string, error: string, filePath: string): void {
+    if (this.history.size >= this.maxProjects && !this.history.has(projectId)) {
+      const oldest = Array.from(this.history.keys())[0];
+      if (oldest) this.history.delete(oldest);
+    }
+
     const history = this.history.get(projectId) || [];
     history.push({
       error,
@@ -353,6 +360,10 @@ class ErrorPreventionService {
       timestamp: Date.now(),
       wasFixed: false
     });
+
+    if (history.length > this.maxHistoryPerProject) {
+      history.splice(0, history.length - this.maxHistoryPerProject);
+    }
     this.history.set(projectId, history);
 
     for (const pattern of this.patterns) {

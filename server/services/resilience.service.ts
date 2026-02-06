@@ -27,9 +27,12 @@ export class ResilienceService {
   private static instance: ResilienceService;
   
   private circuitBreakers: Map<string, CircuitBreakerState> = new Map();
+  private readonly maxCircuitBreakers = 200;
+  private readonly circuitBreakerTTLMs = 10 * 60 * 1000;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private defaultCircuitConfig: CircuitBreakerConfig = {
     failureThreshold: 3,
-    recoveryTimeout: 30000, // 30 seconds
+    recoveryTimeout: 30000,
     successThreshold: 2,
   };
   private defaultRetryConfig: RetryConfig = {
@@ -39,7 +42,31 @@ export class ResilienceService {
     jitterFactor: 0.3,
   };
 
-  private constructor() {}
+  private constructor() {
+    this.cleanupTimer = setInterval(() => this.evictStaleCircuitBreakers(), 60000);
+  }
+
+  private evictStaleCircuitBreakers(): void {
+    const now = Date.now();
+    for (const [key, cb] of Array.from(this.circuitBreakers.entries())) {
+      if (cb.state === "closed" && now - cb.lastStateChange > this.circuitBreakerTTLMs) {
+        this.circuitBreakers.delete(key);
+      }
+    }
+    if (this.circuitBreakers.size > this.maxCircuitBreakers) {
+      const entries = Array.from(this.circuitBreakers.entries())
+        .sort((a, b) => a[1].lastStateChange - b[1].lastStateChange);
+      const toRemove = entries.slice(0, entries.length - this.maxCircuitBreakers);
+      for (const [key] of toRemove) {
+        this.circuitBreakers.delete(key);
+      }
+    }
+    for (const [key, bh] of Array.from(this.bulkheads.entries())) {
+      if (bh.active === 0 && bh.queued === 0 && bh.waiters.length === 0 && now - bh.lastUsed > this.circuitBreakerTTLMs) {
+        this.bulkheads.delete(key);
+      }
+    }
+  }
 
   static getInstance(): ResilienceService {
     if (!ResilienceService.instance) {
@@ -293,13 +320,15 @@ export class ResilienceService {
     }
   }
 
-  private bulkheads: Map<string, { active: number; queued: number; waiters: Array<() => void> }> = new Map();
+  private bulkheads: Map<string, { active: number; queued: number; waiters: Array<() => void>; lastUsed: number }> = new Map();
 
   private getBulkhead(key: string, _maxConcurrent: number, _maxQueue: number) {
     if (!this.bulkheads.has(key)) {
-      this.bulkheads.set(key, { active: 0, queued: 0, waiters: [] });
+      this.bulkheads.set(key, { active: 0, queued: 0, waiters: [], lastUsed: Date.now() });
     }
-    return this.bulkheads.get(key)!;
+    const bh = this.bulkheads.get(key)!;
+    bh.lastUsed = Date.now();
+    return bh;
   }
 
   private waitForSlot(key: string, timeoutMs: number): Promise<void> {

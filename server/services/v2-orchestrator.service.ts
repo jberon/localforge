@@ -71,6 +71,9 @@ class V2OrchestratorService {
   private static instance: V2OrchestratorService;
   private config: V2Config;
   private initialized = false;
+  private promptHashCache: Map<string, { result: V2GenerationResult; timestamp: number }> = new Map();
+  private readonly promptCacheTTLMs = 60000;
+  private readonly maxPromptCacheSize = 100;
 
   private constructor() {
     this.config = {
@@ -127,7 +130,47 @@ class V2OrchestratorService {
     logger.info("V2 Orchestrator configured", { config: this.config });
   }
 
+  private computePromptHash(context: V2GenerationContext): string {
+    const msgHash = context.messages
+      ? context.messages.map(m => `${m.role}:${m.content.slice(0, 50)}`).join("|")
+      : "";
+    const key = `${context.prompt.slice(0, 300)}|${context.taskType}|${context.modelName || ""}|${context.projectId || ""}|${context.systemPrompt?.slice(0, 100) || ""}|${msgHash}`;
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) {
+      const char = key.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0;
+    }
+    return hash.toString(36);
+  }
+
+  private getCachedResult(hash: string): V2GenerationResult | null {
+    const cached = this.promptHashCache.get(hash);
+    if (!cached) return null;
+    if (Date.now() - cached.timestamp > this.promptCacheTTLMs) {
+      this.promptHashCache.delete(hash);
+      return null;
+    }
+    return cached.result;
+  }
+
+  private setCachedResult(hash: string, result: V2GenerationResult): void {
+    if (this.promptHashCache.size >= this.maxPromptCacheSize) {
+      const oldest = Array.from(this.promptHashCache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
+      if (oldest) this.promptHashCache.delete(oldest[0]);
+    }
+    this.promptHashCache.set(hash, { result, timestamp: Date.now() });
+  }
+
   async prepareGeneration(context: V2GenerationContext): Promise<V2GenerationResult> {
+    const promptHash = this.computePromptHash(context);
+    const cached = this.getCachedResult(promptHash);
+    if (cached) {
+      logger.debug("Prompt hash cache hit", { hash: promptHash });
+      return cached;
+    }
+
     const requestId = this.config.performanceProfiling
       ? performanceProfilerService.startOperation(`gen_${context.taskType}`, "llm_generation", { 
           prompt: context.prompt.slice(0, 100),
@@ -153,50 +196,54 @@ class V2OrchestratorService {
       let contextMultiplier = 1.0;
       const semanticContext: string[] = [];
 
-      if (this.config.conversationCompression && context.messages && context.messages.length > 0) {
-        if (conversationCompressorService.shouldCompress(context.messages)) {
-          const compressed = conversationCompressorService.compressConversation(context.messages);
-          if (compressed.compressionResult.compressionRatio < 0.8) {
-            compressionApplied = true;
-            optimizedContext = this.incorporateCompressedContext(optimizedContext, compressed.summary);
-            logger.info("Conversation compressed", {
-              ratio: compressed.compressionResult.compressionRatio,
-              originalTokens: compressed.compressionResult.originalTokens,
-              compressedTokens: compressed.compressionResult.compressedTokens,
-            });
-          }
-        }
-      }
-
-      if (this.config.kvCaching && kvCacheService.isEnabled() && context.messages && context.messages.length > 0) {
-        const cacheHitResult = kvCacheService.findCacheHit(
-          context.projectId || "default",
-          context.systemPrompt || "",
-          context.messages.map(m => ({ role: m.role, content: m.content })),
-          selectedModel
-        );
-        if (cacheHitResult && cacheHitResult.hit) {
-          cacheHit = true;
-          estimatedSpeedup *= 1.5;
-          logger.info("KV cache hit", { 
-            reusableTokens: cacheHitResult.reusableTokens,
-            prefixLength: cacheHitResult.prefixLength
-          });
-        }
-      }
-
       if (this.config.adaptiveRouting && modelRouterService.isEnabled()) {
-        const taskAnalysis = modelRouterService.analyzeTask(context.prompt);
         const routingDecision = modelRouterService.routeTask(context.prompt);
         routingTier = routingDecision.tier;
         selectedModel = routingDecision.selectedModel;
         selectedEndpoint = routingDecision.selectedEndpoint;
-        logger.info("Model routed", { 
-          tier: routingDecision.tier, 
-          selectedModel: routingDecision.selectedModel,
-          complexity: taskAnalysis.complexity,
-          reason: routingDecision.reason
-        });
+      }
+
+      const [compressionResult, kvCacheResult, embeddingResult] = await Promise.all([
+        (async () => {
+          if (this.config.conversationCompression && context.messages && context.messages.length > 0) {
+            if (conversationCompressorService.shouldCompress(context.messages)) {
+              return conversationCompressorService.compressConversation(context.messages);
+            }
+          }
+          return null;
+        })(),
+        (async () => {
+          if (this.config.kvCaching && kvCacheService.isEnabled() && context.messages && context.messages.length > 0) {
+            return kvCacheService.findCacheHit(
+              context.projectId || "default",
+              context.systemPrompt || "",
+              context.messages.map(m => ({ role: m.role, content: m.content })),
+              selectedModel
+            );
+          }
+          return null;
+        })(),
+        (async () => {
+          if (this.config.localEmbeddings && localEmbeddingService.isEnabled()) {
+            try {
+              return await localEmbeddingService.getEmbedding(context.prompt);
+            } catch (err) {
+              logger.warn("Local embedding lookup failed, continuing without", { error: String(err) });
+              return [];
+            }
+          }
+          return [];
+        })(),
+      ]);
+
+      if (compressionResult && compressionResult.compressionResult.compressionRatio < 0.8) {
+        compressionApplied = true;
+        optimizedContext = this.incorporateCompressedContext(optimizedContext, compressionResult.summary);
+      }
+
+      if (kvCacheResult && kvCacheResult.hit) {
+        cacheHit = true;
+        estimatedSpeedup *= 1.5;
       }
 
       if (this.config.quantizationAware && selectedModel) {
@@ -206,11 +253,6 @@ class V2OrchestratorService {
           const profile = quantizationDetectorService.getQuantizationProfile(quantLevel);
           contextMultiplier = profile.recommendedContextMultiplier;
           recommendedMaxTokens = Math.floor(4096 * contextMultiplier);
-          logger.info("Quantization applied", { 
-            type: quantLevel,
-            contextMultiplier,
-            adjustedMaxTokens: recommendedMaxTokens
-          });
         }
       }
 
@@ -219,11 +261,6 @@ class V2OrchestratorService {
         if (optimalPair) {
           const config = speculativeDecodingService.getConfig();
           estimatedSpeedup *= 1 + (config.maxDraftTokens * 0.05);
-          logger.info("Speculative decoding configured", { 
-            draftModel: optimalPair.draft.model,
-            verifyModel: optimalPair.primary.model,
-            maxDraftTokens: config.maxDraftTokens
-          });
         }
       }
 
@@ -234,13 +271,6 @@ class V2OrchestratorService {
           gpuLayers = optimConfig.gpuLayers;
           batchSize = optimConfig.batchSize;
           recommendedMaxTokens = Math.min(recommendedMaxTokens, optimConfig.contextLength);
-          logger.info("Hardware optimization applied", { 
-            gpuLayers,
-            batchSize,
-            threads: optimConfig.threads,
-            contextLength: optimConfig.contextLength,
-            platform: hwProfile.platform
-          });
         }
       }
 
@@ -250,27 +280,14 @@ class V2OrchestratorService {
         for (const match of matchedPatterns) {
           patterns.push(match.pattern.name);
         }
-        if (patterns.length > 0) {
-          logger.info("Relevant patterns found", { patterns });
-        }
       }
 
-      if (this.config.localEmbeddings && localEmbeddingService.isEnabled()) {
-        try {
-          const embedding = await localEmbeddingService.getEmbedding(context.prompt);
-          if (embedding.length > 0) {
-            for (const match of matchedPatterns) {
-              semanticContext.push(match.pattern.code || match.pattern.name);
-            }
-            if (semanticContext.length > 0) {
-              optimizedContext = this.incorporateSemanticContext(optimizedContext, semanticContext);
-              logger.info("Semantic context enriched", { 
-                contextCount: semanticContext.length 
-              });
-            }
-          }
-        } catch (err) {
-          logger.warn("Local embedding lookup failed, continuing without", { error: String(err) });
+      if (embeddingResult && embeddingResult.length > 0 && matchedPatterns.length > 0) {
+        for (const match of matchedPatterns) {
+          semanticContext.push(match.pattern.code || match.pattern.name);
+        }
+        if (semanticContext.length > 0) {
+          optimizedContext = this.incorporateSemanticContext(optimizedContext, semanticContext);
         }
       }
 
@@ -282,10 +299,6 @@ class V2OrchestratorService {
         );
         sessionId = session.id;
         budgetAllocation = Math.min(session.maxTokens, recommendedMaxTokens) / 4096;
-        logger.info("Streaming session started", { 
-          sessionId,
-          maxTokens: session.maxTokens
-        });
       }
 
       if (this.config.closedLoopAutoFix) {
@@ -296,11 +309,6 @@ class V2OrchestratorService {
           []
         );
         optimizedContext = enhancement.enhancedPrompt;
-        logger.info("Closed-loop pre-generation enhancement applied", {
-          preventionRules: enhancement.preventionRules.length,
-          modelWarnings: enhancement.modelSpecificWarnings.length,
-          injectedTokens: enhancement.totalInjectedTokens,
-        });
       } else if (this.config.errorLearning) {
         const modelFamily = selectedModel.toLowerCase().includes("qwen") ? "qwen" :
                            selectedModel.toLowerCase().includes("ministral") ? "ministral" :
@@ -309,32 +317,18 @@ class V2OrchestratorService {
         const preventionPrompt = errorLearningService.getPreventionPrompt(modelFamily);
         if (preventionPrompt && preventionPrompt.length > 20) {
           optimizedContext = optimizedContext + "\n" + preventionPrompt;
-          logger.info("Error prevention prompt injected", { 
-            modelFamily,
-            promptLength: preventionPrompt.length
-          });
         }
       }
 
       if (this.config.m4OptimizedContext && selectedModel) {
         const taskProfile = this.mapTaskTypeToContextProfile(context.taskType);
         const m4Allocation = contextBudgetService.calculateM4OptimizedAllocation(selectedModel, taskProfile);
-        const optimalTemp = contextBudgetService.getOptimalTemperature(selectedModel, taskProfile);
         const preset = contextBudgetService.getM4OptimizedPreset(selectedModel);
         
         if (preset) {
           recommendedMaxTokens = Math.min(m4Allocation.available, recommendedMaxTokens);
           gpuLayers = preset.gpuLayers;
           batchSize = preset.optimalBatchSize;
-          
-          logger.info("M4 optimization applied", {
-            model: selectedModel,
-            taskProfile,
-            contextWindow: preset.contextWindow,
-            temperature: optimalTemp,
-            gpuLayers,
-            batchSize,
-          });
         }
       }
 
@@ -361,6 +355,8 @@ class V2OrchestratorService {
         },
       };
 
+      this.setCachedResult(promptHash, result);
+
       if (requestId && this.config.performanceProfiling) {
         performanceProfilerService.endOperation(requestId, true);
       }
@@ -368,6 +364,11 @@ class V2OrchestratorService {
       return result;
 
     } catch (error) {
+      if (sessionId) {
+        try {
+          streamingBudgetService.endSession(sessionId);
+        } catch (_) {}
+      }
       if (requestId && this.config.performanceProfiling) {
         performanceProfilerService.endOperation(requestId, false, String(error));
       }
