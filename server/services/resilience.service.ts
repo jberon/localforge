@@ -1,4 +1,5 @@
 import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export type CircuitState = "closed" | "open" | "half-open";
 
@@ -23,10 +24,10 @@ interface CircuitBreakerState {
   lastStateChange: number;
 }
 
-export class ResilienceService {
+export class ResilienceService extends BaseService {
   private static instance: ResilienceService;
   
-  private circuitBreakers: Map<string, CircuitBreakerState> = new Map();
+  private circuitBreakers: ManagedMap<string, CircuitBreakerState>;
   private readonly maxCircuitBreakers = 200;
   private readonly circuitBreakerTTLMs = 10 * 60 * 1000;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -43,25 +44,28 @@ export class ResilienceService {
   };
 
   private constructor() {
+    super("ResilienceService");
+    this.circuitBreakers = this.createManagedMap<string, CircuitBreakerState>({ maxSize: 200, strategy: "lru" });
+    this.bulkheads = this.createManagedMap<string, { active: number; queued: number; waiters: Array<() => void>; lastUsed: number }>({ maxSize: 100, strategy: "lru" });
     this.cleanupTimer = setInterval(() => this.evictStaleCircuitBreakers(), 60000);
   }
 
   private evictStaleCircuitBreakers(): void {
     const now = Date.now();
-    for (const [key, cb] of Array.from(this.circuitBreakers.entries())) {
+    for (const [key, cb] of this.circuitBreakers.entries()) {
       if (cb.state === "closed" && now - cb.lastStateChange > this.circuitBreakerTTLMs) {
         this.circuitBreakers.delete(key);
       }
     }
     if (this.circuitBreakers.size > this.maxCircuitBreakers) {
-      const entries = Array.from(this.circuitBreakers.entries())
+      const entries = this.circuitBreakers.entries()
         .sort((a, b) => a[1].lastStateChange - b[1].lastStateChange);
       const toRemove = entries.slice(0, entries.length - this.maxCircuitBreakers);
       for (const [key] of toRemove) {
         this.circuitBreakers.delete(key);
       }
     }
-    for (const [key, bh] of Array.from(this.bulkheads.entries())) {
+    for (const [key, bh] of this.bulkheads.entries()) {
       if (bh.active === 0 && bh.queued === 0 && bh.waiters.length === 0 && now - bh.lastUsed > this.circuitBreakerTTLMs) {
         this.bulkheads.delete(key);
       }
@@ -97,18 +101,16 @@ export class ResilienceService {
     }
 
     if (cb.state === "open") {
-      // Check if recovery timeout has passed
       if (Date.now() - cb.lastStateChange >= cfg.recoveryTimeout) {
         cb.state = "half-open";
         cb.lastStateChange = Date.now();
         cb.successes = 0;
-        logger.info("Circuit breaker transitioning to half-open", { key });
+        this.log("Circuit breaker transitioning to half-open", { key });
         return true;
       }
       return false;
     }
 
-    // half-open state: allow limited requests
     return true;
   }
 
@@ -123,10 +125,9 @@ export class ResilienceService {
         cb.failures = 0;
         cb.successes = 0;
         cb.lastStateChange = Date.now();
-        logger.info("Circuit breaker closed after recovery", { key });
+        this.log("Circuit breaker closed after recovery", { key });
       }
     } else {
-      // Reset failure count on success in closed state
       cb.failures = 0;
     }
   }
@@ -139,14 +140,13 @@ export class ResilienceService {
     cb.lastFailure = Date.now();
 
     if (cb.state === "half-open") {
-      // Any failure in half-open returns to open
       cb.state = "open";
       cb.lastStateChange = Date.now();
-      logger.warn("Circuit breaker reopened after half-open failure", { key, error: error.message });
+      this.logWarn("Circuit breaker reopened after half-open failure", { key, error: error.message });
     } else if (cb.state === "closed" && cb.failures >= cfg.failureThreshold) {
       cb.state = "open";
       cb.lastStateChange = Date.now();
-      logger.warn("Circuit breaker opened due to failures", { key, failures: cb.failures });
+      this.logWarn("Circuit breaker opened due to failures", { key, failures: cb.failures });
     }
   }
 
@@ -162,17 +162,15 @@ export class ResilienceService {
       lastFailure: null,
       lastStateChange: Date.now(),
     });
-    logger.info("Circuit breaker reset", { key });
+    this.log("Circuit breaker reset", { key });
   }
 
   calculateBackoff(attempt: number, config?: Partial<RetryConfig>): number {
     const cfg = { ...this.defaultRetryConfig, ...config };
     
-    // Exponential backoff with jitter
     const exponentialDelay = cfg.baseDelayMs * Math.pow(2, attempt - 1);
     const cappedDelay = Math.min(exponentialDelay, cfg.maxDelayMs);
     
-    // Add jitter to prevent thundering herd
     const jitter = cappedDelay * cfg.jitterFactor * (Math.random() * 2 - 1);
     const finalDelay = Math.max(0, cappedDelay + jitter);
     
@@ -196,7 +194,6 @@ export class ResilienceService {
     let lastError: Error = new Error("Operation failed");
 
     for (let attempt = 1; attempt <= retryConfig.maxRetries + 1; attempt++) {
-      // Check circuit breaker
       if (!this.canExecute(key, options?.circuitConfig)) {
         throw new Error(`Circuit breaker open for ${key}`);
       }
@@ -210,12 +207,10 @@ export class ResilienceService {
         
         this.recordFailure(key, lastError, options?.circuitConfig);
 
-        // Check if we should retry
         if (attempt > retryConfig.maxRetries || !shouldRetry(lastError)) {
           throw lastError;
         }
 
-        // Calculate backoff
         const delay = this.calculateBackoff(attempt, retryConfig);
         
         if (options?.onRetry) {
@@ -224,7 +219,6 @@ export class ResilienceService {
           logger.debug("Retrying operation", { key, attempt, delay, error: lastError.message });
         }
 
-        // Wait before retrying
         await this.sleep(delay);
       }
     }
@@ -235,7 +229,6 @@ export class ResilienceService {
   private isRetryableError(error: Error): boolean {
     const message = error.message.toLowerCase();
     
-    // Non-retryable errors
     if (message.includes("invalid api key") ||
         message.includes("authentication") ||
         message.includes("authorization") ||
@@ -244,7 +237,6 @@ export class ResilienceService {
       return false;
     }
 
-    // Retryable errors
     if (message.includes("timeout") ||
         message.includes("connection") ||
         message.includes("econnrefused") ||
@@ -256,7 +248,6 @@ export class ResilienceService {
       return true;
     }
 
-    // Default to retryable for unknown errors
     return true;
   }
 
@@ -295,8 +286,6 @@ export class ResilienceService {
       timeoutMs?: number;
     }
   ): Promise<T> {
-    // Bulkhead pattern implementation
-    // Limits concurrent executions to prevent resource exhaustion
     const { key, maxConcurrent, maxQueue, timeoutMs = 60000 } = options;
     
     const bulkhead = this.getBulkhead(key, maxConcurrent, maxQueue);
@@ -320,7 +309,7 @@ export class ResilienceService {
     }
   }
 
-  private bulkheads: Map<string, { active: number; queued: number; waiters: Array<() => void>; lastUsed: number }> = new Map();
+  private bulkheads: ManagedMap<string, { active: number; queued: number; waiters: Array<() => void>; lastUsed: number }>;
 
   private getBulkhead(key: string, _maxConcurrent: number, _maxQueue: number) {
     if (!this.bulkheads.has(key)) {
@@ -370,6 +359,16 @@ export class ResilienceService {
     });
 
     return { circuitBreakers: circuits, bulkheads };
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.circuitBreakers.clear();
+    this.bulkheads.clear();
+    this.log("ResilienceService destroyed");
   }
 }
 

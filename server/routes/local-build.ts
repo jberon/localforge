@@ -3,6 +3,7 @@ import { localProjectBuilder, ProjectFile } from "../services/local-project-buil
 import { projectTemplateService } from "../services/project-template.service";
 import { storage } from "../storage";
 import { logger } from "../lib/logger";
+import { asyncHandler } from "../lib/async-handler";
 import type { GeneratedFile } from "@shared/schema";
 
 const router = Router();
@@ -65,72 +66,56 @@ router.post("/:projectId/build", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/:projectId/build-status", async (req: Request, res: Response) => {
-  try {
-    const projectId = String(req.params.projectId);
-    if (!projectId) {
-      return res.status(400).json({ error: "Invalid project ID" });
-    }
-
-    const status = localProjectBuilder.getStatus(projectId);
-    if (!status) {
-      return res.json({ 
-        projectId, 
-        status: "idle", 
-        logs: [] 
-      });
-    }
-
-    res.json(status);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+router.get("/:projectId/build-status", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ error: "Invalid project ID" });
   }
-});
 
-router.post("/:projectId/stop-build", async (req: Request, res: Response) => {
-  try {
-    const projectId = String(req.params.projectId);
-    if (!projectId) {
-      return res.status(400).json({ error: "Invalid project ID" });
-    }
-
-    await localProjectBuilder.stopProject(projectId);
-    
-    res.json({ 
-      success: true, 
+  const status = localProjectBuilder.getStatus(projectId);
+  if (!status) {
+    return res.json({ 
       projectId, 
-      message: "Build stopped" 
+      status: "idle", 
+      logs: [] 
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
   }
-});
 
-router.get("/:projectId/build-logs", async (req: Request, res: Response) => {
-  try {
-    const projectId = String(req.params.projectId);
-    if (!projectId) {
-      return res.status(400).json({ error: "Invalid project ID" });
-    }
+  res.json(status);
+}));
 
-    const status = localProjectBuilder.getStatus(projectId);
-    res.json({ 
-      projectId, 
-      logs: status?.logs || [] 
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+router.post("/:projectId/stop-build", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ error: "Invalid project ID" });
   }
-});
 
-router.get("/running", async (_req: Request, res: Response) => {
-  try {
-    const running = localProjectBuilder.getAllRunningProjects();
-    res.json({ projects: running });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  await localProjectBuilder.stopProject(projectId);
+  
+  res.json({ 
+    success: true, 
+    projectId, 
+    message: "Build stopped" 
+  });
+}));
+
+router.get("/:projectId/build-logs", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ error: "Invalid project ID" });
   }
-});
+
+  const status = localProjectBuilder.getStatus(projectId);
+  res.json({ 
+    projectId, 
+    logs: status?.logs || [] 
+  });
+}));
+
+router.get("/running", asyncHandler(async (_req: Request, res: Response) => {
+  const running = localProjectBuilder.getAllRunningProjects();
+  res.json({ projects: running });
+}));
 
 router.post("/:projectId/build-stream", async (req: Request, res: Response) => {
   const projectId = String(req.params.projectId);

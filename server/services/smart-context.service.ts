@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { contextPruningService, Message } from "./context-pruning.service";
 
 export interface ConversationMemory {
@@ -27,15 +27,17 @@ export interface SmartSummary {
   technicalContext: string[];
 }
 
-class SmartContextService {
+class SmartContextService extends BaseService {
   private static instance: SmartContextService;
-  private projectMemories: Map<string, ConversationMemory> = new Map();
-  private semanticChunks: Map<string, SemanticChunk[]> = new Map();
+  private projectMemories: ManagedMap<string, ConversationMemory>;
+  private semanticChunks: ManagedMap<string, SemanticChunk[]>;
   private readonly MAX_PROJECTS = 100;
   private readonly MAX_CHUNKS_PER_PROJECT = 500;
 
   private constructor() {
-    logger.info("SmartContextService initialized");
+    super("SmartContextService");
+    this.projectMemories = this.createManagedMap<string, ConversationMemory>({ maxSize: 200, strategy: "lru" });
+    this.semanticChunks = this.createManagedMap<string, SemanticChunk[]>({ maxSize: 500, strategy: "lru" });
   }
 
   static getInstance(): SmartContextService {
@@ -264,17 +266,7 @@ class SmartContextService {
     existingMemory.lastUpdated = new Date();
     this.projectMemories.set(projectId, existingMemory);
 
-    if (this.projectMemories.size > this.MAX_PROJECTS) {
-      const oldest = Array.from(this.projectMemories.entries())
-        .sort((a, b) => a[1].lastUpdated.getTime() - b[1].lastUpdated.getTime());
-      const toRemove = oldest.slice(0, this.projectMemories.size - this.MAX_PROJECTS);
-      for (const [removeId] of toRemove) {
-        this.projectMemories.delete(removeId);
-        this.semanticChunks.delete(removeId);
-      }
-    }
-
-    logger.info("Project memory updated", {
+    this.log("Project memory updated", {
       projectId,
       decisions: existingMemory.keyDecisions.length,
       preferences: Object.keys(existingMemory.userPreferences).length,
@@ -439,7 +431,7 @@ class SmartContextService {
   clearProjectMemory(projectId: string): void {
     this.projectMemories.delete(projectId);
     this.semanticChunks.delete(projectId);
-    logger.info("Project memory cleared", { projectId });
+    this.log("Project memory cleared", { projectId });
   }
 
   getStats(): {
@@ -449,7 +441,7 @@ class SmartContextService {
   } {
     const memoryByProject: Record<string, number> = {};
     
-    const entries = Array.from(this.projectMemories.entries());
+    const entries = this.projectMemories.entries();
     for (const [id, memory] of entries) {
       memoryByProject[id] = 
         memory.keyDecisions.length +
@@ -460,21 +452,12 @@ class SmartContextService {
 
     return {
       projectCount: this.projectMemories.size,
-      totalChunks: Array.from(this.semanticChunks.values())
+      totalChunks: this.semanticChunks.values()
         .reduce((sum, chunks) => sum + chunks.length, 0),
       memoryByProject
     };
   }
 
-  // ============================================================================
-  // SEMANTIC COMPRESSION FOR LOCAL MODELS
-  // Optimized context selection for small context windows (8K-32K tokens)
-  // ============================================================================
-
-  /**
-   * Score relevance of code/text to a query using keyword matching and structure analysis
-   * Returns 0-1 relevance score
-   */
   scoreRelevance(content: string, query: string): number {
     const queryTerms = this.extractKeyTerms(query.toLowerCase());
     const contentLower = content.toLowerCase();
@@ -522,9 +505,6 @@ class SmartContextService {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  /**
-   * Score code file relevance based on structure and dependencies
-   */
   scoreCodeRelevance(
     code: string,
     query: string,
@@ -595,9 +575,6 @@ class SmartContextService {
     return Math.min(exportMatches.length * 0.2, 1);
   }
 
-  /**
-   * Select most relevant files for context given token budget
-   */
   selectRelevantFiles(
     files: Array<{ path: string; content: string }>,
     query: string,
@@ -649,9 +626,6 @@ class SmartContextService {
     return selected;
   }
 
-  /**
-   * Compress code while preserving important structure
-   */
   compressCode(code: string, maxTokens: number): string {
     const estimatedTokens = this.estimateTokens(code);
     if (estimatedTokens <= maxTokens) return code;
@@ -716,9 +690,23 @@ class SmartContextService {
     return Math.ceil(text.length / 3.5);
   }
 
-  /**
-   * Build optimized context for local LLM with small context window
-   */
+  private summarizeConversation(messages: Message[], tokenBudget: number): string {
+    if (messages.length === 0) return '';
+
+    const recentMessages = messages.slice(-10);
+    let summary = recentMessages
+      .map(m => `${m.role}: ${m.content.substring(0, 200)}`)
+      .join('\n');
+
+    const tokens = this.estimateTokens(summary);
+    if (tokens > tokenBudget) {
+      const ratio = tokenBudget / tokens;
+      summary = summary.substring(0, Math.floor(summary.length * ratio));
+    }
+
+    return summary;
+  }
+
   buildOptimizedContext(
     projectId: string,
     query: string,
@@ -795,6 +783,7 @@ class SmartContextService {
   destroy(): void {
     this.projectMemories.clear();
     this.semanticChunks.clear();
+    this.log("SmartContextService destroyed");
   }
 }
 

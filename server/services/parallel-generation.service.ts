@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileTask {
   filePath: string;
@@ -19,12 +19,12 @@ interface DependencyGraph {
   edges: Map<string, Set<string>>;
 }
 
-class ParallelGenerationService {
+class ParallelGenerationService extends BaseService {
   private static instance: ParallelGenerationService;
   private maxConcurrency: number = 3;
 
   private constructor() {
-    logger.info("ParallelGenerationService initialized", { maxConcurrency: this.maxConcurrency });
+    super("ParallelGenerationService");
   }
 
   static getInstance(): ParallelGenerationService {
@@ -36,7 +36,7 @@ class ParallelGenerationService {
 
   setMaxConcurrency(value: number): void {
     this.maxConcurrency = Math.max(1, Math.min(value, 8));
-    logger.info("Max concurrency updated", { maxConcurrency: this.maxConcurrency });
+    this.log("Max concurrency updated", { maxConcurrency: this.maxConcurrency });
   }
 
   analyzeFileDependencies(files: FileTask[]): DependencyGraph {
@@ -114,7 +114,7 @@ class ParallelGenerationService {
 
     const visit = (node: string): void => {
       if (temp.has(node)) {
-        logger.warn("Circular dependency detected", { node });
+        this.logWarn("Circular dependency detected", { node });
         return;
       }
       if (visited.has(node)) return;
@@ -174,7 +174,7 @@ class ParallelGenerationService {
           const file = graph.nodes.get(remaining[0]);
           if (file) {
             currentBatch.push(file);
-            logger.warn("Breaking dependency cycle", { file: remaining[0] });
+            this.logWarn("Breaking dependency cycle", { file: remaining[0] });
           }
         }
       }
@@ -192,7 +192,7 @@ class ParallelGenerationService {
       }
     }
     
-    logger.info("Created generation batches", {
+    this.log("Created generation batches", {
       totalFiles: files.length,
       totalBatches: batches.length,
       parallelBatches: batches.filter(b => b.canParallelize).length,
@@ -268,6 +268,10 @@ class ParallelGenerationService {
     };
     
     return priorities[type] || 5;
+  }
+
+  destroy(): void {
+    this.log("ParallelGenerationService destroyed");
   }
 }
 

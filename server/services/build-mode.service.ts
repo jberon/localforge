@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export type BuildMode = "fast" | "full";
 
@@ -51,17 +51,18 @@ const DEFAULT_FULL_SETTINGS: FullBuildSettings = {
   runValidation: true
 };
 
-class BuildModeService {
+class BuildModeService extends BaseService {
   private static instance: BuildModeService;
   private readonly MAX_HISTORY = 500;
   private currentMode: BuildMode = "full";
-  private projectModes: Map<string, BuildMode> = new Map();
+  private projectModes: ManagedMap<string, BuildMode>;
   private fastSettings: FastModeSettings = { ...DEFAULT_FAST_SETTINGS };
   private fullSettings: FullBuildSettings = { ...DEFAULT_FULL_SETTINGS };
   private modeHistory: Array<{ projectId: string; mode: BuildMode; timestamp: Date; reason?: string }> = [];
 
   private constructor() {
-    logger.info("BuildModeService initialized");
+    super("BuildModeService");
+    this.projectModes = this.createManagedMap<string, BuildMode>({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): BuildModeService {
@@ -86,7 +87,7 @@ class BuildModeService {
     });
     this.evictHistoryIfNeeded();
 
-    logger.info("Build mode changed", { mode, projectId, reason });
+    this.log("Build mode changed", { mode, projectId, reason });
   }
 
   private evictHistoryIfNeeded(): void {
@@ -98,6 +99,7 @@ class BuildModeService {
   destroy(): void {
     this.projectModes.clear();
     this.modeHistory = [];
+    this.log("BuildModeService shut down");
   }
 
   getMode(projectId?: string): BuildMode {
@@ -175,7 +177,7 @@ class BuildModeService {
 
   setFastSettings(settings: Partial<FastModeSettings>): void {
     this.fastSettings = { ...this.fastSettings, ...settings };
-    logger.info("Fast mode settings updated", { settings });
+    this.log("Fast mode settings updated", { settings });
   }
 
   getFullSettings(): FullBuildSettings {
@@ -184,7 +186,7 @@ class BuildModeService {
 
   setFullSettings(settings: Partial<FullBuildSettings>): void {
     this.fullSettings = { ...this.fullSettings, ...settings };
-    logger.info("Full build settings updated", { settings });
+    this.log("Full build settings updated", { settings });
   }
 
   shouldSkipService(serviceName: string, projectId?: string): boolean {

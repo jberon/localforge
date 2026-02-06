@@ -1,4 +1,5 @@
 import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export interface DiscussionMessage {
   id: string;
@@ -73,15 +74,16 @@ Format your responses with clear structure:
 - Use bullet points for lists
 - Keep responses focused and concise`;
 
-class DiscussionModeService {
+class DiscussionModeService extends BaseService {
   private static instance: DiscussionModeService;
-  private sessions: Map<string, DiscussionSession> = new Map();
+  private sessions: ManagedMap<string, DiscussionSession>;
   private maxSessions = 200;
   private maxMessagesPerSession = 100;
   private sessionTTLMs = 24 * 60 * 60 * 1000;
 
   private constructor() {
-    logger.info("DiscussionModeService initialized");
+    super("DiscussionModeService");
+    this.sessions = this.createManagedMap<string, DiscussionSession>({ maxSize: 500, strategy: "lru" });
     this.startCleanupInterval();
   }
 
@@ -101,18 +103,18 @@ class DiscussionModeService {
   private evictStaleSessions(): void {
     const now = Date.now();
     let evicted = 0;
-    for (const [id, session] of Array.from(this.sessions.entries())) {
+    for (const [id, session] of this.sessions.entries()) {
       if (now - session.lastActiveAt.getTime() > this.sessionTTLMs) {
         this.sessions.delete(id);
         evicted++;
       }
     }
     if (evicted > 0) {
-      logger.info("Evicted stale discussion sessions", { evicted, remaining: this.sessions.size });
+      this.log("Evicted stale discussion sessions", { evicted, remaining: this.sessions.size });
     }
 
     if (this.sessions.size > this.maxSessions) {
-      const sorted = Array.from(this.sessions.entries()).sort(
+      const sorted = this.sessions.entries().sort(
         (a, b) => a[1].lastActiveAt.getTime() - b[1].lastActiveAt.getTime()
       );
       const toRemove = sorted.slice(0, this.sessions.size - this.maxSessions);
@@ -123,7 +125,7 @@ class DiscussionModeService {
   }
 
   getOrCreateSession(projectId: string): DiscussionSession {
-    const existingKey = Array.from(this.sessions.entries()).find(
+    const existingKey = this.sessions.entries().find(
       ([, s]) => s.projectId === projectId
     );
     if (existingKey) {
@@ -146,7 +148,7 @@ class DiscussionModeService {
   }
 
   getSessionByProject(projectId: string): DiscussionSession | undefined {
-    return Array.from(this.sessions.values()).find(s => s.projectId === projectId);
+    return this.sessions.values().find(s => s.projectId === projectId);
   }
 
   addMessage(sessionId: string, role: "user" | "assistant", content: string, options?: { suggestions?: string[]; canApply?: boolean }): DiscussionMessage {
@@ -276,7 +278,7 @@ class DiscussionModeService {
 
   getStats(): { activeSessions: number; totalMessages: number } {
     let totalMessages = 0;
-    for (const session of Array.from(this.sessions.values())) {
+    for (const session of this.sessions.values()) {
       totalMessages += session.messages.length;
     }
     return { activeSessions: this.sessions.size, totalMessages };
@@ -288,7 +290,7 @@ class DiscussionModeService {
       this.cleanupIntervalId = null;
     }
     this.sessions.clear();
-    logger.info("DiscussionModeService destroyed");
+    this.log("DiscussionModeService destroyed");
   }
 }
 

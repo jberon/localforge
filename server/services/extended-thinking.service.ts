@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export type ThinkingMode = "standard" | "extended" | "deep";
 
@@ -65,16 +65,20 @@ const DEEP_CONFIG: ThinkingConfig = {
   maxLoopRetries: 10
 };
 
-class ExtendedThinkingService {
+class ExtendedThinkingService extends BaseService {
   private static instance: ExtendedThinkingService;
-  private sessions: Map<string, ThinkingSession> = new Map();
-  private projectModes: Map<string, ThinkingMode> = new Map();
+  private sessions: ManagedMap<string, ThinkingSession>;
+  private projectModes: ManagedMap<string, ThinkingMode>;
   private globalMode: ThinkingMode = "standard";
-  private loopCounts: Map<string, number> = new Map();
-  private customConfigs: Map<string, Partial<ThinkingConfig>> = new Map();
+  private loopCounts: ManagedMap<string, number>;
+  private customConfigs: ManagedMap<string, Partial<ThinkingConfig>>;
 
   private constructor() {
-    logger.info("ExtendedThinkingService initialized");
+    super("ExtendedThinkingService");
+    this.sessions = this.createManagedMap<string, ThinkingSession>({ maxSize: 500, strategy: "lru" });
+    this.projectModes = this.createManagedMap<string, ThinkingMode>({ maxSize: 200, strategy: "lru" });
+    this.loopCounts = this.createManagedMap<string, number>({ maxSize: 200, strategy: "lru" });
+    this.customConfigs = this.createManagedMap<string, Partial<ThinkingConfig>>({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): ExtendedThinkingService {
@@ -90,7 +94,7 @@ class ExtendedThinkingService {
     } else {
       this.globalMode = mode;
     }
-    logger.info("Thinking mode set", { mode, projectId });
+    this.log("Thinking mode set", { mode, projectId });
   }
 
   getMode(projectId?: string): ThinkingMode {
@@ -124,7 +128,7 @@ class ExtendedThinkingService {
 
   setCustomConfig(projectId: string, config: Partial<ThinkingConfig>): void {
     this.customConfigs.set(projectId, config);
-    logger.info("Custom thinking config set", { projectId });
+    this.log("Custom thinking config set", { projectId });
   }
 
   shouldTriggerExtended(prompt: string, projectId?: string): {
@@ -256,7 +260,7 @@ class ExtendedThinkingService {
     };
 
     this.sessions.set(sessionId, session);
-    logger.info("Thinking session started", { sessionId, mode: effectiveMode, projectId });
+    this.log("Thinking session started", { sessionId, mode: effectiveMode, projectId });
 
     return session;
   }
@@ -273,7 +277,7 @@ class ExtendedThinkingService {
 
     const config = this.getConfig(session.projectId);
     if (session.steps.length >= config.maxSteps) {
-      logger.warn("Max thinking steps reached", { sessionId });
+      this.logWarn("Max thinking steps reached", { sessionId });
       return null;
     }
 
@@ -295,7 +299,7 @@ class ExtendedThinkingService {
     session.steps.push(step);
     this.sessions.set(sessionId, session);
 
-    logger.info("Thinking step added", { sessionId, stepType: type });
+    this.log("Thinking step added", { sessionId, stepType: type });
     return step;
   }
 
@@ -312,7 +316,7 @@ class ExtendedThinkingService {
     session.confidence = Math.min(1, Math.max(0, confidence));
 
     this.sessions.set(sessionId, session);
-    logger.info("Thinking session completed", {
+    this.log("Thinking session completed", {
       sessionId,
       stepCount: session.steps.length,
       confidence
@@ -346,7 +350,7 @@ class ExtendedThinkingService {
 
   setProjectMode(projectId: string, mode: ThinkingMode): void {
     this.projectModes.set(projectId, mode);
-    logger.info("Project thinking mode set", { projectId, mode });
+    this.log("Project thinking mode set", { projectId, mode });
   }
 
   detectLoopPattern(projectId: string): boolean {
@@ -498,7 +502,7 @@ class ExtendedThinkingService {
       : 0;
 
     this.sessions.set(sessionId, session);
-    logger.info("Session backtracked", { sessionId, removedCount, newStepCount: session.steps.length });
+    this.log("Session backtracked", { sessionId, removedCount, newStepCount: session.steps.length });
 
     return session;
   }
@@ -571,6 +575,14 @@ class ExtendedThinkingService {
           { name: "Conclude", description: "Direct solution", checkpoint: "Solution provided" }
         ];
     }
+  }
+
+  destroy(): void {
+    this.sessions.clear();
+    this.projectModes.clear();
+    this.loopCounts.clear();
+    this.customConfigs.clear();
+    this.log("ExtendedThinkingService shut down");
   }
 }
 

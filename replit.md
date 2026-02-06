@@ -80,12 +80,14 @@ Uses esbuild-wasm for in-browser bundling of multi-file TypeScript/React project
 All 18+ singleton services with unbounded Maps/arrays now have TTL/eviction policies with configurable max sizes (500 for histories, 1000 for caches, 200 for reasoning chains). Every service with `setInterval` timers has a `destroy()` method that clears intervals and resets state. EventEmitter-based services (HealthAlerts, RuntimeFeedback) call `removeAllListeners()` on destroy. The V2 Orchestrator is optimized with `Promise.all` parallelization, prompt hash caching, and streaming session cleanup. Hardware optimizer uses direct CPU model string parsing ("Apple M4 Pro") for accurate Apple Silicon chip detection, falling back to memory-based heuristics only when the variant isn't in the model string. `FORCE_M4_PRO_PROFILE` env var enables testing M4 Pro optimizations on non-Mac hardware.
 
 ### Service Architecture & Lifecycle (Feb 2026)
-- **BaseService** (`server/lib/base-service.ts`): Abstract class providing standardized logging, `ManagedMap` with LRU/FIFO eviction, and auto-registration with `ServiceRegistry`.
+- **BaseService** (`server/lib/base-service.ts`): Abstract class providing standardized logging, `ManagedMap` with LRU/FIFO eviction, and auto-registration with `ServiceRegistry`. 68 services migrated.
 - **ServiceRegistry** (`server/lib/service-registry.ts`): Central registry that auto-discovers all `BaseService` instances. `destroyAll()` destroys all registered services in one call.
 - **Unified Shutdown** (`server/lib/graceful-shutdown.ts`): Single shutdown handler using `ServiceRegistry.destroyAll()` — replaces previous 24 hardcoded service imports in `server/index.ts`.
-- **asyncHandler** (`server/lib/async-handler.ts`): DRY wrapper for Express route handlers that catches async errors and forwards to centralized error middleware via `next(error)`.
-- **Route Modules** (`server/routes/optimization/`): 7 domain-specific route files (self-testing, image-import, templates, model-router, visual-editor, code-quality, static-deploy) extracted from the 2,674-line optimization.ts.
+- **asyncHandler** (`server/lib/async-handler.ts`): DRY wrapper for Express route handlers that catches async errors and forwards to centralized error middleware via `next(error)`. Adopted across all 15 route files, eliminating 252+ try/catch blocks.
+- **Route Modules** (`server/routes/optimization/`): 20 domain-specific route files extracted from the original 2,029-line optimization.ts (now 225 lines). Generation routes split from 1,383 lines into 4 focused modules (chat, plan-build, team, index).
+- **Orchestrator Modules** (`server/services/orchestrator/`): Types, model-instructions helper, and JSON parser extracted from the 1,885-line orchestrator.ts (now 1,659 lines). Three orchestrators serve distinct purposes: main generation, production builds, and optimization layer.
 - **Home Page Contexts** (`client/src/contexts/`): `HomePanelsContext` (useReducer for 8 panel toggles) and `GenerationContext` (5 generation states) with useMemo-wrapped values to prevent unnecessary re-renders.
+- **Frontend Extractions**: `usePlanBuild` hook (15 state variables), `HomeHeader` component, and `PreviewPanel` split into 3 sub-components (PreviewToolbar, PreviewIframe, CodeEditorPane).
 
 ## External Dependencies
 - **LM Studio**: Local LLM inference.

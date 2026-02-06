@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export type DesignStyle = "minimal" | "modern" | "playful" | "corporate" | "creative";
 
@@ -270,17 +270,20 @@ const DEFAULT_COLOR_SCHEMES: Record<DesignStyle, ColorScheme> = {
   }
 };
 
-class DesignModeService {
+class DesignModeService extends BaseService {
   private static instance: DesignModeService;
   private readonly MAX_MOCKUPS = 500;
-  private mockups: Map<string, DesignMockup> = new Map();
-  private templates: Map<string, DesignTemplate> = new Map();
+  private mockups: ManagedMap<string, DesignMockup>;
+  private templates: ManagedMap<string, DesignTemplate>;
   private enabled: boolean = true;
-  private projectStyles: Map<string, DesignStyle> = new Map();
+  private projectStyles: ManagedMap<string, DesignStyle>;
 
   private constructor() {
+    super("DesignModeService");
+    this.mockups = this.createManagedMap<string, DesignMockup>({ maxSize: 500, strategy: "lru" });
+    this.templates = this.createManagedMap<string, DesignTemplate>({ maxSize: 200, strategy: "lru" });
+    this.projectStyles = this.createManagedMap<string, DesignStyle>({ maxSize: 200, strategy: "lru" });
     this.initializeTemplates();
-    logger.info("DesignModeService initialized");
   }
 
   static getInstance(): DesignModeService {
@@ -451,12 +454,12 @@ class DesignModeService {
     this.templates.set(dashboardTemplate.id, dashboardTemplate);
     this.templates.set(formTemplate.id, formTemplate);
 
-    logger.info("Design templates initialized", { count: this.templates.size });
+    this.log("Design templates initialized", { count: this.templates.size });
   }
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
-    logger.info("Design mode", { enabled });
+    this.log("Design mode", { enabled });
   }
 
   isEnabled(): boolean {
@@ -512,7 +515,7 @@ class DesignModeService {
 
     this.mockups.set(mockupId, mockup);
     this.evictMockupsIfNeeded();
-    logger.info("Mockup created", { mockupId, projectId, style: effectiveStyle });
+    this.log("Mockup created", { mockupId, projectId, style: effectiveStyle });
 
     return mockup;
   }
@@ -530,7 +533,9 @@ class DesignModeService {
 
   destroy(): void {
     this.mockups.clear();
+    this.templates.clear();
     this.projectStyles.clear();
+    this.log("DesignModeService shut down");
   }
 
   addComponent(mockupId: string, component: Omit<MockupComponent, "id">): MockupComponent | null {
@@ -574,7 +579,7 @@ class DesignModeService {
 
     mockup.approved = true;
     this.mockups.set(mockupId, mockup);
-    logger.info("Mockup approved", { mockupId });
+    this.log("Mockup approved", { mockupId });
 
     return true;
   }

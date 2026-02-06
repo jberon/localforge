@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface FeedbackEntry {
   id: string;
@@ -37,15 +37,18 @@ interface GenerationContext {
   features: string[];
 }
 
-class FeedbackLoopService {
+class FeedbackLoopService extends BaseService {
   private static instance: FeedbackLoopService;
   private readonly MAX_FEEDBACK_PER_PROJECT = 200;
   private readonly MAX_ISSUE_PATTERNS = 500;
-  private feedback: Map<string, FeedbackEntry[]> = new Map();
+  private feedback: ManagedMap<string, FeedbackEntry[]>;
   private refinements: PromptRefinement[] = [];
-  private issuePatterns: Map<string, number> = new Map();
+  private issuePatterns: ManagedMap<string, number>;
 
   private constructor() {
+    super("FeedbackLoopService");
+    this.feedback = this.createManagedMap<string, FeedbackEntry[]>({ maxSize: 500, strategy: "lru" });
+    this.issuePatterns = this.createManagedMap<string, number>({ maxSize: 500, strategy: "lru" });
     this.initializeDefaultRefinements();
   }
 
@@ -135,7 +138,7 @@ class FeedbackLoopService {
       this.learnFromNegativeFeedback(entry);
     }
 
-    logger.info("Feedback recorded", { projectId, generationId, rating, categories });
+    this.log("Feedback recorded", { projectId, generationId, rating, categories });
     return entry;
   }
 
@@ -231,7 +234,7 @@ class FeedbackLoopService {
       .map(r => r.refinement)
       .join(" ");
 
-    logger.info("Prompt refined based on feedback", { 
+    this.log("Prompt refined based on feedback", { 
       refinementsApplied: applicableRefinements.length,
       topIssues 
     });
@@ -280,7 +283,7 @@ class FeedbackLoopService {
       if (entry) {
         entry.resolved = true;
         this.learnFromNegativeFeedback(entry);
-        logger.info("Feedback marked as resolved", { feedbackId, projectId });
+        this.log("Feedback marked as resolved", { feedbackId, projectId });
         return true;
       }
     }
@@ -295,7 +298,7 @@ class FeedbackLoopService {
       successRate: 0,
       appliedCount: 0
     });
-    logger.info("Custom refinement added", { trigger });
+    this.log("Custom refinement added", { trigger });
   }
 
   private evictFeedbackIfNeeded(projectId: string): void {
@@ -320,11 +323,12 @@ class FeedbackLoopService {
     this.feedback.clear();
     this.issuePatterns.clear();
     this.refinements = [];
+    this.log("FeedbackLoopService shut down");
   }
 
   clearFeedback(projectId: string): void {
     this.feedback.delete(projectId);
-    logger.info("Feedback cleared", { projectId });
+    this.log("Feedback cleared", { projectId });
   }
 }
 

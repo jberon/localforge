@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface ReasoningStep {
   id: string;
@@ -52,13 +52,16 @@ interface StepResult {
   nextStepRecommendation?: string;
 }
 
-class MultiStepReasoningService {
+class MultiStepReasoningService extends BaseService {
   private static instance: MultiStepReasoningService;
   private readonly MAX_CHAINS = 200;
-  private chains: Map<string, ReasoningChain> = new Map();
-  private stepTemplates: Map<StepType, Partial<ReasoningStep>> = new Map();
+  private chains: ManagedMap<string, ReasoningChain>;
+  private stepTemplates: ManagedMap<StepType, Partial<ReasoningStep>>;
 
   private constructor() {
+    super("MultiStepReasoningService");
+    this.chains = this.createManagedMap<string, ReasoningChain>({ maxSize: 200, strategy: "lru" });
+    this.stepTemplates = this.createManagedMap<StepType, Partial<ReasoningStep>>({ maxSize: 200, strategy: "lru" });
     this.initializeStepTemplates();
   }
 
@@ -146,7 +149,7 @@ class MultiStepReasoningService {
     objective: string,
     context: { files?: string[]; requirements?: string[] } = {}
   ): DecompositionResult {
-    logger.info("Decomposing task into reasoning steps", { projectId, objective });
+    this.log("Decomposing task into reasoning steps", { projectId, objective });
 
     const chainId = `chain_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const complexity = this.assessComplexity(objective, context);
@@ -164,13 +167,12 @@ class MultiStepReasoningService {
     };
 
     this.chains.set(chainId, chain);
-    this.evictChainsIfNeeded();
 
     const estimatedTokens = steps.reduce((sum, step) => {
       return sum + this.estimateStepTokens(step);
     }, 0);
 
-    logger.info("Task decomposed", {
+    this.log("Task decomposed", {
       chainId,
       stepCount: steps.length,
       complexity,
@@ -489,23 +491,14 @@ class MultiStepReasoningService {
     step.status = "skipped";
     step.result = `Skipped: ${reason}`;
 
-    logger.info("Step skipped", { chainId, stepId, reason });
+    this.log("Step skipped", { chainId, stepId, reason });
     return true;
-  }
-
-  private evictChainsIfNeeded(): void {
-    if (this.chains.size > this.MAX_CHAINS) {
-      const sorted = Array.from(this.chains.entries())
-        .sort((a, b) => a[1].createdAt - b[1].createdAt);
-      const toRemove = sorted.slice(0, this.chains.size - this.MAX_CHAINS);
-      for (const [key] of toRemove) {
-        this.chains.delete(key);
-      }
-    }
   }
 
   destroy(): void {
     this.chains.clear();
+    this.stepTemplates.clear();
+    this.log("MultiStepReasoningService destroyed");
   }
 
   abortChain(chainId: string): boolean {
@@ -520,7 +513,7 @@ class MultiStepReasoningService {
       }
     }
 
-    logger.info("Chain aborted", { chainId });
+    this.log("Chain aborted", { chainId });
     return true;
   }
 }

@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export type AutonomyLevel = "low" | "medium" | "high" | "max";
 
@@ -101,11 +101,11 @@ const AUTONOMY_CONFIGS: Record<AutonomyLevel, AutonomyConfig> = {
   }
 };
 
-class AutonomyLevelService {
+class AutonomyLevelService extends BaseService {
   private static instance: AutonomyLevelService;
   private globalLevel: AutonomyLevel = "medium";
-  private projectLevels: Map<string, AutonomyLevel> = new Map();
-  private sessionStartTimes: Map<string, Date> = new Map();
+  private projectLevels: ManagedMap<string, AutonomyLevel>;
+  private sessionStartTimes: ManagedMap<string, Date>;
   private actionLog: Array<{
     projectId: string;
     action: string;
@@ -113,10 +113,13 @@ class AutonomyLevelService {
     automatic: boolean;
     timestamp: Date;
   }> = [];
-  private customConfigs: Map<string, Partial<AutonomyConfig>> = new Map();
+  private customConfigs: ManagedMap<string, Partial<AutonomyConfig>>;
 
   private constructor() {
-    logger.info("AutonomyLevelService initialized", { defaultLevel: this.globalLevel });
+    super("AutonomyLevelService");
+    this.projectLevels = this.createManagedMap<string, AutonomyLevel>({ maxSize: 200, strategy: "lru" });
+    this.sessionStartTimes = this.createManagedMap<string, Date>({ maxSize: 200, strategy: "lru" });
+    this.customConfigs = this.createManagedMap<string, Partial<AutonomyConfig>>({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): AutonomyLevelService {
@@ -129,10 +132,10 @@ class AutonomyLevelService {
   setLevel(level: AutonomyLevel, projectId?: string): void {
     if (projectId) {
       this.projectLevels.set(projectId, level);
-      logger.info("Project autonomy level set", { projectId, level });
+      this.log("Project autonomy level set", { projectId, level });
     } else {
       this.globalLevel = level;
-      logger.info("Global autonomy level set", { level });
+      this.log("Global autonomy level set", { level });
     }
   }
 
@@ -156,7 +159,7 @@ class AutonomyLevelService {
 
   setCustomConfig(projectId: string, config: Partial<AutonomyConfig>): void {
     this.customConfigs.set(projectId, config);
-    logger.info("Custom autonomy config set", { projectId, config });
+    this.log("Custom autonomy config set", { projectId, config });
   }
 
   canPerformAction(action: string, projectId?: string): {
@@ -210,7 +213,7 @@ class AutonomyLevelService {
 
   startSession(projectId: string): void {
     this.sessionStartTimes.set(projectId, new Date());
-    logger.info("Autonomy session started", { projectId });
+    this.log("Autonomy session started", { projectId });
   }
 
   isSessionActive(projectId: string): boolean {
@@ -235,7 +238,7 @@ class AutonomyLevelService {
 
   endSession(projectId: string): void {
     this.sessionStartTimes.delete(projectId);
-    logger.info("Autonomy session ended", { projectId });
+    this.log("Autonomy session ended", { projectId });
   }
 
   getBehavior(projectId?: string): AutonomyBehavior {
@@ -304,6 +307,14 @@ class AutonomyLevelService {
       level: level as AutonomyLevel,
       config
     }));
+  }
+
+  destroy(): void {
+    this.projectLevels.clear();
+    this.sessionStartTimes.clear();
+    this.customConfigs.clear();
+    this.actionLog = [];
+    this.log("AutonomyLevelService shut down");
   }
 }
 

@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export type DeploymentPlatform = "vercel" | "netlify" | "railway" | "render" | "replit";
 
@@ -126,13 +126,15 @@ const PLATFORM_CONFIGS: Record<DeploymentPlatform, PlatformConfig> = {
   }
 };
 
-class DeploymentService {
+class DeploymentService extends BaseService {
   private static instance: DeploymentService;
-  private deployments: Map<string, Deployment> = new Map();
-  private packages: Map<string, DeploymentPackage> = new Map();
+  private deployments: ManagedMap<string, Deployment>;
+  private packages: ManagedMap<string, DeploymentPackage>;
 
   private constructor() {
-    logger.info("DeploymentService initialized");
+    super("DeploymentService");
+    this.deployments = this.createManagedMap<string, Deployment>({ maxSize: 500, strategy: "lru" });
+    this.packages = this.createManagedMap<string, DeploymentPackage>({ maxSize: 500, strategy: "lru" });
   }
 
   static getInstance(): DeploymentService {
@@ -217,7 +219,7 @@ class DeploymentService {
     };
 
     this.packages.set(id, pkg);
-    logger.info("Deployment package generated", { id, platform, projectId });
+    this.log("Deployment package generated", { id, platform, projectId });
 
     return pkg;
   }
@@ -531,7 +533,7 @@ For more details, see the [${platformConfig.name} documentation](${platformConfi
     };
 
     this.deployments.set(id, deployment);
-    logger.info("Deployment started", { id, platform, projectId, packageId: pkg?.id });
+    this.log("Deployment started", { id, platform, projectId, packageId: pkg?.id });
 
     // Simulate deployment progress
     this.simulateDeployment(id);
@@ -564,7 +566,7 @@ For more details, see the [${platformConfig.name} documentation](${platformConfi
       this.deployments.set(deploymentId, deployment);
     }
 
-    logger.info("Deployment completed", { deploymentId, url: deployment.url });
+    this.log("Deployment completed", { deploymentId, url: deployment.url });
   }
 
   getDeployment(id: string): Deployment | null {
@@ -614,6 +616,12 @@ For more details, see the [${platformConfig.name} documentation](${platformConfi
       platformBreakdown,
       packagesGenerated: packages.length
     };
+  }
+
+  destroy(): void {
+    this.deployments.clear();
+    this.packages.clear();
+    this.log("DeploymentService shut down");
   }
 }
 

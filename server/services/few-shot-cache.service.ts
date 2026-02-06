@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { ModelFamily } from "./local-model-optimizer.service";
 
 export interface FewShotExample {
@@ -35,16 +35,17 @@ interface CachedExamples {
   modelFamily: ModelFamily;
 }
 
-class FewShotCacheService {
+class FewShotCacheService extends BaseService {
   private static instance: FewShotCacheService;
-  private cache: Map<string, CachedExamples> = new Map();
+  private cache: ManagedMap<string, CachedExamples>;
   private globalExamples: FewShotExample[] = [];
   private maxExamplesPerCategory = 10;
   private maxGlobalExamples = 50;
 
   private constructor() {
+    super("FewShotCacheService");
+    this.cache = this.createManagedMap<string, CachedExamples>({ maxSize: 1000, strategy: "lru" });
     this.initializeBuiltInExamples();
-    logger.info("FewShotCacheService initialized");
   }
 
   static getInstance(): FewShotCacheService {
@@ -350,7 +351,7 @@ export const userService = {
       this.globalExamples = this.globalExamples.slice(0, this.maxGlobalExamples);
     }
 
-    logger.info("New few-shot example added", { id: newExample.id, category: newExample.category });
+    this.log("New few-shot example added", { id: newExample.id, category: newExample.category });
     return newExample;
   }
 
@@ -362,7 +363,7 @@ export const userService = {
     const successfulUses = example.successRate * (totalUses - 1);
     example.successRate = (successfulUses + (success ? 1 : 0)) / totalUses;
     
-    logger.debug("Example outcome recorded", { exampleId, success, newSuccessRate: example.successRate });
+    this.log("Example outcome recorded", { exampleId, success, newSuccessRate: example.successRate });
   }
 
   formatExamplesForPrompt(examples: FewShotExample[]): string {
@@ -425,7 +426,13 @@ export const userService = {
 
   clearCache(): void {
     this.cache.clear();
-    logger.info("Few-shot cache cleared");
+    this.log("Few-shot cache cleared");
+  }
+
+  destroy(): void {
+    this.cache.clear();
+    this.globalExamples = [];
+    this.log("FewShotCacheService shut down");
   }
 }
 

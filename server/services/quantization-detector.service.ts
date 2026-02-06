@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { checkConnection, getLLMConfig } from "../llm-client";
 
 export type QuantizationLevel = 
@@ -207,19 +208,17 @@ const MODEL_SIZE_PATTERNS: Array<{ pattern: RegExp; parametersBillion: number }>
   { pattern: /70[bB]|70\.?[0-9]?[bB]/i, parametersBillion: 70 },
 ];
 
-class QuantizationDetectorService {
+class QuantizationDetectorService extends BaseService {
   private static instance: QuantizationDetectorService;
-  private modelCache: Map<string, ModelQuantizationInfo> = new Map();
+  private modelCache: ManagedMap<string, ModelQuantizationInfo>;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private systemMemoryMB: number = 48 * 1024;
   private reservedMemoryMB: number = 8 * 1024;
 
   private constructor() {
+    super("QuantizationDetectorService");
+    this.modelCache = this.createManagedMap<string, ModelQuantizationInfo>({ maxSize: 1000, strategy: "lru" });
     this.detectSystemMemory();
-    logger.info("QuantizationDetectorService initialized", {
-      systemMemoryMB: this.systemMemoryMB,
-      reservedMemoryMB: this.reservedMemoryMB,
-    });
   }
 
   static getInstance(): QuantizationDetectorService {
@@ -332,7 +331,7 @@ class QuantizationDetectorService {
 
     this.modelCache.set(modelName, info);
     
-    logger.info("Model quantization detected", {
+    this.log("Model quantization detected", {
       model: modelName,
       level: detectedLevel,
       estimatedVRAMMB,
@@ -415,7 +414,7 @@ class QuantizationDetectorService {
       this.cleanupTimer = null;
     }
     this.modelCache.clear();
-    logger.info("QuantizationDetectorService destroyed");
+    this.log("QuantizationDetectorService destroyed");
   }
 
   clearCache(): void {

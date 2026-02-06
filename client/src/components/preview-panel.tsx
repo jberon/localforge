@@ -21,6 +21,726 @@ import type { editor } from "monaco-editor";
 import { useBundler } from "@/hooks/use-bundler";
 import { VisualEditorOverlay } from "./visual-editor-overlay";
 
+export function getFileLanguage(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+      return 'typescript';
+    case 'js':
+    case 'jsx':
+      return 'javascript';
+    case 'json':
+      return 'json';
+    case 'md':
+      return 'markdown';
+    case 'css':
+      return 'css';
+    case 'html':
+      return 'html';
+    default:
+      return 'plaintext';
+  }
+}
+
+interface PreviewToolbarProps {
+  activeTab: "preview" | "files" | "publish" | "console" | "search";
+  setActiveTab: (tab: "preview" | "files" | "publish" | "console" | "search") => void;
+  hasFullStackProject: boolean;
+  generatedFiles: GeneratedFile[];
+  devToolsExpanded: boolean;
+  setDevToolsExpanded: (v: boolean) => void;
+  consoleLogs: ConsoleLog[];
+  isGenerating: boolean;
+  isCompiling: boolean;
+  bundleErrors: string[];
+  bundledPreviewHtml: string | null;
+  safeGeneratedFiles: GeneratedFile[];
+  code: string;
+  copied: boolean;
+  isFullscreen: boolean;
+  setIsFullscreen: (v: boolean) => void;
+  visualEditorEnabled: boolean;
+  setVisualEditorEnabled: (v: boolean) => void;
+  handleRefresh: () => void;
+  setShowTestPreview: (v: boolean) => void;
+  localBuildStatus: "idle" | "building" | "running" | "error";
+  localBuildPort: number | null;
+  handleLocalBuild: () => void;
+  handleStopLocalBuild: () => void;
+  showLocalBuildLogs: boolean;
+  setShowLocalBuildLogs: (v: boolean) => void;
+  projectId?: string;
+  handleCopy: () => void;
+  canRegenerate: boolean;
+  handleOpenRegenerate: () => void;
+  onDownload: () => void;
+}
+
+function PreviewToolbar({
+  activeTab,
+  setActiveTab,
+  hasFullStackProject,
+  generatedFiles,
+  devToolsExpanded,
+  setDevToolsExpanded,
+  consoleLogs,
+  isGenerating,
+  isCompiling,
+  bundleErrors,
+  bundledPreviewHtml,
+  safeGeneratedFiles,
+  code,
+  copied,
+  isFullscreen,
+  setIsFullscreen,
+  visualEditorEnabled,
+  setVisualEditorEnabled,
+  handleRefresh,
+  setShowTestPreview,
+  localBuildStatus,
+  localBuildPort,
+  handleLocalBuild,
+  handleStopLocalBuild,
+  showLocalBuildLogs,
+  setShowLocalBuildLogs,
+  projectId,
+  handleCopy,
+  canRegenerate,
+  handleOpenRegenerate,
+  onDownload,
+}: PreviewToolbarProps) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-4 py-3 border-b min-w-0">
+      <div className="flex items-center gap-3 min-w-0 flex-shrink overflow-x-auto">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "files" | "publish" | "console" | "search")}>
+          <TabsList className="h-8">
+            <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
+              <Eye className="h-3.5 w-3.5" />
+              Preview
+            </TabsTrigger>
+            {hasFullStackProject && (
+              <>
+                <TabsTrigger value="files" className="text-xs gap-1.5" data-testid="tab-files">
+                  <FolderTree className="h-3.5 w-3.5" />
+                  Files
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{generatedFiles.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="publish" className="text-xs gap-1.5" data-testid="tab-publish">
+                  <Package className="h-3.5 w-3.5" />
+                  Publish
+                </TabsTrigger>
+                <div className="relative flex items-center">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDevToolsExpanded(!devToolsExpanded);
+                    }}
+                    className="text-xs gap-1 text-muted-foreground"
+                    data-testid="button-dev-tools-toggle"
+                  >
+                    <Wrench className="h-3.5 w-3.5" />
+                    Dev
+                    <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${devToolsExpanded ? 'rotate-180' : ''}`} />
+                  </Button>
+                  {devToolsExpanded && (
+                    <div className="flex items-center ml-1 animate-in fade-in slide-in-from-left-2 duration-200">
+                      <TabsTrigger value="search" className="text-xs gap-1.5" data-testid="tab-search">
+                        <Search className="h-3.5 w-3.5" />
+                        Search
+                      </TabsTrigger>
+                      <TabsTrigger value="console" className="text-xs gap-1.5" data-testid="tab-console">
+                        <Terminal className="h-3.5 w-3.5" />
+                        Console
+                        {consoleLogs.length > 0 && (
+                          <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{consoleLogs.length}</Badge>
+                        )}
+                      </TabsTrigger>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </TabsList>
+        </Tabs>
+        {isGenerating && (
+          <div className="flex items-center gap-2 px-2 py-1 bg-primary/10 rounded-full animate-in fade-in duration-300">
+            <div className="flex gap-0.5">
+              <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+            <span className="text-xs font-medium text-primary">Building your app...</span>
+          </div>
+        )}
+        {!isGenerating && hasFullStackProject && (
+          <div className="flex items-center gap-2">
+            {isCompiling ? (
+              <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse" data-testid="badge-compiling">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Compiling...
+              </Badge>
+            ) : bundleErrors.length > 0 ? (
+              <Badge variant="destructive" className="gap-1.5 text-xs" data-testid="badge-build-error">
+                <AlertTriangle className="h-3 w-3" />
+                Build failed
+              </Badge>
+            ) : bundledPreviewHtml ? (
+              <Badge variant="outline" className="gap-1.5 text-xs border-green-500/50 text-green-600 dark:text-green-400" data-testid="badge-build-success">
+                <Check className="h-3 w-3" />
+                {safeGeneratedFiles.length} files
+              </Badge>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {activeTab === "preview" && (code || hasFullStackProject) && (
+          <>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setVisualEditorEnabled(!visualEditorEnabled)}
+              className={`toggle-elevate ${visualEditorEnabled ? "toggle-elevated text-primary" : ""}`}
+              data-testid="button-visual-editor"
+              title="Visual Editor - Click to edit elements"
+            >
+              <MousePointer2 className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={handleRefresh}
+              data-testid="button-refresh-preview"
+              title="Refresh preview (⌘R / Ctrl+R)"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setShowTestPreview(true)}
+              className="h-8 w-8"
+              title="Visual Test Runner"
+              data-testid="button-test-preview"
+            >
+              <Play className="h-4 w-4" />
+            </Button>
+            {hasFullStackProject && projectId && (
+              <>
+                {localBuildStatus === "running" ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(`http://localhost:${localBuildPort}`, "_blank")}
+                      className="gap-1 text-green-600 border-green-600"
+                      title={`Open localhost:${localBuildPort}`}
+                      data-testid="button-open-local-build"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      :{localBuildPort}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={handleStopLocalBuild}
+                      title="Stop local build"
+                      data-testid="button-stop-local-build"
+                    >
+                      <Square className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant={localBuildStatus === "building" ? "secondary" : "outline"}
+                    onClick={handleLocalBuild}
+                    disabled={localBuildStatus === "building"}
+                    className="gap-1"
+                    title="Build & run locally with npm (supports all packages)"
+                    data-testid="button-local-build"
+                  >
+                    {localBuildStatus === "building" ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Hammer className="h-3 w-3" />
+                    )}
+                    {localBuildStatus === "building" ? "Building..." : "Local Build"}
+                  </Button>
+                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setShowLocalBuildLogs(!showLocalBuildLogs)}
+                  title="Build logs"
+                  data-testid="button-build-logs"
+                >
+                  <Terminal className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </>
+        )}
+        {(code || hasFullStackProject) && (
+          <>
+            {code && (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleCopy}
+                  data-testid="button-copy-code"
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setIsFullscreen(!isFullscreen)}
+                  data-testid="button-fullscreen"
+                >
+                  {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                </Button>
+              </>
+            )}
+            {canRegenerate && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOpenRegenerate}
+                className="gap-1.5"
+                data-testid="button-regenerate"
+                title="Regenerate project"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span className="hidden sm:inline">Regenerate</span>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="default"
+              onClick={onDownload}
+              className="gap-1.5"
+              data-testid="button-download"
+              title="Download project"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Download</span>
+            </Button>
+            {projectId && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(`/preview/${projectId}`, "_blank")}
+                className="gap-1.5"
+                data-testid="button-open-browser"
+                title="View in Browser"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span className="hidden md:inline">View in Browser</span>
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface PreviewIframeProps {
+  code: string;
+  localCode: string;
+  isGenerating: boolean;
+  hasFullStackProject: boolean;
+  iframeKey: number;
+  previewIframeRef: React.RefObject<HTMLIFrameElement | null> | React.MutableRefObject<HTMLIFrameElement | null>;
+  previewDataUrl: string;
+  isFullscreen: boolean;
+  setIsFullscreen: (v: boolean) => void;
+  visualEditorEnabled: boolean;
+  setVisualEditorEnabled: (v: boolean) => void;
+  projectId?: string;
+  setLocalCode: (v: string) => void;
+  setHasUnsavedChanges: (v: boolean) => void;
+  saveCode: (code: string) => void;
+  isCompiling: boolean;
+  bundleErrors: string[];
+  bundledPreviewHtml: string | null;
+  bundleWarnings: string[];
+  lastBundleTime: number;
+  rebundle: () => void;
+  safeGeneratedFiles: GeneratedFile[];
+  validation?: ValidationResult;
+  toast: ReturnType<typeof useToast>["toast"];
+}
+
+function PreviewIframe({
+  code,
+  localCode,
+  isGenerating,
+  hasFullStackProject,
+  iframeKey,
+  previewIframeRef,
+  previewDataUrl,
+  isFullscreen,
+  setIsFullscreen,
+  visualEditorEnabled,
+  setVisualEditorEnabled,
+  projectId,
+  setLocalCode,
+  setHasUnsavedChanges,
+  saveCode,
+  isCompiling,
+  bundleErrors,
+  bundledPreviewHtml,
+  bundleWarnings,
+  lastBundleTime,
+  rebundle,
+  safeGeneratedFiles,
+  validation,
+  toast,
+}: PreviewIframeProps) {
+  if (code && !isGenerating) {
+    return (
+      <>
+        <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative flex">
+          <div className={`${visualEditorEnabled ? "flex-1" : "w-full"} h-full relative`}>
+            <iframe
+              key={iframeKey}
+              ref={previewIframeRef as React.LegacyRef<HTMLIFrameElement>}
+              src={previewDataUrl}
+              className="w-full h-full border-0"
+              sandbox="allow-scripts"
+              title="App Preview"
+              data-testid="iframe-preview"
+            />
+            <Button
+              size="icon"
+              variant="secondary"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="absolute bottom-4 right-4 shadow-lg z-10"
+              data-testid="button-popout-preview"
+              title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+            </Button>
+          </div>
+          {visualEditorEnabled && (
+            <div className="w-64 border-l bg-background shrink-0 overflow-hidden">
+              <VisualEditorOverlay
+                enabled={visualEditorEnabled}
+                onToggle={() => setVisualEditorEnabled(false)}
+                projectId={projectId}
+                code={localCode}
+                onCodeUpdate={(updated) => {
+                  setLocalCode(updated);
+                  setHasUnsavedChanges(true);
+                  saveCode(updated);
+                }}
+                iframeRef={previewIframeRef}
+              />
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  if (isGenerating) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-6 p-8 animate-in fade-in duration-500">
+        <div className="relative">
+          <div className="w-16 h-16 border-2 border-primary/20 rounded-full" />
+          <div className="absolute inset-0 w-16 h-16 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="absolute inset-2 w-12 h-12 border-2 border-primary/30 border-b-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+        </div>
+        <div className="text-center space-y-2">
+          <p className="font-semibold text-lg">Creating your app</p>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            {code ? "Code is streaming in. Preview will appear when complete." : "Connecting to your local AI..."}
+          </p>
+        </div>
+        <div className="flex gap-2 mt-2">
+          <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+          <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '200ms' }} />
+          <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '400ms' }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (hasFullStackProject) {
+    if (isCompiling) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+          <div className="relative">
+            <div className="w-16 h-16 border-2 border-primary/20 rounded-full" />
+            <div className="absolute inset-0 w-16 h-16 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <Zap className="absolute inset-0 m-auto h-6 w-6 text-primary" />
+          </div>
+          <div className="text-center space-y-2">
+            <p className="font-semibold text-lg">Compiling Project</p>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              Bundling {safeGeneratedFiles.length} files with esbuild...
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (bundleErrors.length > 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+            <AlertTriangle className="h-8 w-8 text-red-500" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-lg mb-2">Build Errors</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {bundleErrors.length} error{bundleErrors.length > 1 ? 's' : ''} found while compiling your project
+            </p>
+            <div className="text-left max-w-lg mx-auto bg-muted/50 rounded-lg p-4">
+              <ScrollArea className="max-h-48">
+                {bundleErrors.map((error, i) => (
+                  <p key={i} className="text-sm text-red-600 dark:text-red-400 font-mono mb-2">{error}</p>
+                ))}
+              </ScrollArea>
+            </div>
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <Button 
+                onClick={rebundle} 
+                variant="outline" 
+                className="gap-2" 
+                disabled={isCompiling}
+                data-testid="button-retry-build"
+              >
+                <RefreshCw className={`h-4 w-4 ${isCompiling ? 'animate-spin' : ''}`} />
+                {isCompiling ? 'Building...' : 'Retry Build'}
+              </Button>
+              <Button 
+                variant="ghost" 
+                className="gap-2"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(bundleErrors.join('\n'));
+                    toast({ title: "Errors copied to clipboard" });
+                  } catch (err) {
+                    toast({ title: "Failed to copy errors", variant: "destructive" });
+                  }
+                }}
+                data-testid="button-copy-errors"
+              >
+                <Copy className="h-4 w-4" />
+                Copy Errors
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (bundledPreviewHtml) {
+      return (
+        <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative h-full flex">
+          <div className={`${visualEditorEnabled ? "flex-1" : "w-full"} h-full relative`}>
+            <iframe
+              key={iframeKey}
+              ref={previewIframeRef as React.LegacyRef<HTMLIFrameElement>}
+              src={bundledPreviewHtml}
+              className="w-full h-full border-0"
+              sandbox="allow-scripts"
+              title="App Preview"
+              data-testid="iframe-bundled-preview"
+            />
+            <div className="absolute bottom-4 left-4 flex items-center gap-2">
+              <Badge variant="secondary" className="gap-1 text-xs">
+                <Zap className="h-3 w-3" />
+                Bundled in {lastBundleTime}ms
+              </Badge>
+              {bundleWarnings.length > 0 && (
+                <Badge variant="secondary" className="gap-1 text-xs bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle className="h-3 w-3" />
+                  {bundleWarnings.length} warning{bundleWarnings.length > 1 ? "s" : ""}
+                </Badge>
+              )}
+            </div>
+            <Button
+              size="icon"
+              variant="secondary"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="absolute bottom-4 right-4 shadow-lg z-10"
+              data-testid="button-popout-bundled-preview"
+              title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+            </Button>
+          </div>
+          {visualEditorEnabled && (
+            <div className="w-64 border-l bg-background shrink-0 overflow-hidden">
+              <VisualEditorOverlay
+                enabled={visualEditorEnabled}
+                onToggle={() => setVisualEditorEnabled(false)}
+                projectId={projectId}
+                code={localCode}
+                onCodeUpdate={(updated) => {
+                  setLocalCode(updated);
+                  setHasUnsavedChanges(true);
+                  saveCode(updated);
+                }}
+                iframeRef={previewIframeRef}
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+          validation && !validation.valid ? "bg-yellow-500/10" : "bg-green-500/10"
+        }`}>
+          {validation && !validation.valid ? (
+            <AlertTriangle className="h-8 w-8 text-yellow-500" />
+          ) : (
+            <Rocket className="h-8 w-8 text-green-500" />
+          )}
+        </div>
+        <div>
+          <h3 className="font-semibold text-lg mb-2">
+            {validation && !validation.valid ? "Project Generated (with warnings)" : "Full-Stack Project Ready!"}
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-md">
+            Your complete project has been generated. Use the <strong>Files</strong> tab to browse all generated code,
+            or the <strong>Launch</strong> tab for step-by-step instructions to run your app.
+          </p>
+          {validation && (validation.warnings.length > 0 || validation.errors.length > 0) && (
+            <div className="mt-4 flex flex-wrap gap-2 justify-center">
+              {validation.valid ? (
+                <Badge variant="secondary" className="gap-1">
+                  <Check className="h-3 w-3" />
+                  Validated
+                </Badge>
+              ) : validation.errors.length > 0 ? (
+                <Badge variant="destructive" className="gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {validation.errors.length} error{validation.errors.length > 1 ? "s" : ""}
+                </Badge>
+              ) : null}
+              {validation.warnings.length > 0 && (
+                <Badge variant="secondary" className="gap-1 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle className="h-3 w-3" />
+                  {validation.warnings.length} warning{validation.warnings.length > 1 ? "s" : ""}
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+interface CodeEditorPaneProps {
+  generatedFiles: GeneratedFile[];
+  selectedFile: GeneratedFile | null;
+  handleSelectFile: (file: GeneratedFile) => void;
+  handleCreateFile?: (path: string, content: string) => void;
+  handleDeleteFile?: (path: string) => void;
+  isGenerating: boolean;
+  hasFileChanges: boolean;
+  isFileSaving: boolean;
+  handleSaveFile: () => void;
+  editingFileContent: string | null;
+  handleFileContentChange: (value: string | undefined) => void;
+  fileEditorRef: React.MutableRefObject<editor.IStandaloneCodeEditor | null>;
+}
+
+function CodeEditorPane({
+  generatedFiles,
+  selectedFile,
+  handleSelectFile,
+  handleCreateFile,
+  handleDeleteFile,
+  isGenerating,
+  hasFileChanges,
+  isFileSaving,
+  handleSaveFile,
+  editingFileContent,
+  handleFileContentChange,
+  fileEditorRef,
+}: CodeEditorPaneProps) {
+  return (
+    <div className="flex h-full">
+      <FileExplorer
+        files={generatedFiles}
+        selectedFile={selectedFile}
+        onSelectFile={handleSelectFile}
+        onCreateFile={handleCreateFile}
+        onDeleteFile={handleDeleteFile}
+        isGenerating={isGenerating}
+        className="w-64 border-r"
+      />
+      <div className="flex-1 flex flex-col">
+        {selectedFile ? (
+          <>
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/30">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm truncate">{selectedFile.path}</span>
+                {hasFileChanges && (
+                  <Badge variant="secondary" className="text-[10px] h-5">Modified</Badge>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSaveFile}
+                disabled={!hasFileChanges || isFileSaving}
+                className="gap-1"
+                data-testid="button-save-file"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {isFileSaving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+            <div className="flex-1">
+              <Editor
+                height="100%"
+                defaultLanguage={getFileLanguage(selectedFile.path)}
+                value={editingFileContent ?? selectedFile.content}
+                onChange={handleFileContentChange}
+                onMount={(editor) => { fileEditorRef.current = editor; }}
+                theme="vs-dark"
+                options={{
+                  readOnly: isGenerating,
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  lineNumbers: "on",
+                  scrollBeyondLastLine: false,
+                  wordWrap: "on",
+                  padding: { top: 16 },
+                }}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8">
+            <FileCode className="h-8 w-8 text-muted-foreground mb-3" />
+            <p className="text-sm text-muted-foreground">Select a file to view and edit</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface PreviewPanelProps {
   code: string;
   isGenerating: boolean;
@@ -89,7 +809,6 @@ export function PreviewPanel({
   const [visualEditorEnabled, setVisualEditorEnabled] = useState(false);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  // Handle Escape key to exit fullscreen
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
@@ -105,7 +824,6 @@ export function PreviewPanel({
   const nonceRef = useRef<string>(crypto.randomUUID());
   const { toast } = useToast();
 
-  // File operation handlers
   const handleCreateFile = useCallback(async (path: string, content: string) => {
     if (!projectId) return;
     try {
@@ -144,7 +862,6 @@ export function PreviewPanel({
       });
       await queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       onFilesUpdate?.();
-      // Update selectedFile with saved content to keep state in sync
       setSelectedFile({ ...selectedFile, content: editingFileContent });
       setHasFileChanges(false);
       toast({ title: "File Saved", description: `Saved ${selectedFile.path}` });
@@ -168,7 +885,6 @@ export function PreviewPanel({
     }
   }, [selectedFile]);
 
-  // Sync selectedFile with generatedFiles when they change externally
   useEffect(() => {
     if (selectedFile && generatedFiles.length > 0) {
       const updatedFile = generatedFiles.find(f => f.path === selectedFile.path);
@@ -179,7 +895,6 @@ export function PreviewPanel({
     }
   }, [generatedFiles, selectedFile, hasFileChanges]);
 
-  // Handle editor mount and selection changes
   const handleEditorMount = useCallback((editorInstance: editor.IStandaloneCodeEditor) => {
     editorRef.current = editorInstance;
     
@@ -201,18 +916,15 @@ export function PreviewPanel({
     });
   }, []);
 
-  // Listen for console messages from iframe
   useEffect(() => {
     const currentNonce = nonceRef.current;
     const handleMessage = (event: MessageEvent) => {
-      // Validate origin - only accept messages from same origin or data URLs
       const validOrigin = event.origin === window.location.origin || 
                           event.origin === "null" || 
                           event.origin === "";
       
       if (!validOrigin) return;
       
-      // Validate nonce to ensure message is from our iframe
       if (event.data?.nonce !== currentNonce) return;
       
       if (event.data && event.data.type === "console" && typeof event.data.message === "string") {
@@ -229,12 +941,10 @@ export function PreviewPanel({
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  // Clear console on code change or refresh
   const clearConsole = useCallback(() => {
     setConsoleLogs([]);
   }, []);
 
-  // Cleanup debounced save on unmount
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -265,20 +975,16 @@ export function PreviewPanel({
   const hasRunnableMultiFileProject = hasFullStackProject && bundledPreviewHtml && !isCompiling && bundleErrors.length === 0;
   const canRegenerate = hasFullStackProject && onRegenerate && !isGenerating;
   
-  // Reset feedback panel when new generation starts or lastPrompt changes
   useEffect(() => {
     setShowFeedback(true);
   }, [lastPrompt, projectId]);
   
-  // Sync local code with props when new code comes in (from generation)
   useEffect(() => {
-    // Only sync when code prop changes and there are no local edits
     if (!hasUnsavedChanges) {
       setLocalCode(code);
     }
   }, [code, hasUnsavedChanges]);
 
-  // Save code to server with debounce
   const saveCode = useCallback(async (newCode: string) => {
     if (!projectId || isGenerating) return;
     
@@ -300,25 +1006,21 @@ export function PreviewPanel({
     }
   }, [projectId, isGenerating, onCodeUpdate, toast]);
 
-  // Debounced auto-save on code change
   const handleCodeChange = useCallback((value: string | undefined) => {
     const newCode = value || "";
     setLocalCode(newCode);
     setHasUnsavedChanges(true);
     
-    // Update preview immediately
     setIframeKey((k) => k + 1);
     
-    // Debounce save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
     saveTimeoutRef.current = setTimeout(() => {
       saveCode(newCode);
-    }, 1500); // Auto-save after 1.5s of no typing
+    }, 1500);
   }, [saveCode]);
 
-  // Manual save
   const handleManualSave = () => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -326,7 +1028,6 @@ export function PreviewPanel({
     saveCode(localCode);
   };
   
-  // Auto-select first file when generatedFiles change
   if (hasFullStackProject && !selectedFile && safeGeneratedFiles.length > 0) {
     setSelectedFile(safeGeneratedFiles[0]);
   }
@@ -430,7 +1131,6 @@ export function PreviewPanel({
     }
   }, [projectId, toast]);
 
-  // Keyboard shortcut: Cmd/Ctrl+R to refresh preview
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'r' && activeTab === 'preview' && (code || hasFullStackProject)) {
@@ -454,7 +1154,6 @@ export function PreviewPanel({
     }
   };
 
-  // Memoize preview HTML to avoid expensive re-computation on every render
   const previewDataUrl = useMemo(() => {
     if (!localCode) return "";
     
@@ -494,7 +1193,6 @@ export function PreviewPanel({
     })();
     `;
     
-    // Wrap the user code to catch errors and display them clearly
     const wrappedCode = `
 try {
 ${localCode}
@@ -565,243 +1263,39 @@ ${localCode}
           Exit Fullscreen
         </Button>
       )}
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b min-w-0">
-        <div className="flex items-center gap-3 min-w-0 flex-shrink overflow-x-auto">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "files" | "publish" | "console" | "search")}>
-            <TabsList className="h-8">
-              <TabsTrigger value="preview" className="text-xs gap-1.5" data-testid="tab-preview">
-                <Eye className="h-3.5 w-3.5" />
-                Preview
-              </TabsTrigger>
-              {hasFullStackProject && (
-                <>
-                  <TabsTrigger value="files" className="text-xs gap-1.5" data-testid="tab-files">
-                    <FolderTree className="h-3.5 w-3.5" />
-                    Files
-                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{generatedFiles.length}</Badge>
-                  </TabsTrigger>
-                  <TabsTrigger value="publish" className="text-xs gap-1.5" data-testid="tab-publish">
-                    <Package className="h-3.5 w-3.5" />
-                    Publish
-                  </TabsTrigger>
-                  <div className="relative flex items-center">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDevToolsExpanded(!devToolsExpanded);
-                      }}
-                      className="text-xs gap-1 text-muted-foreground"
-                      data-testid="button-dev-tools-toggle"
-                    >
-                      <Wrench className="h-3.5 w-3.5" />
-                      Dev
-                      <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${devToolsExpanded ? 'rotate-180' : ''}`} />
-                    </Button>
-                    {devToolsExpanded && (
-                      <div className="flex items-center ml-1 animate-in fade-in slide-in-from-left-2 duration-200">
-                        <TabsTrigger value="search" className="text-xs gap-1.5" data-testid="tab-search">
-                          <Search className="h-3.5 w-3.5" />
-                          Search
-                        </TabsTrigger>
-                        <TabsTrigger value="console" className="text-xs gap-1.5" data-testid="tab-console">
-                          <Terminal className="h-3.5 w-3.5" />
-                          Console
-                          {consoleLogs.length > 0 && (
-                            <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{consoleLogs.length}</Badge>
-                          )}
-                        </TabsTrigger>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </TabsList>
-          </Tabs>
-          {isGenerating && (
-            <div className="flex items-center gap-2 px-2 py-1 bg-primary/10 rounded-full animate-in fade-in duration-300">
-              <div className="flex gap-0.5">
-                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
-              <span className="text-xs font-medium text-primary">Building your app...</span>
-            </div>
-          )}
-          {!isGenerating && hasFullStackProject && (
-            <div className="flex items-center gap-2">
-              {isCompiling ? (
-                <Badge variant="secondary" className="gap-1.5 text-xs animate-pulse" data-testid="badge-compiling">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Compiling...
-                </Badge>
-              ) : bundleErrors.length > 0 ? (
-                <Badge variant="destructive" className="gap-1.5 text-xs" data-testid="badge-build-error">
-                  <AlertTriangle className="h-3 w-3" />
-                  Build failed
-                </Badge>
-              ) : bundledPreviewHtml ? (
-                <Badge variant="outline" className="gap-1.5 text-xs border-green-500/50 text-green-600 dark:text-green-400" data-testid="badge-build-success">
-                  <Check className="h-3 w-3" />
-                  {safeGeneratedFiles.length} files
-                </Badge>
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {activeTab === "preview" && (code || hasFullStackProject) && (
-            <>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setVisualEditorEnabled(!visualEditorEnabled)}
-                className={`toggle-elevate ${visualEditorEnabled ? "toggle-elevated text-primary" : ""}`}
-                data-testid="button-visual-editor"
-                title="Visual Editor - Click to edit elements"
-              >
-                <MousePointer2 className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleRefresh}
-                data-testid="button-refresh-preview"
-                title="Refresh preview (⌘R / Ctrl+R)"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setShowTestPreview(true)}
-                className="h-8 w-8"
-                title="Visual Test Runner"
-                data-testid="button-test-preview"
-              >
-                <Play className="h-4 w-4" />
-              </Button>
-              {hasFullStackProject && projectId && (
-                <>
-                  {localBuildStatus === "running" ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => window.open(`http://localhost:${localBuildPort}`, "_blank")}
-                        className="gap-1 text-green-600 border-green-600"
-                        title={`Open localhost:${localBuildPort}`}
-                        data-testid="button-open-local-build"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        :{localBuildPort}
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={handleStopLocalBuild}
-                        title="Stop local build"
-                        data-testid="button-stop-local-build"
-                      >
-                        <Square className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant={localBuildStatus === "building" ? "secondary" : "outline"}
-                      onClick={handleLocalBuild}
-                      disabled={localBuildStatus === "building"}
-                      className="gap-1"
-                      title="Build & run locally with npm (supports all packages)"
-                      data-testid="button-local-build"
-                    >
-                      {localBuildStatus === "building" ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Hammer className="h-3 w-3" />
-                      )}
-                      {localBuildStatus === "building" ? "Building..." : "Local Build"}
-                    </Button>
-                  )}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setShowLocalBuildLogs(!showLocalBuildLogs)}
-                    title="Build logs"
-                    data-testid="button-build-logs"
-                  >
-                    <Terminal className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-            </>
-          )}
-          {(code || hasFullStackProject) && (
-            <>
-              {code && (
-                <>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={handleCopy}
-                    data-testid="button-copy-code"
-                  >
-                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setIsFullscreen(!isFullscreen)}
-                    data-testid="button-fullscreen"
-                  >
-                    {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                  </Button>
-                </>
-              )}
-              {canRegenerate && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleOpenRegenerate}
-                  className="gap-1.5"
-                  data-testid="button-regenerate"
-                  title="Regenerate project"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  <span className="hidden sm:inline">Regenerate</span>
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="default"
-                onClick={onDownload}
-                className="gap-1.5"
-                data-testid="button-download"
-                title="Download project"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Download</span>
-              </Button>
-              {projectId && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => window.open(`/preview/${projectId}`, "_blank")}
-                  className="gap-1.5"
-                  data-testid="button-open-browser"
-                  title="View in Browser"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  <span className="hidden md:inline">View in Browser</span>
-                </Button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      <PreviewToolbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        hasFullStackProject={hasFullStackProject}
+        generatedFiles={generatedFiles}
+        devToolsExpanded={devToolsExpanded}
+        setDevToolsExpanded={setDevToolsExpanded}
+        consoleLogs={consoleLogs}
+        isGenerating={isGenerating}
+        isCompiling={isCompiling}
+        bundleErrors={bundleErrors}
+        bundledPreviewHtml={bundledPreviewHtml}
+        safeGeneratedFiles={safeGeneratedFiles}
+        code={code}
+        copied={copied}
+        isFullscreen={isFullscreen}
+        setIsFullscreen={setIsFullscreen}
+        visualEditorEnabled={visualEditorEnabled}
+        setVisualEditorEnabled={setVisualEditorEnabled}
+        handleRefresh={handleRefresh}
+        setShowTestPreview={setShowTestPreview}
+        localBuildStatus={localBuildStatus}
+        localBuildPort={localBuildPort}
+        handleLocalBuild={handleLocalBuild}
+        handleStopLocalBuild={handleStopLocalBuild}
+        showLocalBuildLogs={showLocalBuildLogs}
+        setShowLocalBuildLogs={setShowLocalBuildLogs}
+        projectId={projectId}
+        handleCopy={handleCopy}
+        canRegenerate={!!canRegenerate}
+        handleOpenRegenerate={handleOpenRegenerate}
+        onDownload={onDownload}
+      />
 
       <div className="flex-1 overflow-hidden">
         {isEmpty ? (
@@ -818,288 +1312,48 @@ ${localCode}
           <>
             {activeTab === "preview" ? (
               <div className="h-full flex flex-col bg-white dark:bg-background transition-opacity duration-300">
-                {code && !isGenerating ? (
-                  <>
-                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative flex">
-                      <div className={`${visualEditorEnabled ? "flex-1" : "w-full"} h-full relative`}>
-                        <iframe
-                          key={iframeKey}
-                          ref={previewIframeRef}
-                          src={previewDataUrl}
-                          className="w-full h-full border-0"
-                          sandbox="allow-scripts"
-                          title="App Preview"
-                          data-testid="iframe-preview"
-                        />
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          onClick={() => setIsFullscreen(!isFullscreen)}
-                          className="absolute bottom-4 right-4 shadow-lg z-10"
-                          data-testid="button-popout-preview"
-                          title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
-                        >
-                          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                      {visualEditorEnabled && (
-                        <div className="w-64 border-l bg-background shrink-0 overflow-hidden">
-                          <VisualEditorOverlay
-                            enabled={visualEditorEnabled}
-                            onToggle={() => setVisualEditorEnabled(false)}
-                            projectId={projectId}
-                            code={localCode}
-                            onCodeUpdate={(updated) => {
-                              setLocalCode(updated);
-                              setHasUnsavedChanges(true);
-                              saveCode(updated);
-                            }}
-                            iframeRef={previewIframeRef}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    </>
-                ) : isGenerating ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-6 p-8 animate-in fade-in duration-500">
-                    <div className="relative">
-                      <div className="w-16 h-16 border-2 border-primary/20 rounded-full" />
-                      <div className="absolute inset-0 w-16 h-16 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                      <div className="absolute inset-2 w-12 h-12 border-2 border-primary/30 border-b-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
-                    </div>
-                    <div className="text-center space-y-2">
-                      <p className="font-semibold text-lg">Creating your app</p>
-                      <p className="text-sm text-muted-foreground max-w-xs">
-                        {code ? "Code is streaming in. Preview will appear when complete." : "Connecting to your local AI..."}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '200ms' }} />
-                      <div className="w-2 h-2 bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: '400ms' }} />
-                    </div>
-                  </div>
-                ) : hasFullStackProject ? (
-                  isCompiling ? (
-                    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-                      <div className="relative">
-                        <div className="w-16 h-16 border-2 border-primary/20 rounded-full" />
-                        <div className="absolute inset-0 w-16 h-16 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        <Zap className="absolute inset-0 m-auto h-6 w-6 text-primary" />
-                      </div>
-                      <div className="text-center space-y-2">
-                        <p className="font-semibold text-lg">Compiling Project</p>
-                        <p className="text-sm text-muted-foreground max-w-xs">
-                          Bundling {safeGeneratedFiles.length} files with esbuild...
-                        </p>
-                      </div>
-                    </div>
-                  ) : bundleErrors.length > 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-                      <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
-                        <AlertTriangle className="h-8 w-8 text-red-500" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg mb-2">Build Errors</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          {bundleErrors.length} error{bundleErrors.length > 1 ? 's' : ''} found while compiling your project
-                        </p>
-                        <div className="text-left max-w-lg mx-auto bg-muted/50 rounded-lg p-4">
-                          <ScrollArea className="max-h-48">
-                            {bundleErrors.map((error, i) => (
-                              <p key={i} className="text-sm text-red-600 dark:text-red-400 font-mono mb-2">{error}</p>
-                            ))}
-                          </ScrollArea>
-                        </div>
-                        <div className="flex items-center justify-center gap-2 mt-4">
-                          <Button 
-                            onClick={rebundle} 
-                            variant="outline" 
-                            className="gap-2" 
-                            disabled={isCompiling}
-                            data-testid="button-retry-build"
-                          >
-                            <RefreshCw className={`h-4 w-4 ${isCompiling ? 'animate-spin' : ''}`} />
-                            {isCompiling ? 'Building...' : 'Retry Build'}
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            className="gap-2"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(bundleErrors.join('\n'));
-                                toast({ title: "Errors copied to clipboard" });
-                              } catch (err) {
-                                toast({ title: "Failed to copy errors", variant: "destructive" });
-                              }
-                            }}
-                            data-testid="button-copy-errors"
-                          >
-                            <Copy className="h-4 w-4" />
-                            Copy Errors
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : bundledPreviewHtml ? (
-                    <div className="flex-1 overflow-hidden animate-in fade-in duration-500 relative h-full flex">
-                      <div className={`${visualEditorEnabled ? "flex-1" : "w-full"} h-full relative`}>
-                        <iframe
-                          key={iframeKey}
-                          ref={previewIframeRef}
-                          src={bundledPreviewHtml}
-                          className="w-full h-full border-0"
-                          sandbox="allow-scripts"
-                          title="App Preview"
-                          data-testid="iframe-bundled-preview"
-                        />
-                        <div className="absolute bottom-4 left-4 flex items-center gap-2">
-                          <Badge variant="secondary" className="gap-1 text-xs">
-                            <Zap className="h-3 w-3" />
-                            Bundled in {lastBundleTime}ms
-                          </Badge>
-                          {bundleWarnings.length > 0 && (
-                            <Badge variant="secondary" className="gap-1 text-xs bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
-                              <AlertTriangle className="h-3 w-3" />
-                              {bundleWarnings.length} warning{bundleWarnings.length > 1 ? "s" : ""}
-                            </Badge>
-                          )}
-                        </div>
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          onClick={() => setIsFullscreen(!isFullscreen)}
-                          className="absolute bottom-4 right-4 shadow-lg z-10"
-                          data-testid="button-popout-bundled-preview"
-                          title={isFullscreen ? "Exit fullscreen" : "Open fullscreen preview"}
-                        >
-                          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                      {visualEditorEnabled && (
-                        <div className="w-64 border-l bg-background shrink-0 overflow-hidden">
-                          <VisualEditorOverlay
-                            enabled={visualEditorEnabled}
-                            onToggle={() => setVisualEditorEnabled(false)}
-                            projectId={projectId}
-                            code={localCode}
-                            onCodeUpdate={(updated) => {
-                              setLocalCode(updated);
-                              setHasUnsavedChanges(true);
-                              saveCode(updated);
-                            }}
-                            iframeRef={previewIframeRef}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-                      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                        validation && !validation.valid ? "bg-yellow-500/10" : "bg-green-500/10"
-                      }`}>
-                        {validation && !validation.valid ? (
-                          <AlertTriangle className="h-8 w-8 text-yellow-500" />
-                        ) : (
-                          <Rocket className="h-8 w-8 text-green-500" />
-                        )}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg mb-2">
-                          {validation && !validation.valid ? "Project Generated (with warnings)" : "Full-Stack Project Ready!"}
-                        </h3>
-                        <p className="text-sm text-muted-foreground max-w-md">
-                          Your complete project has been generated. Use the <strong>Files</strong> tab to browse all generated code,
-                          or the <strong>Launch</strong> tab for step-by-step instructions to run your app.
-                        </p>
-                        {validation && (validation.warnings.length > 0 || validation.errors.length > 0) && (
-                          <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                            {validation.valid ? (
-                              <Badge variant="secondary" className="gap-1">
-                                <Check className="h-3 w-3" />
-                                Validated
-                              </Badge>
-                            ) : validation.errors.length > 0 ? (
-                              <Badge variant="destructive" className="gap-1">
-                                <AlertTriangle className="h-3 w-3" />
-                                {validation.errors.length} error{validation.errors.length > 1 ? "s" : ""}
-                              </Badge>
-                            ) : null}
-                            {validation.warnings.length > 0 && (
-                              <Badge variant="secondary" className="gap-1 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
-                                <AlertTriangle className="h-3 w-3" />
-                                {validation.warnings.length} warning{validation.warnings.length > 1 ? "s" : ""}
-                              </Badge>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                ) : null}
+                <PreviewIframe
+                  code={code}
+                  localCode={localCode}
+                  isGenerating={isGenerating}
+                  hasFullStackProject={hasFullStackProject}
+                  iframeKey={iframeKey}
+                  previewIframeRef={previewIframeRef}
+                  previewDataUrl={previewDataUrl}
+                  isFullscreen={isFullscreen}
+                  setIsFullscreen={setIsFullscreen}
+                  visualEditorEnabled={visualEditorEnabled}
+                  setVisualEditorEnabled={setVisualEditorEnabled}
+                  projectId={projectId}
+                  setLocalCode={setLocalCode}
+                  setHasUnsavedChanges={setHasUnsavedChanges}
+                  saveCode={saveCode}
+                  isCompiling={isCompiling}
+                  bundleErrors={bundleErrors}
+                  bundledPreviewHtml={bundledPreviewHtml}
+                  bundleWarnings={bundleWarnings}
+                  lastBundleTime={lastBundleTime}
+                  rebundle={rebundle}
+                  safeGeneratedFiles={safeGeneratedFiles}
+                  validation={validation}
+                  toast={toast}
+                />
               </div>
             ) : activeTab === "files" ? (
-              <div className="flex h-full">
-                <FileExplorer
-                  files={generatedFiles}
-                  selectedFile={selectedFile}
-                  onSelectFile={handleSelectFile}
-                  onCreateFile={projectId ? handleCreateFile : undefined}
-                  onDeleteFile={projectId ? handleDeleteFile : undefined}
-                  isGenerating={isGenerating}
-                  className="w-64 border-r"
-                />
-                <div className="flex-1 flex flex-col">
-                  {selectedFile ? (
-                    <>
-                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/30">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span className="text-sm truncate">{selectedFile.path}</span>
-                          {hasFileChanges && (
-                            <Badge variant="secondary" className="text-[10px] h-5">Modified</Badge>
-                          )}
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleSaveFile}
-                          disabled={!hasFileChanges || isFileSaving}
-                          className="gap-1"
-                          data-testid="button-save-file"
-                        >
-                          <Save className="h-3.5 w-3.5" />
-                          {isFileSaving ? "Saving..." : "Save"}
-                        </Button>
-                      </div>
-                      <div className="flex-1">
-                        <Editor
-                          height="100%"
-                          defaultLanguage={getFileLanguage(selectedFile.path)}
-                          value={editingFileContent ?? selectedFile.content}
-                          onChange={handleFileContentChange}
-                          onMount={(editor) => { fileEditorRef.current = editor; }}
-                          theme="vs-dark"
-                          options={{
-                            readOnly: isGenerating,
-                            minimap: { enabled: false },
-                            fontSize: 13,
-                            lineNumbers: "on",
-                            scrollBeyondLastLine: false,
-                            wordWrap: "on",
-                            padding: { top: 16 },
-                          }}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                      <FileCode className="h-8 w-8 text-muted-foreground mb-3" />
-                      <p className="text-sm text-muted-foreground">Select a file to view and edit</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <CodeEditorPane
+                generatedFiles={generatedFiles}
+                selectedFile={selectedFile}
+                handleSelectFile={handleSelectFile}
+                handleCreateFile={projectId ? handleCreateFile : undefined}
+                handleDeleteFile={projectId ? handleDeleteFile : undefined}
+                isGenerating={isGenerating}
+                hasFileChanges={hasFileChanges}
+                isFileSaving={isFileSaving}
+                handleSaveFile={handleSaveFile}
+                editingFileContent={editingFileContent}
+                handleFileContentChange={handleFileContentChange}
+                fileEditorRef={fileEditorRef}
+              />
             ) : activeTab === "search" ? (
               <div className="h-full flex flex-col">
                 <div className="p-4 border-b">
@@ -1337,26 +1591,4 @@ ${localCode}
       </Dialog>
     </div>
   );
-}
-
-function getFileLanguage(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-      return 'typescript';
-    case 'js':
-    case 'jsx':
-      return 'javascript';
-    case 'json':
-      return 'json';
-    case 'md':
-      return 'markdown';
-    case 'css':
-      return 'css';
-    case 'html':
-      return 'html';
-    default:
-      return 'plaintext';
-  }
 }

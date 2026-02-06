@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { v4 as uuidv4 } from "uuid";
 
 export interface FileState {
@@ -30,16 +30,31 @@ export interface CheckpointRecoveryResult {
   errors: string[];
 }
 
-export class GenerationCheckpointService {
+export class GenerationCheckpointService extends BaseService {
   private static instance: GenerationCheckpointService;
   
-  private checkpoints: Map<string, GenerationCheckpoint[]> = new Map();
-  private autoSaveInterval = 30000; // Auto-save every 30 seconds during generation
+  private checkpoints: ManagedMap<string, GenerationCheckpoint[]>;
+  private autoSaveInterval = 30000;
   private maxCheckpointsPerProject = 20;
-  private pendingFiles: Map<string, FileState[]> = new Map();
-  private autoSaveTimers: Map<string, NodeJS.Timeout> = new Map();
+  private pendingFiles: ManagedMap<string, FileState[]>;
+  private autoSaveTimers: ManagedMap<string, NodeJS.Timeout>;
 
-  private constructor() {}
+  private constructor() {
+    super("GenerationCheckpointService");
+    this.checkpoints = this.createManagedMap<string, GenerationCheckpoint[]>({ maxSize: 200, strategy: "lru" });
+    this.pendingFiles = this.createManagedMap<string, FileState[]>({ maxSize: 200, strategy: "lru" });
+    this.autoSaveTimers = this.createManagedMap<string, NodeJS.Timeout>({ maxSize: 50, strategy: "lru" });
+  }
+
+  destroy(): void {
+    for (const [, timer] of this.autoSaveTimers.entries()) {
+      clearInterval(timer);
+    }
+    this.autoSaveTimers.clear();
+    this.checkpoints.clear();
+    this.pendingFiles.clear();
+    this.log("GenerationCheckpointService shut down");
+  }
 
   static getInstance(): GenerationCheckpointService {
     if (!GenerationCheckpointService.instance) {
@@ -62,21 +77,20 @@ export class GenerationCheckpointService {
     const generationId = uuidv4();
     this.pendingFiles.set(generationId, []);
     
-    // Start auto-save timer
     const timer = setInterval(() => {
       this.autoSaveCheckpoint(projectId, generationId, metadata);
     }, this.autoSaveInterval);
     
     this.autoSaveTimers.set(generationId, timer);
     
-    logger.info("Generation started with checkpoint tracking", { projectId, generationId });
+    this.log("Generation started with checkpoint tracking", { projectId, generationId });
     return generationId;
   }
 
   addFile(generationId: string, path: string, content: string): void {
     const pending = this.pendingFiles.get(generationId);
     if (!pending) {
-      logger.warn("No pending generation found", { generationId });
+      this.logWarn("No pending generation found", { generationId });
       return;
     }
 
@@ -87,7 +101,6 @@ export class GenerationCheckpointService {
       createdAt: Date.now(),
     };
 
-    // Update or add file
     const existingIndex = pending.findIndex(f => f.path === path);
     if (existingIndex >= 0) {
       pending[existingIndex] = fileState;
@@ -95,7 +108,7 @@ export class GenerationCheckpointService {
       pending.push(fileState);
     }
 
-    logger.debug("File added to checkpoint", { generationId, path, contentLength: content.length });
+    this.log("File added to checkpoint", { generationId, path, contentLength: content.length });
   }
 
   private autoSaveCheckpoint(
@@ -121,24 +134,21 @@ export class GenerationCheckpointService {
   ): GenerationCheckpoint | null {
     const pending = this.pendingFiles.get(generationId);
     if (!pending) {
-      logger.warn("No pending generation found", { generationId });
+      this.logWarn("No pending generation found", { generationId });
       return null;
     }
 
-    // Clear auto-save timer
     const timer = this.autoSaveTimers.get(generationId);
     if (timer) {
       clearInterval(timer);
       this.autoSaveTimers.delete(generationId);
     }
 
-    // Create final checkpoint
     const checkpoint = this.createCheckpoint(projectId, name, metadata, [...pending], false);
     
-    // Clean up pending files
     this.pendingFiles.delete(generationId);
 
-    logger.info("Generation finished, checkpoint created", { 
+    this.log("Generation finished, checkpoint created", { 
       projectId, 
       generationId, 
       checkpointId: checkpoint.id,
@@ -149,17 +159,15 @@ export class GenerationCheckpointService {
   }
 
   cancelGeneration(generationId: string): void {
-    // Clear auto-save timer
     const timer = this.autoSaveTimers.get(generationId);
     if (timer) {
       clearInterval(timer);
       this.autoSaveTimers.delete(generationId);
     }
 
-    // Clean up pending files
     this.pendingFiles.delete(generationId);
 
-    logger.info("Generation cancelled", { generationId });
+    this.log("Generation cancelled", { generationId });
   }
 
   createCheckpoint(
@@ -182,9 +190,7 @@ export class GenerationCheckpointService {
     const projectCheckpoints = this.checkpoints.get(projectId) || [];
     projectCheckpoints.unshift(checkpoint);
 
-    // Limit checkpoints per project (keep manual checkpoints longer)
     if (projectCheckpoints.length > this.maxCheckpointsPerProject) {
-      // Remove oldest auto-save checkpoints first
       const autoSaves = projectCheckpoints.filter(c => c.isAutoSave);
       const manualSaves = projectCheckpoints.filter(c => !c.isAutoSave);
       
@@ -199,7 +205,7 @@ export class GenerationCheckpointService {
       this.checkpoints.set(projectId, projectCheckpoints);
     }
 
-    logger.info("Checkpoint created", { 
+    this.log("Checkpoint created", { 
       projectId, 
       checkpointId: checkpoint.id, 
       name, 
@@ -266,7 +272,7 @@ export class GenerationCheckpointService {
 
     const success = errors.length === 0;
     
-    logger.info("Checkpoint recovery completed", {
+    this.log("Checkpoint recovery completed", {
       projectId,
       checkpointId,
       success,
@@ -284,7 +290,7 @@ export class GenerationCheckpointService {
     if (index >= 0) {
       projectCheckpoints.splice(index, 1);
       this.checkpoints.set(projectId, projectCheckpoints);
-      logger.info("Checkpoint deleted", { projectId, checkpointId });
+      this.log("Checkpoint deleted", { projectId, checkpointId });
       return true;
     }
     
@@ -298,7 +304,7 @@ export class GenerationCheckpointService {
     
     this.checkpoints.set(projectId, manualOnly);
     
-    logger.info("Auto-save checkpoints cleared", { projectId, deletedCount });
+    this.log("Auto-save checkpoints cleared", { projectId, deletedCount });
     return deletedCount;
   }
 

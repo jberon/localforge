@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileInfo {
   path: string;
@@ -61,10 +61,12 @@ interface ParsedImport {
   isTypeOnly: boolean;
 }
 
-class ImportOptimizerService {
+class ImportOptimizerService extends BaseService {
   private static instance: ImportOptimizerService;
 
-  private constructor() {}
+  private constructor() {
+    super("ImportOptimizerService");
+  }
 
   static getInstance(): ImportOptimizerService {
     if (!ImportOptimizerService.instance) {
@@ -74,7 +76,7 @@ class ImportOptimizerService {
   }
 
   async optimizeImports(files: FileInfo[]): Promise<ImportOptimizationResult> {
-    logger.info("Optimizing imports", { fileCount: files.length });
+    this.log("Optimizing imports", { fileCount: files.length });
 
     const fileOptimizations: FileOptimization[] = [];
     const allImports = new Map<string, number>();
@@ -103,7 +105,7 @@ class ImportOptimizerService {
     const suggestions = this.generateSuggestions(fileOptimizations);
     const potentialSavings = fileOptimizations.reduce((sum, f) => sum + f.savings, 0);
 
-    logger.info("Import optimization complete", {
+    this.log("Import optimization complete", {
       filesWithIssues: fileOptimizations.length,
       totalUnused,
       totalDuplicates,
@@ -457,6 +459,10 @@ class ImportOptimizerService {
     }
 
     return suggestions;
+  }
+
+  destroy(): void {
+    this.log("ImportOptimizerService destroyed");
   }
 }
 

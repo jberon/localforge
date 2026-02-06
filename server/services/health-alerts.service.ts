@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import logger from "../lib/logger";
+import { serviceRegistry } from "../lib/service-registry";
 import { modelProviderService } from "./model-provider.service";
 import { resilienceService } from "./resilience.service";
 
@@ -47,7 +48,6 @@ export class HealthAlertsService extends EventEmitter {
   private monitoringInterval: NodeJS.Timeout | null = null;
   private lastStatus: HealthStatus | null = null;
   
-  // Thresholds
   private memoryWarningThreshold = 0.7;
   private memoryCriticalThreshold = 0.9;
   private queueWarningThreshold = 5;
@@ -55,6 +55,7 @@ export class HealthAlertsService extends EventEmitter {
 
   private constructor() {
     super();
+    serviceRegistry.register("HealthAlertsService", this);
     this.startMonitoring();
   }
 
@@ -66,7 +67,6 @@ export class HealthAlertsService extends EventEmitter {
   }
 
   private startMonitoring(): void {
-    // Monitor every 5 seconds
     this.monitoringInterval = setInterval(() => {
       this.checkHealth();
     }, 5000);
@@ -84,7 +84,6 @@ export class HealthAlertsService extends EventEmitter {
     const resilienceStats = resilienceService.getStats();
     const memoryPressure = modelProviderService.getMemoryPressure();
 
-    // Check memory pressure
     if (memoryPressure.usage >= this.memoryCriticalThreshold) {
       this.createAlert("high_memory_pressure", "critical", 
         `Critical memory pressure: ${(memoryPressure.usage * 100).toFixed(1)}% used`,
@@ -102,7 +101,6 @@ export class HealthAlertsService extends EventEmitter {
       );
     }
 
-    // Check queue backlog
     if (resourceStatus.queuedRequests >= this.queueCriticalThreshold) {
       this.createAlert("queue_backlog", "critical",
         `Critical queue backlog: ${resourceStatus.queuedRequests} requests waiting`,
@@ -120,7 +118,6 @@ export class HealthAlertsService extends EventEmitter {
       );
     }
 
-    // Check circuit breakers
     const circuits = resilienceStats.circuitBreakers;
     for (const [key, state] of Object.entries(circuits)) {
       if (state.state === "open") {
@@ -131,13 +128,12 @@ export class HealthAlertsService extends EventEmitter {
       }
     }
 
-    // Update overall status
     this.lastStatus = this.calculateHealthStatus();
     this.emit("health_update", this.lastStatus);
   }
 
   private hasRecentAlert(type: AlertType): boolean {
-    const recentThreshold = 60000; // 1 minute
+    const recentThreshold = 60000;
     return this.alerts.some(a => 
       a.type === type && 
       Date.now() - a.timestamp < recentThreshold
@@ -150,11 +146,10 @@ export class HealthAlertsService extends EventEmitter {
     message: string,
     details?: Record<string, any>
   ): HealthAlert {
-    // Deduplicate recent identical alerts
     const recentIdentical = this.alerts.find(a => 
       a.type === type && 
       a.severity === severity &&
-      Date.now() - a.timestamp < 30000 // Within 30 seconds
+      Date.now() - a.timestamp < 30000
     );
     
     if (recentIdentical) {
@@ -173,7 +168,6 @@ export class HealthAlertsService extends EventEmitter {
 
     this.alerts.unshift(alert);
     
-    // Trim old alerts
     if (this.alerts.length > this.maxAlerts) {
       this.alerts = this.alerts.slice(0, this.maxAlerts);
     }
@@ -233,7 +227,6 @@ export class HealthAlertsService extends EventEmitter {
     const memoryPressure = modelProviderService.getMemoryPressure();
     const cacheStats = modelProviderService.getCacheStats();
 
-    // Calculate component health
     const memoryHealth = memoryPressure.usage >= this.memoryCriticalThreshold ? "critical" :
                          memoryPressure.usage >= this.memoryWarningThreshold ? "degraded" : "healthy";
 
@@ -244,9 +237,8 @@ export class HealthAlertsService extends EventEmitter {
       .filter(c => c.state === "open").length;
     const llmHealth = openCircuits > 0 ? "critical" : "healthy";
 
-    const cacheHealth = "healthy"; // Cache is always healthy for now
+    const cacheHealth = "healthy";
 
-    // Calculate overall health
     const componentHealths = [memoryHealth, queueHealth, llmHealth, cacheHealth];
     const overallHealth = componentHealths.includes("critical") ? "critical" :
                           componentHealths.includes("degraded") ? "degraded" : "healthy";
@@ -271,7 +263,6 @@ export class HealthAlertsService extends EventEmitter {
     return this.lastStatus;
   }
 
-  // Notify about model hot-swap
   notifyHotSwap(from: string, to: string, reason: string): void {
     this.createAlert("model_hot_swap", "info",
       `Model switched from ${from} to ${to}`,
@@ -279,7 +270,6 @@ export class HealthAlertsService extends EventEmitter {
     );
   }
 
-  // Notify about generation errors
   notifyGenerationError(error: string, context?: Record<string, any>): void {
     this.createAlert("generation_error", "warning",
       `Generation error: ${error}`,
@@ -287,7 +277,6 @@ export class HealthAlertsService extends EventEmitter {
     );
   }
 
-  // Notify about validation failures
   notifyValidationFailure(errors: number, warnings: number): void {
     this.createAlert("validation_failure", errors > 0 ? "warning" : "info",
       `Validation completed: ${errors} errors, ${warnings} warnings`,
@@ -300,6 +289,7 @@ export class HealthAlertsService extends EventEmitter {
     this.alerts = [];
     this.lastStatus = null;
     this.removeAllListeners();
+    logger.info("HealthAlertsService shut down");
   }
 }
 

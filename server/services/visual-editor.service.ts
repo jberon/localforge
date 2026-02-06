@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface ElementMapping {
   id: string;
@@ -28,13 +28,14 @@ interface PatchResult {
   error?: string;
 }
 
-class VisualEditorService {
+class VisualEditorService extends BaseService {
   private static instance: VisualEditorService;
-  private elementMappings: Map<string, ElementMapping[]> = new Map();
+  private elementMappings: ManagedMap<string, ElementMapping[]>;
   private readonly MAX_MAPPINGS = 200;
 
   private constructor() {
-    logger.info("VisualEditorService initialized");
+    super("VisualEditorService");
+    this.elementMappings = this.createManagedMap({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): VisualEditorService {
@@ -60,7 +61,7 @@ class VisualEditorService {
     this.elementMappings.set(projectId, allMappings);
     this.evictMappingsIfNeeded();
 
-    logger.info("Parsed source code for visual editor", {
+    this.log("Parsed source code for visual editor", {
       projectId,
       fileCount: files.length,
       elementCount: allMappings.length,
@@ -78,7 +79,7 @@ class VisualEditorService {
     const element = mappings.find((m) => m.id === patch.elementId);
 
     if (!element) {
-      logger.warn("Element not found for patch", { elementId: patch.elementId, projectId });
+      this.logWarn("Element not found for patch", { elementId: patch.elementId, projectId });
       return {
         success: false,
         updatedCode: sourceCode,
@@ -116,7 +117,7 @@ class VisualEditorService {
 
       this.updateMappingAfterPatch(projectId, patch, element);
 
-      logger.info("Applied visual editor patch", {
+      this.log("Applied visual editor patch", {
         projectId,
         elementId: patch.elementId,
         property: patch.property,
@@ -129,7 +130,7 @@ class VisualEditorService {
         affectedLines,
       };
     } catch (err: any) {
-      logger.error("Failed to apply visual editor patch", {
+      this.logError("Failed to apply visual editor patch", {
         projectId,
         elementId: patch.elementId,
         error: err.message,
@@ -156,7 +157,7 @@ class VisualEditorService {
       }
     }
 
-    logger.info("Applied multiple visual editor patches", {
+    this.log("Applied multiple visual editor patches", {
       projectId,
       total: patches.length,
       successful: results.filter((r) => r.success).length,
@@ -274,7 +275,7 @@ class VisualEditorService {
 
   destroy(): void {
     this.elementMappings.clear();
-    logger.info("VisualEditorService destroyed");
+    this.log("VisualEditorService destroyed");
   }
 
   private extractComponentName(content: string, filePath: string): string {
@@ -709,7 +710,7 @@ class VisualEditorService {
       this.elementMappings.delete(key);
     }
 
-    logger.info("Evicted old element mappings", {
+    this.log("Evicted old element mappings", {
       removed: toRemove.length,
       remaining: this.elementMappings.size,
     });

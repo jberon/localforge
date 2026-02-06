@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export interface ModelProfile {
   id: string;
@@ -54,14 +54,15 @@ export interface OptimizedPrompt {
   stopSequences: string[];
 }
 
-class LocalModelOptimizerService {
+class LocalModelOptimizerService extends BaseService {
   private static instance: LocalModelOptimizerService;
-  private modelProfiles: Map<string, ModelProfile> = new Map();
+  private modelProfiles: ManagedMap<string, ModelProfile>;
   private defaultContextWindow = 8192;
   
   private constructor() {
+    super("LocalModelOptimizerService");
+    this.modelProfiles = this.createManagedMap<string, ModelProfile>({ maxSize: 200, strategy: "lru" });
     this.initializeModelProfiles();
-    logger.info("LocalModelOptimizerService initialized");
   }
 
   static getInstance(): LocalModelOptimizerService {
@@ -224,7 +225,7 @@ class LocalModelOptimizerService {
 
     for (const profile of profiles) {
       this.modelProfiles.set(profile.id, profile);
-      logger.info("Model profile registered", { modelId: profile.id, family: profile.family });
+      this.log("Model profile registered", { modelId: profile.id, family: profile.family });
     }
   }
 
@@ -246,7 +247,7 @@ class LocalModelOptimizerService {
   getModelProfile(modelName: string): ModelProfile {
     const name = modelName.toLowerCase();
     
-    const entries = Array.from(this.modelProfiles.entries());
+    const entries = this.modelProfiles.entries();
     for (const [id, profile] of entries) {
       if (name.includes(id.toLowerCase())) {
         return profile;
@@ -258,7 +259,7 @@ class LocalModelOptimizerService {
   }
 
   private getDefaultProfile(family: ModelFamily, modelName: string): ModelProfile {
-    const familyProfiles = Array.from(this.modelProfiles.values())
+    const familyProfiles = this.modelProfiles.values()
       .find(p => p.family === family);
     
     if (familyProfiles) {
@@ -573,6 +574,11 @@ class LocalModelOptimizerService {
     }
     
     return { complexity, suggestedModel, estimatedTokens: tokens, features };
+  }
+
+  destroy(): void {
+    this.modelProfiles.clear();
+    this.log("LocalModelOptimizerService destroyed");
   }
 }
 

@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface ImportedDesign {
   id: string;
@@ -22,13 +22,14 @@ interface DesignElement {
   confidence: number;
 }
 
-class ImageImportService {
+class ImageImportService extends BaseService {
   private static instance: ImageImportService;
   private readonly MAX_IMPORTS = 200;
-  private imports: Map<string, ImportedDesign> = new Map();
+  private imports: ManagedMap<string, ImportedDesign>;
 
   private constructor() {
-    logger.info("ImageImportService initialized");
+    super("ImageImportService");
+    this.imports = this.createManagedMap<string, ImportedDesign>({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): ImageImportService {
@@ -60,16 +61,15 @@ class ImageImportService {
     };
 
     this.imports.set(id, importRecord);
-    this.evictIfNeeded();
 
-    logger.info("Design import created", { id, projectId, sourceType, fileName });
+    this.log("Design import created", { id, projectId, sourceType, fileName });
     return importRecord;
   }
 
   generateAnalysisPrompt(importId: string): string | null {
     const record = this.imports.get(importId);
     if (!record) {
-      logger.warn("Import not found for analysis prompt generation", { importId });
+      this.logWarn("Import not found for analysis prompt generation", { importId });
       return null;
     }
 
@@ -103,14 +103,14 @@ Return the analysis as a structured JSON array of elements.`;
     record.analysisPrompt = prompt;
     this.imports.set(importId, record);
 
-    logger.info("Analysis prompt generated", { importId, sourceType: record.sourceType });
+    this.log("Analysis prompt generated", { importId, sourceType: record.sourceType });
     return prompt;
   }
 
   setAnalysisResult(importId: string, elements: DesignElement[]): boolean {
     const record = this.imports.get(importId);
     if (!record) {
-      logger.warn("Import not found for setting analysis result", { importId });
+      this.logWarn("Import not found for setting analysis result", { importId });
       return false;
     }
 
@@ -118,19 +118,19 @@ Return the analysis as a structured JSON array of elements.`;
     record.status = "analyzed";
     this.imports.set(importId, record);
 
-    logger.info("Analysis result stored", { importId, elementCount: elements.length });
+    this.log("Analysis result stored", { importId, elementCount: elements.length });
     return true;
   }
 
   generateCodePrompt(importId: string): string | null {
     const record = this.imports.get(importId);
     if (!record) {
-      logger.warn("Import not found for code prompt generation", { importId });
+      this.logWarn("Import not found for code prompt generation", { importId });
       return null;
     }
 
     if (record.extractedElements.length === 0) {
-      logger.warn("No extracted elements available for code generation", { importId });
+      this.logWarn("No extracted elements available for code generation", { importId });
       return null;
     }
 
@@ -197,7 +197,7 @@ Generate the complete component code with all necessary imports.`;
     record.generatedPrompt = prompt;
     this.imports.set(importId, record);
 
-    logger.info("Code generation prompt created", {
+    this.log("Code generation prompt created", {
       importId,
       elementCount: record.extractedElements.length,
       layoutSuggestion,
@@ -210,7 +210,7 @@ Generate the complete component code with all necessary imports.`;
   }
 
   getProjectImports(projectId: string): ImportedDesign[] {
-    return Array.from(this.imports.values())
+    return this.imports.values()
       .filter((imp) => imp.projectId === projectId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
@@ -223,7 +223,7 @@ Generate the complete component code with all necessary imports.`;
     const byStatus: Record<string, number> = {};
     const bySourceType: Record<string, number> = {};
 
-    for (const imp of Array.from(this.imports.values())) {
+    for (const [, imp] of this.imports.entries()) {
       byStatus[imp.status] = (byStatus[imp.status] || 0) + 1;
       bySourceType[imp.sourceType] = (bySourceType[imp.sourceType] || 0) + 1;
     }
@@ -237,19 +237,7 @@ Generate the complete component code with all necessary imports.`;
 
   destroy(): void {
     this.imports.clear();
-    logger.info("ImageImportService destroyed");
-  }
-
-  private evictIfNeeded(): void {
-    if (this.imports.size > this.MAX_IMPORTS) {
-      const sorted = Array.from(this.imports.entries())
-        .sort((a, b) => a[1].createdAt.getTime() - b[1].createdAt.getTime());
-      const toRemove = sorted.slice(0, this.imports.size - this.MAX_IMPORTS);
-      for (const [key] of toRemove) {
-        this.imports.delete(key);
-      }
-      logger.info("Evicted old imports", { evicted: toRemove.length, remaining: this.imports.size });
-    }
+    this.log("ImageImportService destroyed");
   }
 }
 

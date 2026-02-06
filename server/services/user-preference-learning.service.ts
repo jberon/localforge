@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface CodeModification {
   originalCode: string;
@@ -43,15 +43,19 @@ interface PreferenceSummary {
   };
 }
 
-class UserPreferenceLearningService {
+class UserPreferenceLearningService extends BaseService {
   private static instance: UserPreferenceLearningService;
-  private modifications: Map<string, CodeModification[]> = new Map();
-  private preferences: Map<string, UserPreference[]> = new Map();
+  private modifications: ManagedMap<string, CodeModification[]>;
+  private preferences: ManagedMap<string, UserPreference[]>;
   private patterns: LearningPattern[] = [];
   private readonly MAX_MODIFICATIONS_PER_PROJECT = 200;
   private readonly MAX_PATTERNS = 500;
 
-  private constructor() {}
+  private constructor() {
+    super("UserPreferenceLearningService");
+    this.modifications = this.createManagedMap({ maxSize: 500, strategy: "lru" });
+    this.preferences = this.createManagedMap({ maxSize: 500, strategy: "lru" });
+  }
 
   static getInstance(): UserPreferenceLearningService {
     if (!UserPreferenceLearningService.instance) {
@@ -72,7 +76,7 @@ class UserPreferenceLearningService {
     this.modifications.set(projectId, mods);
     
     this.analyzeModification(projectId, modification);
-    logger.info("Tracked code modification", { projectId, filePath: modification.filePath });
+    this.log("Tracked code modification", { projectId, filePath: modification.filePath });
   }
 
   private analyzeModification(projectId: string, mod: Omit<CodeModification, "timestamp">): void {
@@ -251,13 +255,14 @@ class UserPreferenceLearningService {
   clearHistory(projectId: string): void {
     this.modifications.delete(projectId);
     this.preferences.delete(projectId);
-    logger.info("Cleared preference history", { projectId });
+    this.log("Cleared preference history", { projectId });
   }
 
   destroy(): void {
     this.modifications.clear();
     this.preferences.clear();
     this.patterns = [];
+    this.log("UserPreferenceLearningService shutting down");
   }
 }
 

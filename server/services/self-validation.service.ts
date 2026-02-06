@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface ValidationResult {
   isValid: boolean;
@@ -53,19 +53,21 @@ interface ValidationLoop {
   status: "running" | "completed" | "failed" | "max_iterations_reached";
 }
 
-class SelfValidationService {
+class SelfValidationService extends BaseService {
   private static instance: SelfValidationService;
   private config: ValidationConfig;
   private rules: ValidationRule[] = [];
-  private loops: Map<string, ValidationLoop> = new Map();
+  private loops: ManagedMap<string, ValidationLoop>;
 
   private constructor() {
+    super("SelfValidationService");
     this.config = {
       autoFix: true,
       strictMode: false,
       maxRetries: 3,
       validationRules: []
     };
+    this.loops = this.createManagedMap<string, ValidationLoop>({ maxSize: 200, strategy: "lru" });
     this.initializeRules();
   }
 
@@ -301,7 +303,7 @@ class SelfValidationService {
   }
 
   validate(code: string, filePath: string): ValidationResult {
-    logger.info("Validating code", { filePath, codeLength: code.length });
+    this.log("Validating code", { filePath, codeLength: code.length });
 
     const issues: ValidationIssue[] = [];
     
@@ -312,7 +314,7 @@ class SelfValidationService {
         const ruleIssues = rule.check(code, filePath);
         issues.push(...ruleIssues);
       } catch (error) {
-        logger.error(`Rule ${rule.id} failed`, { error });
+        this.logError(`Rule ${rule.id} failed`, { error });
       }
     }
 
@@ -339,7 +341,7 @@ class SelfValidationService {
 
     const suggestions = this.generateSuggestions(issues);
 
-    logger.info("Validation complete", {
+    this.log("Validation complete", {
       filePath,
       isValid,
       score,
@@ -471,7 +473,7 @@ class SelfValidationService {
 
   addRule(rule: ValidationRule): void {
     this.rules.push(rule);
-    logger.info("Validation rule added", { id: rule.id });
+    this.log("Validation rule added", { id: rule.id });
   }
 
   enableRule(ruleId: string, enabled: boolean): void {
@@ -495,6 +497,11 @@ class SelfValidationService {
       name: r.name,
       enabled: r.enabled
     }));
+  }
+
+  destroy(): void {
+    this.loops.clear();
+    this.log("SelfValidationService destroyed");
   }
 }
 

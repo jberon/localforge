@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface ErrorPattern {
   id: string;
@@ -29,21 +29,21 @@ interface LearningInsight {
   modelSpecificIssues: Map<string, string[]>;
 }
 
-class ErrorLearningService {
+class ErrorLearningService extends BaseService {
   private static instance: ErrorLearningService;
-  private errorPatterns: Map<string, ErrorPattern>;
+  private errorPatterns: ManagedMap<string, ErrorPattern>;
   private errorHistory: ErrorOccurrence[];
   private maxHistorySize: number = 500;
-  private modelErrorTracking: Map<string, { errors: number; fixed: number; patterns: Map<string, number> }>;
-  private fixSuccessTracking: Map<string, { attempts: number; successes: number }>;
+  private modelErrorTracking: ManagedMap<string, { errors: number; fixed: number; patterns: Map<string, number> }>;
+  private fixSuccessTracking: ManagedMap<string, { attempts: number; successes: number }>;
 
   private constructor() {
-    this.errorPatterns = new Map();
+    super("ErrorLearningService");
+    this.errorPatterns = this.createManagedMap<string, ErrorPattern>({ maxSize: 500, strategy: "lru" });
     this.errorHistory = [];
-    this.modelErrorTracking = new Map();
-    this.fixSuccessTracking = new Map();
+    this.modelErrorTracking = this.createManagedMap<string, { errors: number; fixed: number; patterns: Map<string, number> }>({ maxSize: 200, strategy: "lru" });
+    this.fixSuccessTracking = this.createManagedMap<string, { attempts: number; successes: number }>({ maxSize: 200, strategy: "lru" });
     this.initializeCommonPatterns();
-    logger.info("ErrorLearningService initialized", { patterns: this.errorPatterns.size });
   }
 
   static getInstance(): ErrorLearningService {
@@ -187,7 +187,7 @@ class ErrorLearningService {
         pattern.frequency++;
         pattern.lastSeen = new Date();
         
-        logger.debug("Error pattern matched", {
+        this.log("Error pattern matched", {
           pattern: pattern.pattern,
           frequency: pattern.frequency,
           model: occurrence.modelUsed,
@@ -266,7 +266,7 @@ class ErrorLearningService {
             modelFamily: occurrence.modelUsed,
           });
 
-          logger.info("New error pattern learned", { 
+          this.log("New error pattern learned", { 
             pattern: newPattern.pattern,
             occurrences: similarErrors.length,
           });
@@ -612,7 +612,15 @@ class ErrorLearningService {
         pattern.frequency = 0;
       }
     });
-    logger.info("Error history cleared");
+    this.log("Error history cleared");
+  }
+
+  destroy(): void {
+    this.errorPatterns.clear();
+    this.modelErrorTracking.clear();
+    this.fixSuccessTracking.clear();
+    this.errorHistory = [];
+    this.log("ErrorLearningService shut down");
   }
 }
 

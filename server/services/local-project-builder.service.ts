@@ -4,6 +4,8 @@ import * as path from "path";
 import * as os from "os";
 import { EventEmitter } from "events";
 import { logger } from "../lib/logger";
+import { serviceRegistry } from "../lib/service-registry";
+import { ManagedMap } from "../lib/base-service";
 
 export interface ProjectFile {
   path: string;
@@ -32,7 +34,7 @@ interface RunningProject {
 }
 
 class LocalProjectBuilderService extends EventEmitter {
-  private runningProjects: Map<string, RunningProject> = new Map();
+  private runningProjects: ManagedMap<string, RunningProject> = new ManagedMap({ maxSize: 50, strategy: "lru" });
   private basePort = 3001;
   private usedPorts: Set<number> = new Set();
   private localForgeDir: string;
@@ -41,7 +43,8 @@ class LocalProjectBuilderService extends EventEmitter {
     super();
     this.localForgeDir = path.join(os.homedir(), "LocalForge", "projects");
     this.ensureDirectoryExists(this.localForgeDir);
-    logger.info("LocalProjectBuilder initialized", { projectsDir: this.localForgeDir });
+    serviceRegistry.register("LocalProjectBuilderService", this);
+    logger.info("LocalProjectBuilderService initialized", { projectsDir: this.localForgeDir });
   }
 
   private ensureDirectoryExists(dir: string): void {
@@ -300,7 +303,7 @@ class LocalProjectBuilderService extends EventEmitter {
   }
 
   getAllRunningProjects(): BuildStatus[] {
-    return Array.from(this.runningProjects.values())
+    return this.runningProjects.values()
       .filter((p) => p.status === "running" || p.status === "building")
       .map((p) => ({
         projectId: p.projectId,
@@ -353,11 +356,18 @@ class LocalProjectBuilderService extends EventEmitter {
   }
 
   async stopAllProjects(): Promise<void> {
-    const stopPromises = Array.from(this.runningProjects.keys()).map((id) =>
+    const stopPromises = this.runningProjects.keys().map((id) =>
       this.stopProject(id)
     );
     await Promise.all(stopPromises);
     logger.info("All projects stopped");
+  }
+
+  destroy(): void {
+    this.runningProjects.clear();
+    this.usedPorts.clear();
+    this.removeAllListeners();
+    logger.info("LocalProjectBuilderService destroyed");
   }
 }
 

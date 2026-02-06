@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface TestScenario {
   id: string;
@@ -64,13 +64,15 @@ interface SelfTestingStats {
 
 const MAX_SUITES = 100;
 
-class SelfTestingService {
+class SelfTestingService extends BaseService {
   private static instance: SelfTestingService;
-  private suites: Map<string, TestSuite> = new Map();
-  private projectIndex: Map<string, string[]> = new Map();
+  private suites: ManagedMap<string, TestSuite>;
+  private projectIndex: ManagedMap<string, string[]>;
 
   private constructor() {
-    logger.info("SelfTestingService initialized");
+    super("SelfTestingService");
+    this.suites = this.createManagedMap<string, TestSuite>({ maxSize: 500, strategy: "lru" });
+    this.projectIndex = this.createManagedMap<string, string[]>({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): SelfTestingService {
@@ -103,9 +105,7 @@ class SelfTestingService {
     projectSuites.push(suiteId);
     this.projectIndex.set(projectId, projectSuites);
 
-    this.evictIfNeeded();
-
-    logger.info("Generated test suite", {
+    this.log("Generated test suite", {
       suiteId,
       projectId,
       scenarioCount: scenarios.length,
@@ -141,13 +141,13 @@ class SelfTestingService {
   ): boolean {
     const suite = this.suites.get(suiteId);
     if (!suite) {
-      logger.warn("Suite not found for status update", { suiteId, scenarioId });
+      this.logWarn("Suite not found for status update", { suiteId, scenarioId });
       return false;
     }
 
     const scenario = suite.scenarios.find((s) => s.id === scenarioId);
     if (!scenario) {
-      logger.warn("Scenario not found for status update", { suiteId, scenarioId });
+      this.logWarn("Scenario not found for status update", { suiteId, scenarioId });
       return false;
     }
 
@@ -162,14 +162,14 @@ class SelfTestingService {
       suite.completedAt = new Date();
     }
 
-    logger.info("Updated scenario status", { suiteId, scenarioId, status, passed: result?.passed });
+    this.log("Updated scenario status", { suiteId, scenarioId, status, passed: result?.passed });
     return true;
   }
 
   generateFixSuggestions(suiteId: string): FixSuggestion[] {
     const suite = this.suites.get(suiteId);
     if (!suite) {
-      logger.warn("Suite not found for fix suggestions", { suiteId });
+      this.logWarn("Suite not found for fix suggestions", { suiteId });
       return [];
     }
 
@@ -193,7 +193,7 @@ class SelfTestingService {
       return priorityOrder[a.priority] - priorityOrder[b.priority];
     });
 
-    logger.info("Generated fix suggestions", {
+    this.log("Generated fix suggestions", {
       suiteId,
       suggestionCount: suggestions.length,
     });
@@ -202,7 +202,7 @@ class SelfTestingService {
   }
 
   getStats(): SelfTestingStats {
-    const allSuites = Array.from(this.suites.values());
+    const allSuites = this.suites.values();
     let totalScenarios = 0;
     let passedScenarios = 0;
     let failedScenarios = 0;
@@ -246,7 +246,7 @@ class SelfTestingService {
   destroy(): void {
     this.suites.clear();
     this.projectIndex.clear();
-    logger.info("SelfTestingService destroyed");
+    this.log("SelfTestingService destroyed");
   }
 
   private detectFeatures(code: string): DetectedFeature[] {
@@ -711,8 +711,8 @@ class SelfTestingService {
       type: "functionality",
       steps: [
         { action: "navigate", target: "page with API calls" },
-        { action: "verify", target: "error state", assertion: "Error message is displayed on API failure" },
-        { action: "verify", target: "retry button", assertion: "Retry mechanism is available" },
+        { action: "simulate", target: "API failure" },
+        { action: "verify", target: "error message", assertion: "User-friendly error message is displayed" },
       ],
       status: "pending",
       createdAt: new Date(),
@@ -722,10 +722,10 @@ class SelfTestingService {
       scenarios.push({
         id: makeId(),
         name: "API - Endpoint responses",
-        description: "Verify API endpoints return expected data structures",
+        description: "Verify API endpoints return expected data",
         type: "functionality",
         steps: endpoints.map((ep) => ({
-          action: "verify" as string,
+          action: "request" as string,
           target: ep,
           assertion: `Endpoint ${ep} returns valid response`,
         })),
@@ -753,25 +753,13 @@ class SelfTestingService {
       },
       {
         id: makeId(),
-        name: "List - Data rendering",
-        description: "Verify list items render correctly with data",
+        name: "List - Data display",
+        description: "Verify list correctly displays data items",
         type: "functionality",
         steps: [
           { action: "navigate", target: "list page" },
           { action: "verify", target: "list items", assertion: "List items render with correct data" },
-          { action: "verify", target: "item count", assertion: "Expected number of items are displayed" },
-        ],
-        status: "pending",
-        createdAt: new Date(),
-      },
-      {
-        id: makeId(),
-        name: "List - Loading state",
-        description: "Verify loading skeleton or spinner during data fetch",
-        type: "ui",
-        steps: [
-          { action: "navigate", target: "list page" },
-          { action: "verify", target: "loading skeleton", assertion: "Loading state is displayed while data loads" },
+          { action: "verify", target: "item count", assertion: "Number of displayed items matches data" },
         ],
         status: "pending",
         createdAt: new Date(),
@@ -783,43 +771,15 @@ class SelfTestingService {
     return [
       {
         id: makeId(),
-        name: "Auth - Successful login",
-        description: "Verify login with valid credentials succeeds",
+        name: "Auth - Login flow",
+        description: "Verify complete login process",
         type: "functionality",
         steps: [
           { action: "navigate", target: "login page" },
-          { action: "type", target: 'input[type="email"]', value: "user@example.com" },
-          { action: "type", target: 'input[type="password"]', value: "ValidPass123!" },
-          { action: "click", target: "login button" },
-          { action: "verify", target: "dashboard", assertion: "User is redirected to authenticated area" },
-        ],
-        status: "pending",
-        createdAt: new Date(),
-      },
-      {
-        id: makeId(),
-        name: "Auth - Failed login",
-        description: "Verify login with invalid credentials shows error",
-        type: "functionality",
-        steps: [
-          { action: "navigate", target: "login page" },
-          { action: "type", target: 'input[type="email"]', value: "wrong@example.com" },
-          { action: "type", target: 'input[type="password"]', value: "wrongpass" },
-          { action: "click", target: "login button" },
-          { action: "verify", target: "error message", assertion: "Authentication error message is displayed" },
-        ],
-        status: "pending",
-        createdAt: new Date(),
-      },
-      {
-        id: makeId(),
-        name: "Auth - Logout flow",
-        description: "Verify logout clears session and redirects",
-        type: "functionality",
-        steps: [
-          { action: "verify", target: "logout button", assertion: "Logout option is visible when authenticated" },
-          { action: "click", target: "logout button" },
-          { action: "verify", target: "login page", assertion: "User is redirected to login page after logout" },
+          { action: "type", target: "email input", value: "test@example.com" },
+          { action: "type", target: "password input", value: "TestPass123!" },
+          { action: "click", target: "login button", assertion: "Login succeeds" },
+          { action: "verify", target: "authenticated state", assertion: "User is redirected to dashboard" },
         ],
         status: "pending",
         createdAt: new Date(),
@@ -831,7 +791,7 @@ class SelfTestingService {
         type: "functionality",
         steps: [
           { action: "navigate", target: "protected page" },
-          { action: "verify", target: "redirect", assertion: "Unauthenticated user is redirected to login" },
+          { action: "verify", target: "redirect", assertion: "User is redirected to login page" },
         ],
         status: "pending",
         createdAt: new Date(),
@@ -844,39 +804,13 @@ class SelfTestingService {
       {
         id: makeId(),
         name: "CRUD - Create item",
-        description: "Verify new item can be created successfully",
+        description: "Verify new item creation",
         type: "functionality",
         steps: [
           { action: "click", target: "create/add button" },
-          { action: "type", target: "form fields", value: "test item data" },
-          { action: "click", target: "save button" },
-          { action: "verify", target: "item list", assertion: "New item appears in the list" },
-        ],
-        status: "pending",
-        createdAt: new Date(),
-      },
-      {
-        id: makeId(),
-        name: "CRUD - Read/View item",
-        description: "Verify item details can be viewed",
-        type: "functionality",
-        steps: [
-          { action: "click", target: "item in list" },
-          { action: "verify", target: "item details", assertion: "Item details are displayed correctly" },
-        ],
-        status: "pending",
-        createdAt: new Date(),
-      },
-      {
-        id: makeId(),
-        name: "CRUD - Update item",
-        description: "Verify existing item can be edited and saved",
-        type: "functionality",
-        steps: [
-          { action: "click", target: "edit button" },
-          { action: "type", target: "form fields", value: "updated data" },
-          { action: "click", target: "save button" },
-          { action: "verify", target: "updated item", assertion: "Item reflects the updated data" },
+          { action: "type", target: "form fields", value: "test data" },
+          { action: "click", target: "save button", assertion: "Item is created successfully" },
+          { action: "verify", target: "item in list", assertion: "New item appears in the list" },
         ],
         status: "pending",
         createdAt: new Date(),
@@ -884,13 +818,12 @@ class SelfTestingService {
       {
         id: makeId(),
         name: "CRUD - Delete item",
-        description: "Verify item can be deleted with confirmation",
+        description: "Verify item deletion with confirmation",
         type: "functionality",
         steps: [
-          { action: "click", target: "delete button" },
-          { action: "verify", target: "confirmation dialog", assertion: "Delete confirmation is shown" },
-          { action: "click", target: "confirm delete" },
-          { action: "verify", target: "item list", assertion: "Item is removed from the list" },
+          { action: "click", target: "delete button", assertion: "Confirmation dialog appears" },
+          { action: "click", target: "confirm delete", assertion: "Item is removed" },
+          { action: "verify", target: "item list", assertion: "Deleted item no longer appears" },
         ],
         status: "pending",
         createdAt: new Date(),
@@ -903,27 +836,13 @@ class SelfTestingService {
       {
         id: makeId(),
         name: "Modal - Open and close",
-        description: "Verify modals open and close correctly",
+        description: "Verify modal opens and closes correctly",
         type: "ui",
         steps: [
-          { action: "click", target: "modal trigger button" },
-          { action: "verify", target: "modal overlay", assertion: "Modal is visible with overlay" },
-          { action: "click", target: "close button or overlay" },
-          { action: "verify", target: "modal", assertion: "Modal is closed and no longer visible" },
-        ],
-        status: "pending",
-        createdAt: new Date(),
-      },
-      {
-        id: makeId(),
-        name: "Modal - Escape key closes",
-        description: "Verify pressing Escape key closes the modal",
-        type: "accessibility",
-        steps: [
-          { action: "click", target: "modal trigger button" },
-          { action: "verify", target: "modal", assertion: "Modal is open" },
-          { action: "type", target: "document", value: "Escape" },
-          { action: "verify", target: "modal", assertion: "Modal is closed after Escape key" },
+          { action: "click", target: "modal trigger", assertion: "Modal opens" },
+          { action: "verify", target: "modal content", assertion: "Modal displays expected content" },
+          { action: "click", target: "close button", assertion: "Modal closes" },
+          { action: "verify", target: "modal gone", assertion: "Modal is no longer visible" },
         ],
         status: "pending",
         createdAt: new Date(),
@@ -932,52 +851,35 @@ class SelfTestingService {
   }
 
   private generateAccessibilityScenarios(makeId: () => string, feature: DetectedFeature): TestScenario[] {
-    const scenarios: TestScenario[] = [];
-
-    scenarios.push({
-      id: makeId(),
-      name: "Accessibility - ARIA labels",
-      description: "Verify interactive elements have proper ARIA labels",
-      type: "accessibility",
-      steps: [
-        { action: "verify", target: "all buttons", assertion: "All buttons have accessible names (aria-label or text content)" },
-        { action: "verify", target: "all inputs", assertion: "All inputs have associated labels" },
-        { action: "verify", target: "all images", assertion: "All images have alt text" },
-      ],
-      status: "pending",
-      createdAt: new Date(),
-    });
-
-    scenarios.push({
-      id: makeId(),
-      name: "Accessibility - Keyboard navigation",
-      description: "Verify the app can be navigated using keyboard only",
-      type: "accessibility",
-      steps: [
-        { action: "type", target: "document", value: "Tab" },
-        { action: "verify", target: "focus indicator", assertion: "Focus indicator is visible on focused element" },
-        { action: "type", target: "document", value: "Tab" },
-        { action: "verify", target: "focus order", assertion: "Focus moves in logical order" },
-        { action: "type", target: "focused button", value: "Enter" },
-        { action: "verify", target: "button action", assertion: "Enter key activates the focused button" },
-      ],
-      status: "pending",
-      createdAt: new Date(),
-    });
-
-    scenarios.push({
-      id: makeId(),
-      name: "Accessibility - Color contrast",
-      description: "Verify text has sufficient color contrast against backgrounds",
-      type: "accessibility",
-      steps: [
-        { action: "verify", target: "all text elements", assertion: "Text meets WCAG AA contrast ratio (4.5:1 for normal, 3:1 for large)" },
-      ],
-      status: "pending",
-      createdAt: new Date(),
-    });
-
-    return scenarios;
+    return [
+      {
+        id: makeId(),
+        name: "A11y - ARIA labels",
+        description: "Verify all interactive elements have proper ARIA labels",
+        type: "accessibility",
+        steps: [
+          { action: "verify", target: "interactive elements", assertion: "All buttons, links, and inputs have ARIA labels" },
+          { action: "verify", target: "images", assertion: "All images have alt attributes" },
+          { action: "verify", target: "headings", assertion: "Heading hierarchy is correct (h1 > h2 > h3)" },
+        ],
+        status: "pending",
+        createdAt: new Date(),
+      },
+      {
+        id: makeId(),
+        name: "A11y - Keyboard navigation",
+        description: "Verify the app is fully navigable by keyboard",
+        type: "accessibility",
+        steps: [
+          { action: "press", target: "Tab key", assertion: "Focus moves to next interactive element" },
+          { action: "verify", target: "focus indicator", assertion: "Focused element has visible focus ring" },
+          { action: "press", target: "Enter key", assertion: "Focused button/link activates" },
+          { action: "press", target: "Escape key", assertion: "Open modals/popups close" },
+        ],
+        status: "pending",
+        createdAt: new Date(),
+      },
+    ];
   }
 
   private generateResponsiveScenarios(makeId: () => string, feature: DetectedFeature): TestScenario[] {
@@ -988,9 +890,10 @@ class SelfTestingService {
         description: "Verify layout adapts to mobile screen size (375px)",
         type: "responsive",
         steps: [
-          { action: "verify", target: "viewport 375px", assertion: "No horizontal scrollbar appears" },
-          { action: "verify", target: "navigation", assertion: "Mobile navigation (hamburger menu) is displayed" },
-          { action: "verify", target: "content", assertion: "Content is readable without zooming" },
+          { action: "verify", target: "viewport 375px", assertion: "Layout stacks to single column on mobile" },
+          { action: "verify", target: "navigation", assertion: "Navigation collapses to hamburger menu" },
+          { action: "verify", target: "touch targets", assertion: "All touch targets are at least 44x44px" },
+          { action: "verify", target: "no overflow", assertion: "No horizontal scrollbar appears" },
         ],
         status: "pending",
         createdAt: new Date(),
@@ -1167,31 +1070,6 @@ class SelfTestingService {
     if (scenario.type === "ui") return "medium";
     if (scenario.type === "responsive") return "medium";
     return "low";
-  }
-
-  private evictIfNeeded(): void {
-    if (this.suites.size <= MAX_SUITES) return;
-
-    const entries = Array.from(this.suites.entries());
-    entries.sort((a, b) => a[1].createdAt.getTime() - b[1].createdAt.getTime());
-
-    const toRemove = entries.slice(0, entries.length - MAX_SUITES);
-    for (const [id, suite] of toRemove) {
-      this.suites.delete(id);
-
-      const projectSuites = this.projectIndex.get(suite.projectId);
-      if (projectSuites) {
-        const idx = projectSuites.indexOf(id);
-        if (idx !== -1) {
-          projectSuites.splice(idx, 1);
-        }
-        if (projectSuites.length === 0) {
-          this.projectIndex.delete(suite.projectId);
-        }
-      }
-    }
-
-    logger.info("Evicted old test suites", { removed: toRemove.length, remaining: this.suites.size });
   }
 }
 

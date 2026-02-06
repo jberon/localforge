@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { errorLearningService } from "./error-learning.service";
 import { liveSyntaxValidatorService } from "./live-syntax-validator.service";
 import { codeStyleEnforcerService } from "./code-style-enforcer.service";
@@ -84,15 +84,16 @@ export interface FixStatistics {
   recentTrend: { improving: boolean; recentFixRate: number; overallFixRate: number };
 }
 
-class ClosedLoopAutoFixService {
+class ClosedLoopAutoFixService extends BaseService {
   private static instance: ClosedLoopAutoFixService;
   private defaultConfig: FixConfig;
   private fixHistory: FixHistoryEntry[];
-  private activeSessions: Map<string, FixSession>;
+  private activeSessions: ManagedMap<string, FixSession>;
   private maxHistorySize = 1000;
-  private categoryFixTracking: Map<string, { found: number; fixed: number }>;
+  private categoryFixTracking: ManagedMap<string, { found: number; fixed: number }>;
 
   private constructor() {
+    super("ClosedLoopAutoFixService");
     this.defaultConfig = {
       maxRetries: 3,
       autoFormat: true,
@@ -107,9 +108,8 @@ class ClosedLoopAutoFixService {
       ],
     };
     this.fixHistory = [];
-    this.activeSessions = new Map();
-    this.categoryFixTracking = new Map();
-    logger.info("ClosedLoopAutoFixService initialized");
+    this.activeSessions = this.createManagedMap<string, FixSession>({ maxSize: 500, strategy: "lru" });
+    this.categoryFixTracking = this.createManagedMap<string, { found: number; fixed: number }>({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): ClosedLoopAutoFixService {
@@ -121,7 +121,7 @@ class ClosedLoopAutoFixService {
 
   configure(config: Partial<FixConfig>): void {
     this.defaultConfig = { ...this.defaultConfig, ...config };
-    logger.info("ClosedLoopAutoFix configured", { config: this.defaultConfig });
+    this.log("ClosedLoopAutoFix configured", { config: this.defaultConfig });
   }
 
   getConfig(): FixConfig {
@@ -194,7 +194,7 @@ class ClosedLoopAutoFixService {
       (enhancedPrompt.length - prompt.length) / 3.5
     );
 
-    logger.info("Pre-generation enhancement applied", {
+    this.log("Pre-generation enhancement applied", {
       preventionRules: preventionRules.length,
       modelWarnings: modelSpecificWarnings.length,
       examples: injectedExamples.length,
@@ -342,7 +342,7 @@ class ClosedLoopAutoFixService {
 
     this.recordSession(sessionId, result, cfg);
 
-    logger.info("Closed-loop auto-fix completed", {
+    this.log("Closed-loop auto-fix completed", {
       sessionId,
       errorsFound: totalErrorsFound,
       errorsFixed: result.errorsFixed,
@@ -472,7 +472,7 @@ class ClosedLoopAutoFixService {
     this.fixHistory = [];
     this.activeSessions.clear();
     this.categoryFixTracking.clear();
-    logger.info("Closed-loop auto-fix history cleared");
+    this.log("Closed-loop auto-fix history cleared");
   }
 
   private selectStrategy(
@@ -854,6 +854,13 @@ class ClosedLoopAutoFixService {
       "style-enforcement": { attempts: 0, successes: 0, rate: 0 },
       "import-resolution": { attempts: 0, successes: 0, rate: 0 },
     };
+  }
+
+  destroy(): void {
+    this.activeSessions.clear();
+    this.categoryFixTracking.clear();
+    this.fixHistory = [];
+    this.log("ClosedLoopAutoFixService shut down");
   }
 }
 

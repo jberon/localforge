@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { codeRunnerService, RunResult, ParsedError } from "./code-runner.service";
 import { projectMemoryService } from "./project-memory.service";
 import { runtimeFeedbackService, RuntimeError } from "./runtime-feedback.service";
@@ -74,9 +74,9 @@ export interface FixContext {
 type LLMFixFunction = (prompt: string, context: any) => Promise<string>;
 type LLMCodePatchFunction = (error: ParsedError, fileContent: string, context: any) => Promise<CodePatch | null>;
 
-class AutoFixLoopService {
+class AutoFixLoopService extends BaseService {
   private static instance: AutoFixLoopService;
-  private activeSessions: Map<string, AutoFixSession> = new Map();
+  private activeSessions: ManagedMap<string, AutoFixSession>;
   private fixStrategies: FixStrategy[] = [];
   private llmFixFunction?: LLMFixFunction;
   private llmCodePatchFunction?: LLMCodePatchFunction;
@@ -84,8 +84,9 @@ class AutoFixLoopService {
   private defaultMaxIterations = 5;
 
   private constructor() {
+    super("AutoFixLoopService");
+    this.activeSessions = this.createManagedMap<string, AutoFixSession>({ maxSize: 500, strategy: "lru" });
     this.initializeStrategies();
-    logger.info("AutoFixLoopService initialized");
   }
 
   static getInstance(): AutoFixLoopService {
@@ -97,12 +98,12 @@ class AutoFixLoopService {
 
   setLLMFixFunction(fn: LLMFixFunction): void {
     this.llmFixFunction = fn;
-    logger.info("LLM fix function registered");
+    this.log("LLM fix function registered");
   }
 
   setLLMCodePatchFunction(fn: LLMCodePatchFunction): void {
     this.llmCodePatchFunction = fn;
-    logger.info("LLM code patch function registered");
+    this.log("LLM code patch function registered");
   }
 
   setProjectsBaseDir(dir: string): void {
@@ -118,7 +119,7 @@ class AutoFixLoopService {
       const content = await fs.readFile(fullPath, "utf-8");
       return content;
     } catch (e) {
-      logger.warn("Failed to read file for patching", { projectId, filePath, error: e });
+      this.logWarn("Failed to read file for patching", { projectId, filePath, error: e });
       return null;
     }
   }
@@ -135,13 +136,13 @@ class AutoFixLoopService {
       try {
         currentContent = await fs.readFile(fullPath, "utf-8");
       } catch (e) {
-        logger.error("Cannot read file for patching", { file: patch.file });
+        this.logError("Cannot read file for patching", { file: patch.file });
         return false;
       }
 
       // Verify old content matches (for safety)
       if (patch.oldContent && !currentContent.includes(patch.oldContent)) {
-        logger.warn("Old content mismatch, applying full replacement", { file: patch.file });
+        this.logWarn("Old content mismatch, applying full replacement", { file: patch.file });
       }
 
       // Apply the patch
@@ -164,14 +165,14 @@ class AutoFixLoopService {
       // Write the patched content
       await fs.writeFile(fullPath, newContent, "utf-8");
       
-      logger.info("Code patch applied successfully", {
+      this.log("Code patch applied successfully", {
         file: patch.file,
         description: patch.description
       });
 
       return true;
     } catch (e) {
-      logger.error("Failed to apply code patch", { file: patch.file, error: e });
+      this.logError("Failed to apply code patch", { file: patch.file, error: e });
       return false;
     }
   }
@@ -185,7 +186,7 @@ class AutoFixLoopService {
     context: FixContext
   ): Promise<CodePatch | null> {
     if (!error.file) {
-      logger.warn("Cannot generate patch without file path");
+      this.logWarn("Cannot generate patch without file path");
       return null;
     }
 
@@ -202,7 +203,7 @@ class AutoFixLoopService {
           return patch;
         }
       } catch (e) {
-        logger.warn("LLM patch generation failed, trying rule-based", { error: e });
+        this.logWarn("LLM patch generation failed, trying rule-based", { error: e });
       }
     }
 
@@ -381,7 +382,7 @@ class AutoFixLoopService {
     };
 
     this.activeSessions.set(sessionId, session);
-    logger.info("Auto-fix session started", { sessionId, projectId, maxIterations });
+    this.log("Auto-fix session started", { sessionId, projectId, maxIterations });
 
     return session;
   }
@@ -396,7 +397,7 @@ class AutoFixLoopService {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    logger.info("Starting fix loop", { sessionId, maxIterations: session.maxIterations });
+    this.log("Starting fix loop", { sessionId, maxIterations: session.maxIterations });
 
     let currentResult = await validateFn();
     session.originalErrors = [...currentResult.errors];
@@ -410,7 +411,7 @@ class AutoFixLoopService {
       session.currentIteration++;
       session.status = "fixing";
 
-      logger.info("Fix iteration starting", {
+      this.log("Fix iteration starting", {
         sessionId,
         iteration: session.currentIteration,
         errorsRemaining: session.unresolvedErrors.length
@@ -423,14 +424,14 @@ class AutoFixLoopService {
       try {
         fixSuggestion = await this.generateFix(errorToFix, fixContext);
       } catch (e) {
-        logger.error("Failed to generate fix", { error: e });
+        this.logError("Failed to generate fix", { error: e });
         continue;
       }
 
       const fixApplied = await applyFixFn(fixSuggestion, errorToFix);
       
       if (!fixApplied) {
-        logger.warn("Fix could not be applied", { sessionId, error: errorToFix.message });
+        this.logWarn("Fix could not be applied", { sessionId, error: errorToFix.message });
         continue;
       }
 
@@ -464,13 +465,13 @@ class AutoFixLoopService {
         );
         session.unresolvedErrors.push(...newErrors);
 
-        logger.info("Error fixed successfully", {
+        this.log("Error fixed successfully", {
           sessionId,
           iteration: session.currentIteration,
           errorFixed: errorToFix.message.slice(0, 50)
         });
       } else {
-        logger.warn("Fix attempt failed", {
+        this.logWarn("Fix attempt failed", {
           sessionId,
           iteration: session.currentIteration,
           error: errorToFix.message.slice(0, 50)
@@ -499,7 +500,7 @@ class AutoFixLoopService {
       session.status = "max_iterations_reached";
     }
 
-    logger.info("Auto-fix session completed", {
+    this.log("Auto-fix session completed", {
       sessionId,
       status: session.status,
       iterations: session.currentIteration,
@@ -605,7 +606,7 @@ class AutoFixLoopService {
     if (session) {
       session.status = "failed";
       session.completedAt = Date.now();
-      logger.info("Auto-fix session cancelled", { sessionId });
+      this.log("Auto-fix session cancelled", { sessionId });
     }
   }
 
@@ -819,7 +820,7 @@ class AutoFixLoopService {
               }
             }
           } catch (e) {
-            logger.error("LLM fix generation failed", { error: e, iteration: session.currentIteration });
+            this.logError("LLM fix generation failed", { error: e, iteration: session.currentIteration });
           }
         }
 
@@ -831,7 +832,7 @@ class AutoFixLoopService {
         
         const resolvedCount = errorContext.errors.length - newErrors.errors.length;
         if (resolvedCount > 0) {
-          logger.info("Errors resolved in iteration", { 
+          this.log("Errors resolved in iteration", { 
             iteration: session.currentIteration, 
             resolvedCount 
           });
@@ -904,6 +905,12 @@ class AutoFixLoopService {
     }
 
     return formatted.join('\n\n');
+  }
+
+  destroy(): void {
+    this.activeSessions.clear();
+    this.fixStrategies = [];
+    this.log("AutoFixLoopService shut down");
   }
 }
 

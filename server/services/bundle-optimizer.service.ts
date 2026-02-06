@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileInfo {
   path: string;
@@ -79,10 +79,12 @@ const TREE_SHAKEABLE_PACKAGES = [
   "framer-motion",
 ];
 
-class BundleOptimizerService {
+class BundleOptimizerService extends BaseService {
   private static instance: BundleOptimizerService;
 
-  private constructor() {}
+  private constructor() {
+    super("BundleOptimizerService");
+  }
 
   static getInstance(): BundleOptimizerService {
     if (!BundleOptimizerService.instance) {
@@ -92,7 +94,7 @@ class BundleOptimizerService {
   }
 
   async analyzeBundle(files: FileInfo[]): Promise<BundleAnalysis> {
-    logger.info("Analyzing bundle", { fileCount: files.length });
+    this.log("Analyzing bundle", { fileCount: files.length });
 
     const fileBreakdown = this.analyzeFileSizes(files);
     const dependencies = this.analyzeDependencies(files);
@@ -309,6 +311,10 @@ class BundleOptimizerService {
     }
 
     return { byType, total };
+  }
+
+  destroy(): void {
+    this.log("BundleOptimizerService shutting down");
   }
 }
 

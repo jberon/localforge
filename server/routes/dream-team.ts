@@ -3,6 +3,7 @@ import { createLLMClient } from "../llm-client";
 import { createDreamTeamService } from "../services/dreamTeam";
 import { CORE_DREAM_TEAM } from "@shared/schema";
 import { z } from "zod";
+import { asyncHandler } from "../lib/async-handler";
 
 const router = Router();
 
@@ -44,7 +45,7 @@ router.get("/members", (req, res) => {
   });
 });
 
-router.get("/projects/:projectId/team", async (req, res) => {
+router.get("/projects/:projectId/team", asyncHandler(async (req, res) => {
   const { projectId } = req.params;
   const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
   const model = (req.query.model as string) || "";
@@ -56,9 +57,9 @@ router.get("/projects/:projectId/team", async (req, res) => {
   
   const team = await service.getFullTeam(projectId);
   res.json(team);
-});
+}));
 
-router.get("/projects/:projectId/activity", async (req, res) => {
+router.get("/projects/:projectId/activity", asyncHandler(async (req, res) => {
   const { projectId } = req.params;
   const limit = parseInt(req.query.limit as string) || 50;
   const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
@@ -71,9 +72,9 @@ router.get("/projects/:projectId/activity", async (req, res) => {
   
   const logs = await service.getActivityLog(projectId, limit);
   res.json({ logs });
-});
+}));
 
-router.get("/projects/:projectId/business-case", async (req, res) => {
+router.get("/projects/:projectId/business-case", asyncHandler(async (req, res) => {
   const { projectId } = req.params;
   const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
   const model = (req.query.model as string) || "";
@@ -85,9 +86,9 @@ router.get("/projects/:projectId/business-case", async (req, res) => {
   
   const businessCase = await service.getBusinessCase(projectId);
   res.json({ businessCase });
-});
+}));
 
-router.get("/projects/:projectId/readme", async (req, res) => {
+router.get("/projects/:projectId/readme", asyncHandler(async (req, res) => {
   const { projectId } = req.params;
   const endpoint = (req.query.endpoint as string) || "http://localhost:1234/v1";
   const model = (req.query.model as string) || "";
@@ -99,7 +100,7 @@ router.get("/projects/:projectId/readme", async (req, res) => {
   
   const readme = await service.getReadme(projectId);
   res.json({ readme });
-});
+}));
 
 router.post("/business-case/generate", async (req, res) => {
   const parsed = generateBusinessCaseSchema.safeParse(req.body);
@@ -229,27 +230,26 @@ router.post("/readme/generate", async (req, res) => {
   }
 });
 
-router.post("/discuss", async (req, res) => {
-  try {
-    const parsed = dreamTeamDiscussionSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
-    }
+router.post("/discuss", asyncHandler(async (req, res) => {
+  const parsed = dreamTeamDiscussionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  }
 
-    const { topic, context, personas, discussionDepth, endpoint, temperature } = parsed.data;
-    
-    const depthConfig = {
-      brief: { messagesPerPersona: 1, maxTokens: 1024 },
-      balanced: { messagesPerPersona: 1, maxTokens: 2048 },
-      thorough: { messagesPerPersona: 2, maxTokens: 4096 },
-    };
-    const config = depthConfig[discussionDepth];
+  const { topic, context, personas, discussionDepth, endpoint, temperature } = parsed.data;
+  
+  const depthConfig = {
+    brief: { messagesPerPersona: 1, maxTokens: 1024 },
+    balanced: { messagesPerPersona: 1, maxTokens: 2048 },
+    thorough: { messagesPerPersona: 2, maxTokens: 4096 },
+  };
+  const config = depthConfig[discussionDepth];
 
-    const personaDescriptions = personas.map(p => 
-      `- ${p.name} (${p.title}): Focuses on ${p.focus.join(", ")}. ${p.personality}`
-    ).join("\n");
+  const personaDescriptions = personas.map(p => 
+    `- ${p.name} (${p.title}): Focuses on ${p.focus.join(", ")}. ${p.personality}`
+  ).join("\n");
 
-    const systemPrompt = `You are simulating a collaborative discussion between expert advisors reviewing a software development decision. Each persona has a unique perspective and expertise.
+  const systemPrompt = `You are simulating a collaborative discussion between expert advisors reviewing a software development decision. Each persona has a unique perspective and expertise.
 
 THE EXPERTS:
 ${personaDescriptions}
@@ -270,60 +270,56 @@ Rules:
 4. End with a clear recommendation that synthesizes all perspectives
 5. Be practical and actionable`;
 
-    const client = createLLMClient({ endpoint: endpoint || "http://localhost:1234/v1" });
-    
-    const response = await client.chat.completions.create({
-      model: "",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `TOPIC: ${topic}\n\nCONTEXT: ${context}\n\nPlease begin the discussion.` }
-      ],
-      temperature: temperature ?? 0.7,
-      max_tokens: config.maxTokens,
-    });
+  const client = createLLMClient({ endpoint: endpoint || "http://localhost:1234/v1" });
+  
+  const response = await client.chat.completions.create({
+    model: "",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `TOPIC: ${topic}\n\nCONTEXT: ${context}\n\nPlease begin the discussion.` }
+    ],
+    temperature: temperature ?? 0.7,
+    max_tokens: config.maxTokens,
+  });
 
-    const content = response.choices[0]?.message?.content || "[]";
-    
-    let messages: any[] = [];
-    let recommendation = "";
-    
-    try {
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        messages = JSON.parse(jsonMatch[0]);
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg && (lastMsg.type === "suggestion" || lastMsg.content.toLowerCase().includes("recommend"))) {
-          recommendation = lastMsg.content;
-        }
+  const content = response.choices[0]?.message?.content || "[]";
+  
+  let messages: any[] = [];
+  let recommendation = "";
+  
+  try {
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      messages = JSON.parse(jsonMatch[0]);
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && (lastMsg.type === "suggestion" || lastMsg.content.toLowerCase().includes("recommend"))) {
+        recommendation = lastMsg.content;
       }
-    } catch (parseError) {
-      messages = personas.map(p => ({
-        personaId: p.id,
-        content: `As ${p.title}, I think this needs careful consideration of ${p.focus[0]}.`,
-        type: "opinion",
-        timestamp: Date.now(),
-      }));
-      recommendation = "The team recommends proceeding with careful attention to all perspectives raised.";
     }
-
-    messages = messages.map((m: any, i: number) => ({
-      ...m,
-      timestamp: Date.now() + (i * 1000),
+  } catch (parseError) {
+    messages = personas.map(p => ({
+      personaId: p.id,
+      content: `As ${p.title}, I think this needs careful consideration of ${p.focus[0]}.`,
+      type: "opinion",
+      timestamp: Date.now(),
     }));
-
-    res.json({
-      id: `discussion-${Date.now()}`,
-      topic,
-      context,
-      messages,
-      recommendation,
-      status: "awaiting_input",
-      createdAt: Date.now(),
-    });
-  } catch (error: any) {
-    console.error("Dream Team discussion error:", error);
-    res.status(500).json({ error: "Failed to generate discussion", details: error.message });
+    recommendation = "The team recommends proceeding with careful attention to all perspectives raised.";
   }
-});
+
+  messages = messages.map((m: any, i: number) => ({
+    ...m,
+    timestamp: Date.now() + (i * 1000),
+  }));
+
+  res.json({
+    id: `discussion-${Date.now()}`,
+    topic,
+    context,
+    messages,
+    recommendation,
+    status: "awaiting_input",
+    createdAt: Date.now(),
+  });
+}));
 
 export default router;

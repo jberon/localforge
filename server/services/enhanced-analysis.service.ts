@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 export interface AnalysisResult {
   score: number;
@@ -45,11 +45,11 @@ export interface BestPracticeViolation {
   recommendation: string;
 }
 
-class EnhancedAnalysisService {
+class EnhancedAnalysisService extends BaseService {
   private static instance: EnhancedAnalysisService;
 
   private constructor() {
-    logger.info("EnhancedAnalysisService initialized");
+    super("EnhancedAnalysisService");
   }
 
   static getInstance(): EnhancedAnalysisService {
@@ -82,7 +82,7 @@ class EnhancedAnalysisService {
 
     const suggestions = this.generateSuggestions(issues, bestPracticeViolations, metrics);
 
-    logger.info("Code analysis complete", {
+    this.log("Code analysis complete", {
       filePath,
       score,
       grade,
@@ -671,6 +671,10 @@ class EnhancedAnalysisService {
       grouped.set(issue.type, existing);
     }
     return grouped;
+  }
+
+  destroy(): void {
+    this.log("EnhancedAnalysisService shutting down");
   }
 }
 

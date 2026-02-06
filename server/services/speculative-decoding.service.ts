@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { generateCompletion, streamCompletion, createLLMClient, getLLMConfig } from "../llm-client";
 import { localModelOptimizerService, ModelFamily } from "./local-model-optimizer.service";
 
@@ -45,14 +45,15 @@ interface ModelPair {
   };
 }
 
-class SpeculativeDecodingService {
+class SpeculativeDecodingService extends BaseService {
   private static instance: SpeculativeDecodingService;
   private config: SpeculativeConfig;
-  private modelPairs: Map<string, ModelPair> = new Map();
-  private performanceStats: Map<string, { avgSpeedup: number; uses: number }> = new Map();
+  private modelPairs: ManagedMap<string, ModelPair>;
+  private performanceStats: ManagedMap<string, { avgSpeedup: number; uses: number }>;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor() {
+    super("SpeculativeDecodingService");
     this.config = {
       draftModel: "",
       primaryModel: "",
@@ -60,8 +61,9 @@ class SpeculativeDecodingService {
       maxDraftTokens: 256,
       enabled: false,
     };
+    this.modelPairs = this.createManagedMap<string, ModelPair>({ maxSize: 50, strategy: "lru" });
+    this.performanceStats = this.createManagedMap<string, { avgSpeedup: number; uses: number }>({ maxSize: 200, strategy: "lru" });
     this.initializeModelPairs();
-    logger.info("SpeculativeDecodingService initialized");
   }
 
   static getInstance(): SpeculativeDecodingService {
@@ -145,12 +147,12 @@ class SpeculativeDecodingService {
       this.modelPairs.set(name, pair);
     }
 
-    logger.info("Speculative model pairs initialized", { count: pairs.length });
+    this.log("Speculative model pairs initialized", { count: pairs.length });
   }
 
   configure(config: Partial<SpeculativeConfig>): void {
     this.config = { ...this.config, ...config };
-    logger.info("SpeculativeDecodingService configured", {
+    this.log("SpeculativeDecodingService configured", {
       enabled: this.config.enabled,
       draftModel: this.config.draftModel,
       primaryModel: this.config.primaryModel,
@@ -166,20 +168,20 @@ class SpeculativeDecodingService {
   }
 
   getModelPairs(): Map<string, ModelPair> {
-    return new Map(this.modelPairs);
+    return new Map(this.modelPairs.entries());
   }
 
   selectOptimalPair(primaryModel: string): ModelPair | null {
     const primaryFamily = localModelOptimizerService.detectModelFamily(primaryModel);
     
-    const pairs = Array.from(this.modelPairs.entries());
+    const pairs = this.modelPairs.entries();
     for (const [, pair] of pairs) {
       if (pair.primary.family === primaryFamily) {
         return pair;
       }
     }
 
-    const crossFamilyPairs = Array.from(this.modelPairs.values())
+    const crossFamilyPairs = this.modelPairs.values()
       .filter(p => p.draft.speedFactor >= 2.5)
       .sort((a, b) => b.draft.speedFactor - a.draft.speedFactor);
 
@@ -234,7 +236,7 @@ class SpeculativeDecodingService {
         Math.min(this.config.maxDraftTokens, options?.maxTokens || 2048)
       );
     } catch (error) {
-      logger.warn("Draft generation failed, falling back to primary", { error });
+      this.logWarn("Draft generation failed, falling back to primary", { error });
       const result = await this.fallbackGeneration(systemPrompt, userPrompt, options?.maxTokens);
       return {
         content: result,
@@ -286,7 +288,7 @@ class SpeculativeDecodingService {
         finalContent = this.mergeDraftAndVerification(draftContent, finalContent, verification);
       }
     } catch (error) {
-      logger.warn("Verification failed, using draft", { error });
+      this.logWarn("Verification failed, using draft", { error });
       finalContent = draftContent;
       acceptedTokens = draftTokens;
     }
@@ -301,7 +303,7 @@ class SpeculativeDecodingService {
 
     options?.onProgress?.({ stage: "complete", content: finalContent });
 
-    logger.info("Speculative decoding completed", {
+    this.log("Speculative decoding completed", {
       draftTokens,
       acceptedTokens,
       rejectedTokens,
@@ -468,7 +470,7 @@ IMPORTANT: Output ONLY the final code. Do not explain changes.`
   }
 
   getPerformanceStats(): Map<string, { avgSpeedup: number; uses: number }> {
-    return new Map(this.performanceStats);
+    return new Map(this.performanceStats.entries());
   }
 
   async streamWithSpeculativeDecoding(
@@ -571,12 +573,12 @@ IMPORTANT: Output ONLY the final code. Do not explain changes.`
     }
     this.modelPairs.clear();
     this.performanceStats.clear();
-    logger.info("SpeculativeDecodingService destroyed");
+    this.log("SpeculativeDecodingService shut down");
   }
 
   registerModelPair(name: string, pair: ModelPair): void {
     this.modelPairs.set(name, pair);
-    logger.info("Model pair registered", { name, draft: pair.draft.model, primary: pair.primary.model });
+    this.log("Model pair registered", { name, draft: pair.draft.model, primary: pair.primary.model });
   }
 }
 

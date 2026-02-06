@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { localModelOptimizerService } from "./local-model-optimizer.service";
 
 export interface ModelTier {
@@ -45,12 +46,12 @@ export interface RoutingConfig {
   };
 }
 
-class ModelRouterService {
+class ModelRouterService extends BaseService {
   private static instance: ModelRouterService;
   private config: RoutingConfig;
-  private modelTiers: Map<string, ModelTier> = new Map();
+  private modelTiers: ManagedMap<string, ModelTier>;
   private routingHistory: Array<{ task: string; tier: string; success: boolean; timestamp: number }> = [];
-  private outcomeHistory: Map<string, { taskId: string; model: string; success: boolean; durationMs: number; timestamp: number }> = new Map();
+  private outcomeHistory: ManagedMap<string, { taskId: string; model: string; success: boolean; durationMs: number; timestamp: number }>;
   private outcomeTTL = 30 * 60 * 1000;
   private evictionInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -61,6 +62,7 @@ class ModelRouterService {
   };
 
   private constructor() {
+    super("ModelRouterService");
     this.config = {
       enabled: true,
       fastModel: "qwen2.5-coder-7b",
@@ -76,9 +78,10 @@ class ModelRouterService {
       },
     };
     
+    this.modelTiers = this.createManagedMap<string, ModelTier>({ maxSize: 200, strategy: "lru" });
+    this.outcomeHistory = this.createManagedMap<string, { taskId: string; model: string; success: boolean; durationMs: number; timestamp: number }>({ maxSize: 500, strategy: "lru" });
     this.initializeModelTiers();
     this.evictionInterval = setInterval(() => this.evictExpiredOutcomes(), this.outcomeTTL);
-    logger.info("ModelRouterService initialized");
   }
 
   static getInstance(): ModelRouterService {
@@ -154,7 +157,7 @@ class ModelRouterService {
 
   configure(config: Partial<RoutingConfig>): void {
     this.config = { ...this.config, ...config };
-    logger.info("ModelRouterService configured", { config: this.config });
+    this.log("ModelRouterService configured", { config: this.config });
   }
 
   isEnabled(): boolean {
@@ -348,7 +351,7 @@ class ModelRouterService {
   private getAlternativeModels(tier: "fast" | "balanced" | "powerful"): ModelTier[] {
     const alternatives: ModelTier[] = [];
     
-    for (const modelTier of Array.from(this.modelTiers.values())) {
+    for (const modelTier of this.modelTiers.values()) {
       if (modelTier.speedTier === tier) {
         alternatives.push(modelTier);
       }
@@ -411,11 +414,11 @@ class ModelRouterService {
 
   registerModelTier(tier: ModelTier): void {
     this.modelTiers.set(tier.id, tier);
-    logger.info("Model tier registered", { id: tier.id, name: tier.name });
+    this.log("Model tier registered", { id: tier.id, name: tier.name });
   }
 
   getAvailableTiers(): ModelTier[] {
-    return Array.from(this.modelTiers.values());
+    return this.modelTiers.values();
   }
 
   getConfig(): RoutingConfig {
@@ -489,7 +492,7 @@ class ModelRouterService {
 
   recordOutcome(taskId: string, model: string, success: boolean, durationMs: number): void {
     if (this.outcomeHistory.size >= 500) {
-      const firstKey = Array.from(this.outcomeHistory.keys())[0];
+      const firstKey = this.outcomeHistory.keys()[0];
       if (firstKey) {
         this.outcomeHistory.delete(firstKey);
       }
@@ -507,7 +510,7 @@ class ModelRouterService {
   private evictExpiredOutcomes(): void {
     const now = Date.now();
     const keysToDelete: string[] = [];
-    for (const [key, entry] of Array.from(this.outcomeHistory.entries())) {
+    for (const [key, entry] of this.outcomeHistory.entries()) {
       if (now - entry.timestamp > this.outcomeTTL) {
         keysToDelete.push(key);
       }
@@ -522,7 +525,7 @@ class ModelRouterService {
 
     const stats = new Map<string, { successes: number; total: number; avgDuration: number }>();
 
-    for (const entry of Array.from(this.outcomeHistory.values())) {
+    for (const entry of this.outcomeHistory.values()) {
       if (!candidates.includes(entry.model)) continue;
       const existing = stats.get(entry.model) || { successes: 0, total: 0, avgDuration: 0 };
       existing.total++;
@@ -557,6 +560,7 @@ class ModelRouterService {
     this.modelTiers.clear();
     this.outcomeHistory.clear();
     this.routingHistory = [];
+    this.log("ModelRouterService destroyed");
   }
 }
 

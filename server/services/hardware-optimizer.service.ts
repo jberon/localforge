@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 import * as os from "os";
 
 export interface HardwareProfile {
@@ -63,16 +63,17 @@ const APPLE_SILICON_PROFILES: Record<string, AppleSiliconProfile> = {
   "m4-max": { chip: "M4 Max", gpuCores: 40, neuralEngineCores: 16, memoryBandwidthGBps: 546, maxUnifiedMemoryGB: 128 },
 };
 
-class HardwareOptimizerService {
+class HardwareOptimizerService extends BaseService {
   private static instance: HardwareOptimizerService;
   private profile: HardwareProfile | null = null;
   private appleSiliconProfile: AppleSiliconProfile | null = null;
   private forceM4ProProfile: boolean = false;
 
   private constructor() {
+    super("HardwareOptimizerService");
     this.forceM4ProProfile = process.env.FORCE_M4_PRO_PROFILE === "true";
     this.detectHardware();
-    logger.info("HardwareOptimizerService initialized", {
+    this.log("Hardware detection complete", {
       profile: this.profile,
       forceM4Pro: this.forceM4ProProfile,
     });
@@ -154,7 +155,7 @@ class HardwareOptimizerService {
       recommendedContextLength: this.calculateRecommendedContextLength(totalMemoryGB),
     };
 
-    logger.info("M4 Pro profile override applied", {
+    this.log("M4 Pro profile override applied", {
       chip: m4Pro.chip,
       gpuCores: m4Pro.gpuCores,
       neuralEngineCores: m4Pro.neuralEngineCores,
@@ -176,7 +177,7 @@ class HardwareOptimizerService {
     }
 
     this.appleSiliconProfile = APPLE_SILICON_PROFILES[chipKey] || null;
-    logger.info("Apple Silicon chip detected", { cpuModel, chipKey, memoryGB, method: directMatch ? "model-string" : "memory-heuristic" });
+    this.log("Apple Silicon chip detected", { cpuModel, chipKey, memoryGB, method: directMatch ? "model-string" : "memory-heuristic" });
   }
 
   private matchChipFromModelString(model: string): string | null {
@@ -404,6 +405,12 @@ class HardwareOptimizerService {
     const memoryUsageGB = Math.round((modelSizeGB + kvCacheGB) * 10) / 10;
 
     return { tokensPerSecond, firstTokenLatencyMs, memoryUsageGB };
+  }
+
+  destroy(): void {
+    this.profile = null;
+    this.appleSiliconProfile = null;
+    this.log("HardwareOptimizerService shutting down");
   }
 }
 

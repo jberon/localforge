@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { getLLMConfig } from "../llm-client";
 
 export interface EmbeddingResult {
@@ -33,15 +33,16 @@ interface CachedEmbedding {
   createdAt: number;
 }
 
-class LocalEmbeddingService {
+class LocalEmbeddingService extends BaseService {
   private static instance: LocalEmbeddingService;
   private config: EmbeddingConfig;
-  private embeddingCache: Map<string, CachedEmbedding> = new Map();
+  private embeddingCache: ManagedMap<string, CachedEmbedding>;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private cacheMaxSize = 10000;
   private cacheTTLMs = 60 * 60 * 1000;
 
   private constructor() {
+    super("LocalEmbeddingService");
     const llmConfig = getLLMConfig();
     this.config = {
       model: "nomic-embed-text",
@@ -51,9 +52,9 @@ class LocalEmbeddingService {
       cacheEnabled: true,
       enabled: true,
     };
+    this.embeddingCache = this.createManagedMap<string, CachedEmbedding>({ maxSize: 1000, strategy: "lru" });
     
     this.startCacheCleanup();
-    logger.info("LocalEmbeddingService initialized");
   }
 
   static getInstance(): LocalEmbeddingService {
@@ -65,7 +66,7 @@ class LocalEmbeddingService {
 
   configure(config: Partial<EmbeddingConfig>): void {
     this.config = { ...this.config, ...config };
-    logger.info("LocalEmbeddingService configured", { config: this.config });
+    this.log("LocalEmbeddingService configured", { config: this.config });
   }
 
   isEnabled(): boolean {
@@ -108,7 +109,7 @@ class LocalEmbeddingService {
       
       return embedding;
     } catch (error) {
-      logger.warn("Embedding API failed, using fallback", { error });
+      this.logWarn("Embedding API failed, using fallback", { error });
       return this.generateFallbackEmbedding(text);
     }
   }
@@ -200,7 +201,7 @@ class LocalEmbeddingService {
           results.push(embeddings[j] || this.generateFallbackEmbedding(batch[j]));
         }
       } catch (error) {
-        logger.warn("Batch embedding failed", { error, batchSize: batch.length });
+        this.logWarn("Batch embedding failed", { error, batchSize: batch.length });
         for (const text of batch) {
           results.push(this.generateFallbackEmbedding(text));
         }
@@ -265,7 +266,7 @@ class LocalEmbeddingService {
     const matches = similarities.slice(0, topK);
     const searchTimeMs = Date.now() - startTime;
     
-    logger.info("Semantic search completed", {
+    this.log("Semantic search completed", {
       documents: documents.length,
       topK,
       searchTimeMs,
@@ -355,7 +356,7 @@ class LocalEmbeddingService {
   private enforceCache(): void {
     if (this.embeddingCache.size < this.cacheMaxSize) return;
     
-    const entries = Array.from(this.embeddingCache.entries())
+    const entries = this.embeddingCache.entries()
       .sort((a, b) => a[1].createdAt - b[1].createdAt);
     
     const toRemove = Math.floor(this.cacheMaxSize * 0.2);
@@ -367,7 +368,7 @@ class LocalEmbeddingService {
   private startCacheCleanup(): void {
     this.cleanupTimer = setInterval(() => {
       const now = Date.now();
-      for (const [key, value] of Array.from(this.embeddingCache.entries())) {
+      for (const [key, value] of this.embeddingCache.entries()) {
         if (now - value.createdAt >= this.cacheTTLMs) {
           this.embeddingCache.delete(key);
         }
@@ -389,7 +390,7 @@ class LocalEmbeddingService {
       this.cleanupTimer = null;
     }
     this.embeddingCache.clear();
-    logger.info("LocalEmbeddingService destroyed");
+    this.log("LocalEmbeddingService shut down");
   }
 
   clearCache(): void {

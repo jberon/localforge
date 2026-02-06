@@ -1,5 +1,7 @@
 import logger from "../lib/logger";
 import { EventEmitter } from "events";
+import { ManagedMap } from "../lib/base-service";
+import { serviceRegistry } from "../lib/service-registry";
 
 interface PerformanceMetric {
   id: string;
@@ -59,13 +61,14 @@ interface ActiveOperation {
 class PerformanceProfilerService extends EventEmitter {
   private static instance: PerformanceProfilerService;
   private metrics: PerformanceMetric[] = [];
-  private activeOperations = new Map<string, ActiveOperation>();
+  private activeOperations: ManagedMap<string, ActiveOperation> = new ManagedMap({ maxSize: 200, strategy: "lru" });
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private maxMetrics = 1000;
   private operationTimeout = 300000;
 
   private constructor() {
     super();
+    serviceRegistry.register("PerformanceProfilerService", this);
     this.startCleanupInterval();
   }
 
@@ -92,7 +95,7 @@ class PerformanceProfilerService extends EventEmitter {
 
   private checkStaleOperations(): void {
     const now = Date.now();
-    for (const [id, op] of Array.from(this.activeOperations.entries())) {
+    for (const [id, op] of this.activeOperations.entries()) {
       if (now - op.metric.startTime > this.operationTimeout) {
         this.endOperation(id, false, "Operation timed out");
       }
@@ -359,7 +362,7 @@ class PerformanceProfilerService extends EventEmitter {
   }
 
   getActiveOperations(): PerformanceMetric[] {
-    return Array.from(this.activeOperations.values()).map(op => ({
+    return this.activeOperations.values().map(op => ({
       ...op.metric,
       duration: Date.now() - op.metric.startTime,
     }));
@@ -370,14 +373,15 @@ class PerformanceProfilerService extends EventEmitter {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
-    for (const [, op] of this.activeOperations) {
+    for (const [, op] of this.activeOperations.entries()) {
       if (op.timeout) {
         clearTimeout(op.timeout);
       }
     }
     this.activeOperations.clear();
     this.metrics = [];
-    logger.info("PerformanceProfilerService destroyed");
+    this.removeAllListeners();
+    logger.info("PerformanceProfilerService shut down");
   }
 
   clearMetrics(): void {

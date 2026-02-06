@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface Template {
   id: string;
@@ -51,12 +51,15 @@ interface ProjectAnalysis {
   existingPatterns: string[];
 }
 
-class SmartTemplatesService {
+class SmartTemplatesService extends BaseService {
   private static instance: SmartTemplatesService;
-  private templates: Map<string, Template> = new Map();
-  private projectAnalyses: Map<string, ProjectAnalysis> = new Map();
+  private templates: ManagedMap<string, Template>;
+  private projectAnalyses: ManagedMap<string, ProjectAnalysis>;
 
   private constructor() {
+    super("SmartTemplatesService");
+    this.templates = this.createManagedMap({ maxSize: 200, strategy: "lru" });
+    this.projectAnalyses = this.createManagedMap({ maxSize: 200, strategy: "lru" });
     this.initializeBuiltInTemplates();
   }
 
@@ -383,7 +386,7 @@ export function {{PageName}}Page() {
     };
 
     this.templates.set(id, newTemplate);
-    logger.info("Template added", { id, name: template.name });
+    this.log("Template added", { id, name: template.name });
     return newTemplate;
   }
 
@@ -504,6 +507,12 @@ export function {{PageName}}Page() {
 
   deleteTemplate(templateId: string): boolean {
     return this.templates.delete(templateId);
+  }
+
+  destroy(): void {
+    this.templates.clear();
+    this.projectAnalyses.clear();
+    this.log("SmartTemplatesService shutting down");
   }
 }
 

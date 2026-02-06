@@ -23,6 +23,7 @@ import { DreamTeamThinkingTab } from "@/components/dream-team-thinking-tab";
 import { TaskProgressPanel, type TaskItem } from "@/components/task-progress-panel";
 import { PlanBuildModeToggle, ModeIndicator, PlanModeInfo, DiscussModeInfo, type AgentMode } from "@/components/plan-build-mode-toggle";
 import { PlanModeTaskList, PlanProgress, type PlanTask } from "@/components/plan-mode-task-list";
+import { HomeHeader } from "@/components/home-header";
 import { HomePanelsProvider, useHomePanels } from "@/contexts/home-panels-context";
 import { GenerationProvider, useGeneration } from "@/contexts/generation-context";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useLLMConnection } from "@/hooks/use-llm-connection";
 import { useProjectMutations } from "@/hooks/use-project-mutations";
+import { usePlanBuild } from "@/hooks/use-plan-build";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
@@ -171,20 +173,23 @@ function HomeInner() {
   const [testModeConnected, setTestModeConnected] = useState(false);
   
   // Plan & Build mode state (Replit-style)
-  const [agentMode, setAgentMode] = useState<AgentMode>("plan"); // Default to plan mode (Replit-style)
-  const [planTasks, setPlanTasks] = useState<PlanTask[]>([]);
-  const [planSummary, setPlanSummary] = useState<string>("");
-  const [planArchitecture, setPlanArchitecture] = useState<string>("");
-  const [currentPlanTaskIndex, setCurrentPlanTaskIndex] = useState(-1);
-  const [isPlanning, setIsPlanning] = useState(false);
-  const [isBuilding, setIsBuilding] = useState(false);
-  const [isApproving, setIsApproving] = useState(false);
-  const [streamingPlan, setStreamingPlan] = useState("");
-  const [detectedIntent, setDetectedIntent] = useState<RequestIntent | null>(null);
-  const [autoRouting, setAutoRouting] = useState(true);
-  const [orchestratorPhase, setOrchestratorPhase] = useState<string | null>(null);
-  const [orchestratorThinking, setOrchestratorThinking] = useState<{model: string; content: string} | null>(null);
-  const [orchestratorTasks, setOrchestratorTasks] = useState<{ tasks: TaskItem[]; completedCount: number; totalCount: number }>({ tasks: [], completedCount: 0, totalCount: 0 });
+  const planBuild = usePlanBuild();
+  const {
+    agentMode, setAgentMode,
+    planTasks, setPlanTasks,
+    planSummary, setPlanSummary,
+    planArchitecture, setPlanArchitecture,
+    currentPlanTaskIndex, setCurrentPlanTaskIndex,
+    isPlanning, setIsPlanning,
+    isBuilding, setIsBuilding,
+    isApproving, setIsApproving,
+    streamingPlan, setStreamingPlan,
+    detectedIntent, setDetectedIntent,
+    autoRouting, setAutoRouting,
+    orchestratorPhase, setOrchestratorPhase,
+    orchestratorThinking, setOrchestratorThinking,
+    orchestratorTasks, setOrchestratorTasks,
+  } = planBuild;
   const [dreamTeamExpanded, setDreamTeamExpanded] = useState(true);
   const [dualModelSettings, setDualModelSettings] = useState<DualModelSettingsType>({
     mode: "auto",
@@ -1669,59 +1674,18 @@ function HomeInner() {
       </div>
 
       <div className="flex flex-col flex-1 min-w-0">
-        <header className="flex items-center justify-between gap-4 px-3 h-9 min-h-[36px] border-b border-border/40 bg-muted/30 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1.5 min-w-0 hover-elevate rounded-md px-1.5 py-0.5" data-testid="button-project-selector">
-                  <span className="text-sm font-medium truncate" data-testid="text-chat-project-name">
-                    {activeProject?.name || "New Project"}
-                  </span>
-                  <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuItem onClick={() => createProject()} data-testid="menu-new-project">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Project
-                </DropdownMenuItem>
-                {projects.length > 0 && <DropdownMenuSeparator />}
-                {projects.map((project) => (
-                  <DropdownMenuItem
-                    key={project.id}
-                    onClick={() => setActiveProjectId(project.id)}
-                    className={project.id === activeProjectId ? "bg-accent" : ""}
-                    data-testid={`menu-project-${project.id}`}
-                  >
-                    <span className="truncate">{project.name}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {testModeActive && (
-              <Badge 
-                variant="secondary" 
-                className={`${testModeConnected ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'} border text-xs`}
-                data-testid="badge-test-mode"
-                title={testModeConnected ? "Test Mode: Connected to Replit AI" : "Test Mode: Not Connected"}
-              >
-                <FlaskConical className="w-3 h-3 mr-1" />
-                Test
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {activeProject && (
-              <DeployButton
-                projectId={parseInt(activeProject.id) || 0}
-                projectName={activeProject.name}
-                hasBackend={true}
-                hasDatabase={false}
-                disabled={isGenerating || isPlanning || isBuilding}
-              />
-            )}
-          </div>
-        </header>
+        <HomeHeader
+          activeProject={activeProject}
+          activeProjectId={activeProjectId}
+          projects={projects}
+          testModeActive={testModeActive}
+          testModeConnected={testModeConnected}
+          isGenerating={isGenerating}
+          isPlanning={isPlanning}
+          isBuilding={isBuilding}
+          onCreateProject={() => createProject()}
+          onSelectProject={(id) => setActiveProjectId(id)}
+        />
 
         <div className="flex-1 overflow-hidden relative">
           <ResizablePanelGroup direction="horizontal">

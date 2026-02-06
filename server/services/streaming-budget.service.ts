@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export interface StreamingMetrics {
   tokenCount: number;
@@ -37,16 +37,17 @@ export interface QualitySignals {
   structureScore: number;
 }
 
-class StreamingBudgetService {
+class StreamingBudgetService extends BaseService {
   private static instance: StreamingBudgetService;
   private config: StreamingConfig;
-  private activeStreams: Map<string, StreamingSession> = new Map();
+  private activeStreams: ManagedMap<string, StreamingSession>;
   private readonly maxActiveStreams = 50;
   private readonly sessionTimeoutMs = 5 * 60 * 1000;
-  private sessionStartTimes: Map<string, number> = new Map();
+  private sessionStartTimes: ManagedMap<string, number>;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor() {
+    super("StreamingBudgetService");
     this.config = {
       enabled: true,
       maxTokens: 8192,
@@ -58,18 +59,29 @@ class StreamingBudgetService {
       adaptiveAdjustment: true,
       earlyStopOnCompletion: true,
     };
+    this.activeStreams = this.createManagedMap<string, StreamingSession>({ maxSize: 50, strategy: "lru" });
+    this.sessionStartTimes = this.createManagedMap<string, number>({ maxSize: 50, strategy: "lru" });
     
     this.cleanupTimer = setInterval(() => this.evictStaleSessions(), 30000);
-    logger.info("StreamingBudgetService initialized");
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.activeStreams.clear();
+    this.sessionStartTimes.clear();
+    this.log("StreamingBudgetService shut down");
   }
 
   private evictStaleSessions(): void {
     const now = Date.now();
-    for (const [id, startTime] of Array.from(this.sessionStartTimes.entries())) {
+    for (const [id, startTime] of this.sessionStartTimes.entries()) {
       if (now - startTime > this.sessionTimeoutMs) {
         this.activeStreams.delete(id);
         this.sessionStartTimes.delete(id);
-        logger.warn("Evicted stale streaming session", { sessionId: id, ageMs: now - startTime });
+        this.logWarn("Evicted stale streaming session", { sessionId: id, ageMs: now - startTime });
       }
     }
   }
@@ -83,7 +95,7 @@ class StreamingBudgetService {
 
   configure(config: Partial<StreamingConfig>): void {
     this.config = { ...this.config, ...config };
-    logger.info("StreamingBudgetService configured", { config: this.config });
+    this.log("StreamingBudgetService configured", { config: this.config });
   }
 
   isEnabled(): boolean {
@@ -94,12 +106,12 @@ class StreamingBudgetService {
     if (this.activeStreams.size >= this.maxActiveStreams) {
       this.evictStaleSessions();
       if (this.activeStreams.size >= this.maxActiveStreams) {
-        const oldest = Array.from(this.sessionStartTimes.entries())
+        const oldest = this.sessionStartTimes.entries()
           .sort((a, b) => a[1] - b[1])[0];
         if (oldest) {
           this.activeStreams.delete(oldest[0]);
           this.sessionStartTimes.delete(oldest[0]);
-          logger.warn("Evicted oldest session to make room", { evictedId: oldest[0] });
+          this.logWarn("Evicted oldest session to make room", { evictedId: oldest[0] });
         }
       }
     }
@@ -114,7 +126,7 @@ class StreamingBudgetService {
     this.activeStreams.set(sessionId, session);
     this.sessionStartTimes.set(sessionId, Date.now());
     
-    logger.info("Streaming session started", { sessionId, taskType, maxTokens: session.maxTokens });
+    this.log("Streaming session started", { sessionId, taskType, maxTokens: session.maxTokens });
     
     return session;
   }
@@ -131,7 +143,7 @@ class StreamingBudgetService {
     this.activeStreams.delete(sessionId);
     this.sessionStartTimes.delete(sessionId);
     
-    logger.info("Streaming session ended", {
+    this.log("Streaming session ended", {
       sessionId,
       tokenCount: metrics.tokenCount,
       qualityScore: metrics.qualityScore,

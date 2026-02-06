@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface StyleProfile {
   projectId: string;
@@ -51,11 +51,14 @@ interface StyleAnalysis {
   confidence: number;
 }
 
-class StyleMemoryService {
+class StyleMemoryService extends BaseService {
   private static instance: StyleMemoryService;
-  private profiles: Map<string, StyleProfile> = new Map();
+  private profiles: ManagedMap<string, StyleProfile>;
 
-  private constructor() {}
+  private constructor() {
+    super("StyleMemoryService");
+    this.profiles = this.createManagedMap({ maxSize: 200, strategy: "lru" });
+  }
 
   static getInstance(): StyleMemoryService {
     if (!StyleMemoryService.instance) {
@@ -68,7 +71,7 @@ class StyleMemoryService {
     projectId: string,
     files: Array<{ path: string; content: string }>
   ): StyleAnalysis {
-    logger.info("Analyzing project style", { projectId, fileCount: files.length });
+    this.log("Analyzing project style", { projectId, fileCount: files.length });
 
     const analysis: StyleAnalysis = {
       detectedConventions: {},
@@ -163,7 +166,7 @@ class StyleMemoryService {
     };
 
     this.profiles.set(projectId, newProfile);
-    logger.info("Style profile updated", { projectId, libraryCount: analysis.detectedLibraries.length });
+    this.log("Style profile updated", { projectId, libraryCount: analysis.detectedLibraries.length });
 
     return analysis;
   }
@@ -318,7 +321,12 @@ class StyleMemoryService {
 
   clearProfile(projectId: string): void {
     this.profiles.delete(projectId);
-    logger.info("Style profile cleared", { projectId });
+    this.log("Style profile cleared", { projectId });
+  }
+
+  destroy(): void {
+    this.profiles.clear();
+    this.log("StyleMemoryService shutting down");
   }
 }
 

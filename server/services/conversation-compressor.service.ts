@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 export interface Message {
   role: "user" | "assistant" | "system";
@@ -41,11 +41,12 @@ interface ConversationSegment {
   decisions: string[];
 }
 
-class ConversationCompressorService {
+class ConversationCompressorService extends BaseService {
   private static instance: ConversationCompressorService;
   private config: CompressionConfig;
 
   private constructor() {
+    super("ConversationCompressorService");
     this.config = {
       enabled: true,
       maxMessages: 50,
@@ -57,7 +58,7 @@ class ConversationCompressorService {
       preserveUserPreferences: true,
     };
     
-    logger.info("ConversationCompressorService initialized");
+    this.log("ConversationCompressorService initialized");
   }
 
   static getInstance(): ConversationCompressorService {
@@ -69,7 +70,7 @@ class ConversationCompressorService {
 
   configure(config: Partial<CompressionConfig>): void {
     this.config = { ...this.config, ...config };
-    logger.info("ConversationCompressorService configured", { config: this.config });
+    this.log("ConversationCompressorService configured", { config: this.config });
   }
 
   isEnabled(): boolean {
@@ -124,7 +125,7 @@ class ConversationCompressorService {
     const compressedMessages = [summaryMessage, ...recentMessages];
     const compressedTokens = this.estimateTotalTokens(compressedMessages);
 
-    logger.info("Conversation compressed", {
+    this.log("Conversation compressed", {
       originalMessages: messages.length,
       compressedMessages: compressedMessages.length,
       originalTokens,
@@ -417,6 +418,10 @@ class ConversationCompressorService {
     ];
     
     return this.compressConversation(allMessages);
+  }
+
+  destroy(): void {
+    this.log("ConversationCompressorService destroyed");
   }
 }
 

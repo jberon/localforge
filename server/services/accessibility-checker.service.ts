@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileInfo {
   path: string;
@@ -56,11 +56,12 @@ interface AccessibilityPattern {
   suggestion: string;
 }
 
-class AccessibilityCheckerService {
+class AccessibilityCheckerService extends BaseService {
   private static instance: AccessibilityCheckerService;
   private patterns: AccessibilityPattern[];
 
   private constructor() {
+    super("AccessibilityCheckerService");
     this.patterns = this.initializePatterns();
   }
 
@@ -192,7 +193,7 @@ class AccessibilityCheckerService {
   }
 
   async checkAccessibility(files: FileInfo[]): Promise<AccessibilityResult> {
-    logger.info("Checking accessibility", { fileCount: files.length });
+    this.log("Checking accessibility", { fileCount: files.length });
 
     const issues: AccessibilityIssue[] = [];
     let filesScanned = 0;
@@ -221,7 +222,7 @@ class AccessibilityCheckerService {
     const score = this.calculateScore(summary);
     const recommendations = this.generateRecommendations(issues);
 
-    logger.info("Accessibility check completed", { 
+    this.log("Accessibility check completed", { 
       score, 
       issuesFound: issues.length,
       filesScanned,
@@ -351,6 +352,11 @@ class AccessibilityCheckerService {
 
   checkSingleFile(content: string, filePath: string): AccessibilityIssue[] {
     return this.checkFile({ path: filePath, content });
+  }
+
+  destroy(): void {
+    this.patterns = [];
+    this.log("AccessibilityCheckerService shutting down");
   }
 }
 

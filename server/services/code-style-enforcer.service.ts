@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FormatOptions {
   printWidth: number;
@@ -19,11 +19,12 @@ interface FormatResult {
   issues: string[];
 }
 
-class CodeStyleEnforcerService {
+class CodeStyleEnforcerService extends BaseService {
   private static instance: CodeStyleEnforcerService;
   private defaultOptions: FormatOptions;
 
   private constructor() {
+    super("CodeStyleEnforcerService");
     this.defaultOptions = {
       printWidth: 100,
       tabWidth: 2,
@@ -36,8 +37,6 @@ class CodeStyleEnforcerService {
       jsxSingleQuote: false,
       bracketSameLine: false,
     };
-
-    logger.info("CodeStyleEnforcerService initialized");
   }
 
   static getInstance(): CodeStyleEnforcerService {
@@ -47,9 +46,13 @@ class CodeStyleEnforcerService {
     return CodeStyleEnforcerService.instance;
   }
 
+  destroy(): void {
+    this.log("CodeStyleEnforcerService shutting down");
+  }
+
   setDefaultOptions(options: Partial<FormatOptions>): void {
     this.defaultOptions = { ...this.defaultOptions, ...options };
-    logger.info("Default format options updated", { options: this.defaultOptions });
+    this.log("Default format options updated", { options: this.defaultOptions });
   }
 
   formatCode(code: string, options?: Partial<FormatOptions>): FormatResult {

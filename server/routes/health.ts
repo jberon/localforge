@@ -5,15 +5,15 @@ import { sql } from "drizzle-orm";
 import { healthAlertsService } from "../services/health-alerts.service";
 import { resilienceService } from "../services/resilience.service";
 import { contextPruningService } from "../services/context-pruning.service";
+import { asyncHandler } from "../lib/async-handler";
 
 const router = Router();
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const startTime = Date.now();
   
   const checks: Record<string, { status: "healthy" | "unhealthy" | "degraded"; latencyMs?: number; error?: string }> = {};
   
-  // Check database - handle null db (MemoryStorage mode)
   if (db) {
     try {
       const dbStart = Date.now();
@@ -64,10 +64,9 @@ router.get("/", async (req, res) => {
     responseTimeMs: Date.now() - startTime,
     checks,
   });
-});
+}));
 
-router.get("/ready", async (req, res) => {
-  // In MemoryStorage mode, we're always ready
+router.get("/ready", asyncHandler(async (req, res) => {
   if (!db) {
     res.json({ ready: true, mode: "memory" });
     return;
@@ -79,32 +78,27 @@ router.get("/ready", async (req, res) => {
   } catch (error) {
     res.status(503).json({ ready: false, error: "Database not ready" });
   }
-});
+}));
 
 router.get("/live", (req, res) => {
   res.json({ alive: true, timestamp: Date.now() });
 });
 
-router.get("/dashboard", async (req, res) => {
+router.get("/dashboard", asyncHandler(async (req, res) => {
   const startTime = Date.now();
   
-  // Gather comprehensive health data for the dashboard
   const memUsage = process.memoryUsage();
   const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
   const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
   const rssMB = Math.round(memUsage.rss / 1024 / 1024);
   
-  // Get health alerts status
   const healthStatus = healthAlertsService.getHealthStatus();
   const alerts = healthAlertsService.getAlerts({ limit: 20 });
   
-  // Get resilience stats
   const resilienceStats = resilienceService.getStats();
   
-  // Get token estimation stats
   const tokenStats = contextPruningService.getEstimationStats();
   
-  // Database check
   let dbStatus = { connected: false, latencyMs: 0 };
   if (db) {
     try {
@@ -116,7 +110,6 @@ router.get("/dashboard", async (req, res) => {
     }
   }
   
-  // LLM connection check - uses active provider (local or cloud)
   let llmStatus = { connected: false, latencyMs: 0, provider: "local", isCloud: false };
   try {
     const llmStart = Date.now();
@@ -185,6 +178,6 @@ router.get("/dashboard", async (req, res) => {
       timestamp: a.timestamp,
     })),
   });
-});
+}));
 
 export default router;

@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import * as crypto from "crypto";
 
 export interface CacheEntry {
@@ -48,18 +48,22 @@ interface ConversationContext {
   projectId: string;
 }
 
-class KVCacheService {
+class KVCacheService extends BaseService {
   private static instance: KVCacheService;
-  private cache: Map<string, CacheEntry> = new Map();
-  private contextIndex: Map<string, Set<string>> = new Map();
+  private cache: ManagedMap<string, CacheEntry>;
+  private contextIndex: ManagedMap<string, Set<string>>;
   private stats = {
     hits: 0,
     misses: 0,
     totalTimeSavedMs: 0,
   };
   private config: CacheConfig;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor() {
+    super("KVCacheService");
+    this.cache = this.createManagedMap<string, CacheEntry>({ maxSize: 1000, strategy: "lru" });
+    this.contextIndex = this.createManagedMap<string, Set<string>>({ maxSize: 200, strategy: "lru" });
     this.config = {
       maxEntries: 100,
       maxTokensPerEntry: 8192,
@@ -70,7 +74,16 @@ class KVCacheService {
     };
     
     this.startCleanupInterval();
-    logger.info("KVCacheService initialized");
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.cache.clear();
+    this.contextIndex.clear();
+    this.log("KVCacheService shut down");
   }
 
   static getInstance(): KVCacheService {
@@ -82,7 +95,7 @@ class KVCacheService {
 
   configure(config: Partial<CacheConfig>): void {
     this.config = { ...this.config, ...config };
-    logger.info("KVCacheService configured", { config: this.config });
+    this.log("KVCacheService configured", { config: this.config });
   }
 
   isEnabled(): boolean {
@@ -137,7 +150,7 @@ class KVCacheService {
       const timeSavedMs = this.estimateTimeSaved(exactMatch.tokenCount);
       this.stats.totalTimeSavedMs += timeSavedMs;
 
-      logger.info("KV cache hit (exact)", {
+      this.log("KV cache hit (exact)", {
         projectId,
         tokensCached: exactMatch.tokenCount,
         timeSavedMs,
@@ -201,7 +214,7 @@ class KVCacheService {
     }
 
     if (bestMatch) {
-      logger.info("KV cache hit (prefix)", {
+      this.log("KV cache hit (prefix)", {
         projectId,
         prefixLength: maxPrefixLength,
         timeSavedMs: bestMatch.timeSavedMs,
@@ -269,7 +282,7 @@ class KVCacheService {
       messages.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
 
     if (tokenCount > this.config.maxTokensPerEntry) {
-      logger.warn("Context too large for cache", { tokenCount, max: this.config.maxTokensPerEntry });
+      this.logWarn("Context too large for cache", { tokenCount, max: this.config.maxTokensPerEntry });
       return "";
     }
 
@@ -294,7 +307,7 @@ class KVCacheService {
     }
     this.contextIndex.get(projectId)!.add(cacheKey);
 
-    logger.info("Context cached", { projectId, tokenCount, cacheKey: cacheKey.slice(0, 20) });
+    this.log("Context cached", { projectId, tokenCount, cacheKey: cacheKey.slice(0, 20) });
 
     return cacheKey;
   }
@@ -311,7 +324,7 @@ class KVCacheService {
     }
 
     this.contextIndex.delete(projectId);
-    logger.info("Project cache invalidated", { projectId, entriesRemoved: count });
+    this.log("Project cache invalidated", { projectId, entriesRemoved: count });
 
     return count;
   }
@@ -331,13 +344,13 @@ class KVCacheService {
   private enforceCapacity(): void {
     if (this.cache.size < this.config.maxEntries) {
       let totalTokens = 0;
-      for (const entry of Array.from(this.cache.values())) {
+      for (const entry of this.cache.values()) {
         totalTokens += entry.tokenCount;
       }
       if (totalTokens < this.config.maxTotalTokens) return;
     }
 
-    const entries = Array.from(this.cache.entries())
+    const entries = this.cache.entries()
       .sort((a, b) => {
         const scoreA = this.calculateEvictionScore(a[1]);
         const scoreB = this.calculateEvictionScore(b[1]);
@@ -349,7 +362,7 @@ class KVCacheService {
       this.invalidateEntry(entries[i][0]);
     }
 
-    logger.info("Cache eviction completed", { removed: toRemove, remaining: this.cache.size });
+    this.log("Cache eviction completed", { removed: toRemove, remaining: this.cache.size });
   }
 
   private calculateEvictionScore(entry: CacheEntry): number {
@@ -362,7 +375,7 @@ class KVCacheService {
   }
 
   private startCleanupInterval(): void {
-    setInterval(() => {
+    this.cleanupTimer = setInterval(() => {
       this.cleanupExpired();
     }, 5 * 60 * 1000);
   }
@@ -371,7 +384,7 @@ class KVCacheService {
     const now = Date.now();
     let removed = 0;
 
-    for (const [key, entry] of Array.from(this.cache.entries())) {
+    for (const [key, entry] of this.cache.entries()) {
       if (now - entry.createdAt >= this.config.ttlMs) {
         this.invalidateEntry(key);
         removed++;
@@ -379,7 +392,7 @@ class KVCacheService {
     }
 
     if (removed > 0) {
-      logger.info("Expired cache entries cleaned", { removed });
+      this.log("Expired cache entries cleaned", { removed });
     }
   }
 
@@ -387,7 +400,7 @@ class KVCacheService {
     let totalTokens = 0;
     let memoryBytes = 0;
 
-    for (const entry of Array.from(this.cache.values())) {
+    for (const entry of this.cache.values()) {
       totalTokens += entry.tokenCount;
       memoryBytes += entry.cacheData.length * 2;
     }
@@ -424,7 +437,7 @@ class KVCacheService {
     this.cache.clear();
     this.contextIndex.clear();
     this.stats = { hits: 0, misses: 0, totalTimeSavedMs: 0 };
-    logger.info("KV cache cleared");
+    this.log("KV cache cleared");
   }
 
   resetStats(): void {

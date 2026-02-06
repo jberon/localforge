@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { contextPruningService } from "./context-pruning.service";
 import { resilienceService } from "./resilience.service";
 
@@ -34,7 +34,6 @@ export interface SmartRetryResult {
   modifications: RetryModification[];
 }
 
-// Built-in retry strategies
 const STRATEGIES: RetryStrategy[] = [
   {
     name: "reduce_context",
@@ -43,7 +42,6 @@ const STRATEGIES: RetryStrategy[] = [
       const contextTokens = contextPruningService.estimateTokens(ctx.context || "");
       const promptTokens = contextPruningService.estimateTokens(ctx.originalPrompt);
       
-      // Reduce context to half
       let reducedContext = ctx.context || "";
       if (contextTokens > 1000) {
         const targetLength = Math.floor(reducedContext.length / 2);
@@ -64,22 +62,12 @@ const STRATEGIES: RetryStrategy[] = [
     name: "simplify_prompt",
     description: "Simplify the prompt to focus on core requirements",
     apply: (ctx: RetryContext): RetryModification => {
-      // Remove verbose language and focus on key requirements
       let simplified = ctx.originalPrompt;
       
-      // Remove qualifiers and hedging language
       simplified = simplified.replace(/\b(please|kindly|if possible|maybe|perhaps|could you|would you)\b/gi, "");
-      
-      // Remove explanatory phrases
       simplified = simplified.replace(/\b(I would like|I want|I need|I think|I believe|in my opinion)\b/gi, "");
-      
-      // Remove filler words
       simplified = simplified.replace(/\b(very|really|quite|rather|somewhat|fairly)\b/gi, "");
-      
-      // Compact whitespace
       simplified = simplified.replace(/\s+/g, " ").trim();
-      
-      // Add explicit instruction
       simplified = `TASK (simplified retry): ${simplified}`;
       
       return {
@@ -168,14 +156,17 @@ Original request: ${ctx.originalPrompt}`;
   },
 ];
 
-export class SmartRetryService {
+export class SmartRetryService extends BaseService {
   private static instance: SmartRetryService;
   
   private strategies: RetryStrategy[] = [...STRATEGIES];
-  private retryHistory: Map<string, SmartRetryResult> = new Map();
+  private retryHistory: ManagedMap<string, SmartRetryResult>;
   private readonly MAX_HISTORY = 500;
 
-  private constructor() {}
+  private constructor() {
+    super("SmartRetryService");
+    this.retryHistory = this.createManagedMap<string, SmartRetryResult>({ maxSize: 500, strategy: "lru" });
+  }
 
   static getInstance(): SmartRetryService {
     if (!SmartRetryService.instance) {
@@ -187,7 +178,6 @@ export class SmartRetryService {
   selectStrategy(ctx: RetryContext): RetryStrategy {
     const errorMessage = ctx.error.message.toLowerCase();
     
-    // Strategy selection based on error type
     if (errorMessage.includes("token") || errorMessage.includes("length") || errorMessage.includes("too long")) {
       return this.getStrategy("reduce_context") || this.strategies[0];
     }
@@ -204,7 +194,6 @@ export class SmartRetryService {
       return this.getStrategy("break_into_steps") || this.strategies[0];
     }
     
-    // Default strategy progression based on attempt number
     const strategyOrder = [
       "error_context",
       "simplify_prompt",
@@ -226,7 +215,7 @@ export class SmartRetryService {
     const strategy = this.selectStrategy(ctx);
     const modification = strategy.apply(ctx);
     
-    logger.info("Smart retry strategy applied", {
+    this.log("Smart retry strategy applied", {
       strategy: strategy.name,
       attempt: ctx.attemptNumber,
       reason: modification.reason,
@@ -258,7 +247,6 @@ export class SmartRetryService {
     let maxTokensOffset = 0;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      // Check circuit breaker before attempting
       if (!resilienceService.canExecute(circuitKey)) {
         throw new Error(`Circuit breaker open for ${circuitKey}`);
       }
@@ -272,7 +260,6 @@ export class SmartRetryService {
           maxTokensOffset
         );
         
-        // Record success with resilience service
         resilienceService.recordSuccess(circuitKey);
         
         return {
@@ -287,7 +274,6 @@ export class SmartRetryService {
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         
-        // Record failure with resilience service
         resilienceService.recordFailure(circuitKey, err);
         
         if (attempt >= maxAttempts) {
@@ -307,7 +293,6 @@ export class SmartRetryService {
         strategiesUsed.push(modification.strategyUsed);
         modifications.push(modification);
 
-        // Apply modifications
         currentPrompt = modification.prompt;
         currentSystemPrompt = modification.systemPrompt;
         currentContext = modification.context;
@@ -319,14 +304,13 @@ export class SmartRetryService {
           maxTokensOffset += modification.maxTokensAdjustment;
         }
 
-        // Use resilience service backoff for delay
         const backoffDelay = resilienceService.calculateBackoff(attempt);
         
         if (options?.onRetry) {
           options.onRetry(attempt, modification.strategyUsed, modification);
         }
 
-        logger.info("Smart retry attempt", {
+        this.log("Smart retry attempt", {
           attempt,
           strategy: modification.strategyUsed,
           promptLength: currentPrompt.length,
@@ -334,18 +318,16 @@ export class SmartRetryService {
           backoffDelay,
         });
 
-        // Wait before next attempt using resilience backoff
         await new Promise(resolve => setTimeout(resolve, backoffDelay));
       }
     }
 
-    // This should never be reached, but TypeScript needs it
     throw new Error("Max retry attempts exceeded");
   }
 
   addStrategy(strategy: RetryStrategy): void {
     this.strategies.push(strategy);
-    logger.info("Custom retry strategy added", { name: strategy.name });
+    this.log("Custom retry strategy added", { name: strategy.name });
   }
 
   removeStrategy(name: string): boolean {
@@ -364,19 +346,10 @@ export class SmartRetryService {
     }));
   }
 
-  private evictRetryHistory(): void {
-    if (this.retryHistory.size > this.MAX_HISTORY) {
-      const keys = Array.from(this.retryHistory.keys());
-      const toRemove = keys.slice(0, keys.length - this.MAX_HISTORY);
-      for (const key of toRemove) {
-        this.retryHistory.delete(key);
-      }
-    }
-  }
-
   destroy(): void {
     this.retryHistory.clear();
     this.strategies = [...STRATEGIES];
+    this.log("SmartRetryService destroyed");
   }
 
   analyzeError(error: Error): {

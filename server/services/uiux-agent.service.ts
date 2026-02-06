@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 export interface DesignIssue {
   id: string;
@@ -55,15 +55,15 @@ export interface ComponentPattern {
   violations: string[];
 }
 
-class UIUXAgentService {
+class UIUXAgentService extends BaseService {
   private static instance: UIUXAgentService;
   private designSystem: DesignSystem;
   private componentPatterns: ComponentPattern[] = [];
 
   private constructor() {
+    super("UIUXAgentService");
     this.designSystem = this.getDefaultDesignSystem();
     this.initializeComponentPatterns();
-    logger.info("UIUXAgentService initialized");
   }
 
   static getInstance(): UIUXAgentService {
@@ -592,6 +592,11 @@ class UIUXAgentService {
 
   private generateId(): string {
     return `ui_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  destroy(): void {
+    this.componentPatterns = [];
+    this.log("UIUXAgentService shutting down");
   }
 }
 

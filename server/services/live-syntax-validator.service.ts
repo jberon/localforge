@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface SyntaxError {
   line: number;
@@ -24,12 +24,13 @@ interface BracketState {
   jsx: number;
 }
 
-class LiveSyntaxValidatorService {
+class LiveSyntaxValidatorService extends BaseService {
   private static instance: LiveSyntaxValidatorService;
   private jsKeywords: Set<string>;
   private tsKeywords: Set<string>;
 
   private constructor() {
+    super("LiveSyntaxValidatorService");
     this.jsKeywords = new Set([
       "break", "case", "catch", "continue", "debugger", "default", "delete",
       "do", "else", "finally", "for", "function", "if", "in", "instanceof",
@@ -46,8 +47,6 @@ class LiveSyntaxValidatorService {
       "symbol", "undefined", "unknown", "void", "keyof", "readonly", "unique",
       "infer", "is", "module", "global", "require",
     ]);
-
-    logger.info("LiveSyntaxValidatorService initialized");
   }
 
   static getInstance(): LiveSyntaxValidatorService {
@@ -419,6 +418,10 @@ class LiveSyntaxValidatorService {
     }
 
     return hints;
+  }
+
+  destroy(): void {
+    this.log("LiveSyntaxValidatorService shutting down");
   }
 }
 

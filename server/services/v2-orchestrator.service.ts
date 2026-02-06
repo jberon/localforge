@@ -1,4 +1,5 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
+import logger from "../lib/logger";
 import { speculativeDecodingService } from "./speculative-decoding.service";
 import { quantizationDetectorService } from "./quantization-detector.service";
 import { kvCacheService } from "./kv-cache.service";
@@ -67,15 +68,17 @@ export interface V2GenerationResult {
   semanticContext?: string[];
 }
 
-class V2OrchestratorService {
+class V2OrchestratorService extends BaseService {
   private static instance: V2OrchestratorService;
   private config: V2Config;
   private initialized = false;
-  private promptHashCache: Map<string, { result: V2GenerationResult; timestamp: number }> = new Map();
+  private promptHashCache: ManagedMap<string, { result: V2GenerationResult; timestamp: number }>;
   private readonly promptCacheTTLMs = 60000;
   private readonly maxPromptCacheSize = 100;
 
   private constructor() {
+    super("V2OrchestratorService");
+    this.promptHashCache = this.createManagedMap({ maxSize: 1000, strategy: "lru" });
     this.config = {
       speculativeDecoding: true,
       quantizationAware: true,
@@ -106,28 +109,28 @@ class V2OrchestratorService {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    logger.info("Initializing V2 Orchestrator with all optimizations...");
+    this.log("Initializing V2 Orchestrator with all optimizations...");
 
     const profile = hardwareOptimizerService.getHardwareProfile();
     if (profile) {
-      logger.info("Hardware detected", { 
+      this.log("Hardware detected", { 
         platform: profile.platform, 
         cpuCores: profile.cpuCores,
         gpuType: profile.gpuType
       });
     }
 
-    logger.info("Local embeddings service ready", {
+    this.log("Local embeddings service ready", {
       enabled: localEmbeddingService.isEnabled()
     });
 
     this.initialized = true;
-    logger.info("V2 Orchestrator initialized successfully");
+    this.log("V2 Orchestrator initialized successfully");
   }
 
   configure(config: Partial<V2Config>): void {
     this.config = { ...this.config, ...config };
-    logger.info("V2 Orchestrator configured", { config: this.config });
+    this.log("V2 Orchestrator configured", { config: this.config });
   }
 
   private computePromptHash(context: V2GenerationContext): string {
@@ -229,7 +232,7 @@ class V2OrchestratorService {
             try {
               return await localEmbeddingService.getEmbedding(context.prompt);
             } catch (err) {
-              logger.warn("Local embedding lookup failed, continuing without", { error: String(err) });
+              this.logWarn("Local embedding lookup failed, continuing without", { error: String(err) });
               return [];
             }
           }
@@ -482,7 +485,7 @@ class V2OrchestratorService {
     const batches = parallelGenerationService.createBatches(tasks);
     const estimatedSpeedup = parallelGenerationService.estimateSpeedup(batches);
 
-    logger.info("Parallel generation prepared", {
+    this.log("Parallel generation prepared", {
       totalFiles: files.length,
       batches: batches.length,
       estimatedSpeedup,
@@ -563,7 +566,7 @@ class V2OrchestratorService {
 
     const changedCount = results.filter(r => r.result.changed).length;
     if (changedCount > 0) {
-      logger.info("Multiple files formatted", { total: files.length, changed: changedCount });
+      this.log("Multiple files formatted", { total: files.length, changed: changedCount });
     }
 
     return results.map(r => ({
@@ -746,6 +749,11 @@ class V2OrchestratorService {
 
   configureClosedLoop(config: Partial<FixConfig>): void {
     closedLoopAutoFixService.configure(config);
+  }
+
+  destroy(): void {
+    this.promptHashCache.clear();
+    this.log("V2OrchestratorService shutting down");
   }
 
   getEnhancedSystemStatus(): Record<string, unknown> {

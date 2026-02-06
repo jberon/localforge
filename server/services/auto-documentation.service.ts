@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileInfo {
   path: string;
@@ -37,10 +37,12 @@ interface FunctionInfo {
   isExported: boolean;
 }
 
-class AutoDocumentationService {
+class AutoDocumentationService extends BaseService {
   private static instance: AutoDocumentationService;
 
-  private constructor() {}
+  private constructor() {
+    super("AutoDocumentationService");
+  }
 
   static getInstance(): AutoDocumentationService {
     if (!AutoDocumentationService.instance) {
@@ -49,11 +51,15 @@ class AutoDocumentationService {
     return AutoDocumentationService.instance;
   }
 
+  destroy(): void {
+    this.log("AutoDocumentationService shutting down");
+  }
+
   async generateDocumentation(
     files: FileInfo[],
     projectName: string = "Generated Project"
   ): Promise<DocumentationResult> {
-    logger.info("Generating documentation", { fileCount: files.length, projectName });
+    this.log("Generating documentation", { fileCount: files.length, projectName });
 
     const projectSummary = this.analyzeProject(files, projectName);
     const jsdocSuggestions = this.generateJsdocSuggestions(files);

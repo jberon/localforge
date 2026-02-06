@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface ErrorPattern {
   id: string;
@@ -43,16 +43,26 @@ interface HistoricalError {
   fixPattern?: string;
 }
 
-class ErrorPreventionService {
+class ErrorPreventionService extends BaseService {
   private static instance: ErrorPreventionService;
   private patterns: ErrorPattern[] = [];
-  private history: Map<string, HistoricalError[]> = new Map();
-  private learnedPatterns: Map<string, number> = new Map();
+  private history: ManagedMap<string, HistoricalError[]>;
+  private learnedPatterns: ManagedMap<string, number>;
   private readonly maxHistoryPerProject = 200;
   private readonly maxProjects = 100;
 
   private constructor() {
+    super("ErrorPreventionService");
+    this.history = this.createManagedMap<string, HistoricalError[]>({ maxSize: 500, strategy: "lru" });
+    this.learnedPatterns = this.createManagedMap<string, number>({ maxSize: 200, strategy: "lru" });
     this.initializePatterns();
+  }
+
+  destroy(): void {
+    this.history.clear();
+    this.learnedPatterns.clear();
+    this.patterns = [];
+    this.log("ErrorPreventionService shut down");
   }
 
   static getInstance(): ErrorPreventionService {
@@ -179,7 +189,7 @@ class ErrorPreventionService {
     projectId: string,
     files: Array<{ path: string; content: string }>
   ): PreventionResult {
-    logger.info("Analyzing code for potential errors", { projectId, fileCount: files.length });
+    this.log("Analyzing code for potential errors", { projectId, fileCount: files.length });
 
     const potentialErrors: PotentialError[] = [];
     
@@ -220,7 +230,7 @@ class ErrorPreventionService {
     const recommendations = this.generateRecommendations(potentialErrors);
     const safePatterns = this.identifySafePatterns(files);
 
-    logger.info("Error prevention analysis complete", {
+    this.log("Error prevention analysis complete", {
       projectId,
       potentialErrors: potentialErrors.length,
       riskScore
@@ -349,7 +359,7 @@ class ErrorPreventionService {
 
   recordError(projectId: string, error: string, filePath: string): void {
     if (this.history.size >= this.maxProjects && !this.history.has(projectId)) {
-      const oldest = Array.from(this.history.keys())[0];
+      const oldest = this.history.keys()[0];
       if (oldest) this.history.delete(oldest);
     }
 

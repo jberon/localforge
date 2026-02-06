@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileInfo {
   path: string;
@@ -61,10 +61,12 @@ interface ContractSuggestion {
   implementation: string;
 }
 
-class ApiContractValidationService {
+class ApiContractValidationService extends BaseService {
   private static instance: ApiContractValidationService;
 
-  private constructor() {}
+  private constructor() {
+    super("ApiContractValidationService");
+  }
 
   static getInstance(): ApiContractValidationService {
     if (!ApiContractValidationService.instance) {
@@ -73,8 +75,12 @@ class ApiContractValidationService {
     return ApiContractValidationService.instance;
   }
 
+  destroy(): void {
+    this.log("ApiContractValidationService shutting down");
+  }
+
   async validateContracts(files: FileInfo[]): Promise<ContractValidationResult> {
-    logger.info("Validating API contracts", { fileCount: files.length });
+    this.log("Validating API contracts", { fileCount: files.length });
 
     const backendFiles = files.filter(f => 
       f.path.includes("server/") || f.path.includes("api/") || f.path.includes("routes")
@@ -90,7 +96,7 @@ class ApiContractValidationService {
 
     const isValid = mismatches.filter(m => m.severity === "error").length === 0;
 
-    logger.info("Contract validation complete", {
+    this.log("Contract validation complete", {
       isValid,
       endpointsFound: endpoints.length,
       clientCallsFound: clientCalls.length,

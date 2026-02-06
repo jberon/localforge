@@ -1,5 +1,7 @@
 import { logger } from "../lib/logger";
 import { EventEmitter } from "events";
+import { ManagedMap } from "../lib/base-service";
+import { serviceRegistry } from "../lib/service-registry";
 
 export interface RuntimeError {
   id: string;
@@ -63,14 +65,16 @@ export interface ErrorPattern {
 
 class RuntimeFeedbackService extends EventEmitter {
   private static instance: RuntimeFeedbackService;
-  private activeSessions: Map<string, RuntimeSession> = new Map();
+  private activeSessions: ManagedMap<string, RuntimeSession>;
   private errorPatterns: ErrorPattern[] = [];
   private maxLogsPerSession = 500;
   private maxErrorsPerSession = 100;
 
   private constructor() {
     super();
+    this.activeSessions = new ManagedMap<string, RuntimeSession>({ maxSize: 200, strategy: "lru" });
     this.initializeErrorPatterns();
+    serviceRegistry.register("RuntimeFeedbackService", this);
     logger.info("RuntimeFeedbackService initialized");
   }
 
@@ -500,6 +504,7 @@ class RuntimeFeedbackService extends EventEmitter {
     this.activeSessions.clear();
     this.errorPatterns = [];
     this.removeAllListeners();
+    logger.info("RuntimeFeedbackService shutting down");
   }
 
   private generateId(): string {

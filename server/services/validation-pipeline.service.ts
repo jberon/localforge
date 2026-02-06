@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export interface ValidationResult {
   type: "lint" | "typescript" | "test";
@@ -58,12 +58,15 @@ const DEFAULT_CONFIG: ValidationConfig = {
   autoFix: false,
 };
 
-export class ValidationPipelineService {
+export class ValidationPipelineService extends BaseService {
   private static instance: ValidationPipelineService;
-  private results: Map<string, PipelineResult> = new Map();
+  private results: ManagedMap<string, PipelineResult>;
   private readonly MAX_RESULTS = 500;
 
-  private constructor() {}
+  private constructor() {
+    super("ValidationPipelineService");
+    this.results = this.createManagedMap({ maxSize: 500, strategy: "lru" });
+  }
 
   static getInstance(): ValidationPipelineService {
     if (!ValidationPipelineService.instance) {
@@ -81,7 +84,7 @@ export class ValidationPipelineService {
     const results: ValidationResult[] = [];
     const startTime = Date.now();
 
-    logger.info("Starting validation pipeline", { projectPath, fileCount: files.length });
+    this.log("Starting validation pipeline", { projectPath, fileCount: files.length });
 
     if (mergedConfig.runLint) {
       const lintResult = await this.runLint(projectPath, files, mergedConfig);
@@ -117,7 +120,7 @@ export class ValidationPipelineService {
       }
     }
 
-    logger.info("Validation pipeline completed", { 
+    this.log("Validation pipeline completed", { 
       success: pipelineResult.success,
       errors: summary.totalErrors,
       warnings: summary.totalWarnings,
@@ -177,7 +180,7 @@ export class ValidationPipelineService {
             }
           }
         } catch (parseError) {
-          logger.debug("Could not parse ESLint output", { error: parseError });
+          this.log("Could not parse ESLint output", { error: parseError });
         }
       }
 
@@ -189,7 +192,7 @@ export class ValidationPipelineService {
         duration: Date.now() - startTime,
       };
     } catch (error) {
-      logger.warn("Lint check failed", { error });
+      this.logWarn("Lint check failed", { error });
       return {
         type: "lint",
         success: false,
@@ -262,7 +265,7 @@ export class ValidationPipelineService {
         duration: Date.now() - startTime,
       };
     } catch (error) {
-      logger.warn("TypeScript check failed", { error });
+      this.logWarn("TypeScript check failed", { error });
       return {
         type: "typescript",
         success: false,
@@ -340,7 +343,7 @@ export class ValidationPipelineService {
               }
             }
           } catch (parseError) {
-            logger.debug("Could not parse test output", { error: parseError });
+            this.log("Could not parse test output", { error: parseError });
           }
         }
       }
@@ -353,7 +356,7 @@ export class ValidationPipelineService {
         duration: Date.now() - startTime,
       };
     } catch (error) {
-      logger.warn("Test run failed", { error });
+      this.logWarn("Test run failed", { error });
       return {
         type: "test",
         success: false,
@@ -515,6 +518,7 @@ export class ValidationPipelineService {
 
   destroy(): void {
     this.results.clear();
+    this.log("ValidationPipelineService shutting down");
   }
 }
 

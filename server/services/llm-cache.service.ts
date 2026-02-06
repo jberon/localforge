@@ -1,4 +1,5 @@
 import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface CacheEntry {
   response: string;
@@ -29,9 +30,10 @@ interface BatchResult {
   tokensUsed?: number;
 }
 
-export class LLMCacheService {
-  private cache: Map<string, CacheEntry> = new Map();
-  private pendingRequests: Map<string, PendingRequest[]> = new Map();
+export class LLMCacheService extends BaseService {
+  private static instance: LLMCacheService;
+  private cache: ManagedMap<string, CacheEntry>;
+  private pendingRequests: ManagedMap<string, PendingRequest[]>;
   private requestQueue: BatchRequest[] = [];
   private batchTimeout: NodeJS.Timeout | null = null;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -43,9 +45,22 @@ export class LLMCacheService {
   };
 
   private readonly MAX_CACHE_SIZE = 1000;
-  private readonly DEFAULT_TTL_MS = 1000 * 60 * 60; // 1 hour
-  private readonly BATCH_DELAY_MS = 50; // Wait 50ms before batching
+  private readonly DEFAULT_TTL_MS = 1000 * 60 * 60;
+  private readonly BATCH_DELAY_MS = 50;
   private readonly MAX_BATCH_SIZE = 5;
+
+  private constructor() {
+    super("LLMCacheService");
+    this.cache = this.createManagedMap<string, CacheEntry>({ maxSize: 1000, strategy: "lru" });
+    this.pendingRequests = this.createManagedMap<string, PendingRequest[]>({ maxSize: 200, strategy: "lru" });
+  }
+
+  static getInstance(): LLMCacheService {
+    if (!LLMCacheService.instance) {
+      LLMCacheService.instance = new LLMCacheService();
+    }
+    return LLMCacheService.instance;
+  }
 
   generateCacheKey(prompt: string, systemPrompt?: string, temperature?: number): string {
     const normalizedPrompt = prompt.trim().toLowerCase();
@@ -108,7 +123,7 @@ export class LLMCacheService {
     let oldestKey: string | null = null;
     let oldestTime = Infinity;
 
-    const entries = Array.from(this.cache.entries());
+    const entries = this.cache.entries();
     for (const [key, entry] of entries) {
       if (entry.createdAt < oldestTime) {
         oldestTime = entry.createdAt;
@@ -192,7 +207,7 @@ export class LLMCacheService {
       return [];
     }
 
-    logger.info("Processing LLM batch", { batchSize: batch.length });
+    this.log("Processing LLM batch", { batchSize: batch.length });
 
     const results: BatchResult[] = batch.map(req => ({
       id: req.id,
@@ -234,13 +249,13 @@ export class LLMCacheService {
     this.pendingRequests.clear();
     this.requestQueue = [];
     this.stats = { hits: 0, misses: 0, deduplicated: 0, batched: 0 };
-    logger.info("LLMCacheService destroyed");
+    this.log("LLMCacheService shut down");
   }
 
   clearCache(): void {
     this.cache.clear();
     this.stats = { hits: 0, misses: 0, deduplicated: 0, batched: 0 };
-    logger.info("LLM cache cleared");
+    this.log("LLM cache cleared");
   }
 
   getCacheEntries(): Array<{
@@ -250,7 +265,7 @@ export class LLMCacheService {
     createdAt: number;
     expiresAt: number;
   }> {
-    return Array.from(this.cache.entries()).map(([key, entry]) => ({
+    return this.cache.entries().map(([key, entry]) => ({
       key,
       tokensUsed: entry.tokensUsed,
       hits: entry.hits,
@@ -260,4 +275,4 @@ export class LLMCacheService {
   }
 }
 
-export const llmCacheService = new LLMCacheService();
+export const llmCacheService = LLMCacheService.getInstance();

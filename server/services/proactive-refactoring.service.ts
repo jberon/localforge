@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface ComplexityMetrics {
   cyclomaticComplexity: number;
@@ -47,7 +47,7 @@ interface ThresholdConfig {
   parameterCount: number;
 }
 
-class ProactiveRefactoringService {
+class ProactiveRefactoringService extends BaseService {
   private static instance: ProactiveRefactoringService;
   private thresholds: ThresholdConfig = {
     cyclomaticComplexity: 10,
@@ -58,7 +58,9 @@ class ProactiveRefactoringService {
     parameterCount: 4
   };
 
-  private constructor() {}
+  private constructor() {
+    super("ProactiveRefactoringService");
+  }
 
   static getInstance(): ProactiveRefactoringService {
     if (!ProactiveRefactoringService.instance) {
@@ -70,7 +72,7 @@ class ProactiveRefactoringService {
   analyzeForRefactoring(
     files: Array<{ path: string; content: string }>
   ): AnalysisResult {
-    logger.info("Analyzing code for refactoring opportunities", { fileCount: files.length });
+    this.log("Analyzing code for refactoring opportunities", { fileCount: files.length });
 
     const opportunities: RefactoringOpportunity[] = [];
     const fileMetrics = new Map<string, ComplexityMetrics>();
@@ -87,7 +89,7 @@ class ProactiveRefactoringService {
     const overallHealth = this.calculateOverallHealth(fileMetrics, opportunities);
     const prioritizedActions = this.prioritizeActions(opportunities);
 
-    logger.info("Refactoring analysis complete", {
+    this.log("Refactoring analysis complete", {
       opportunityCount: opportunities.length,
       overallHealth
     });
@@ -437,11 +439,15 @@ class ProactiveRefactoringService {
 
   setThresholds(config: Partial<ThresholdConfig>): void {
     this.thresholds = { ...this.thresholds, ...config };
-    logger.info("Refactoring thresholds updated", { thresholds: this.thresholds });
+    this.log("Refactoring thresholds updated", { thresholds: this.thresholds });
   }
 
   getThresholds(): ThresholdConfig {
     return { ...this.thresholds };
+  }
+
+  destroy(): void {
+    this.log("ProactiveRefactoringService shutting down");
   }
 }
 

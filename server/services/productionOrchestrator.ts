@@ -3,6 +3,7 @@ import { searchWeb, formatSearchResultsForContext } from "./webSearch";
 import { llmSettingsSchema, detectModelRole } from "@shared/schema";
 import { z } from "zod";
 import { classifyAppType, getAppTemplate, getClassificationContext, validateGeneratedContent, type AppType, type AppTemplate } from "./appClassifier";
+import { BaseService } from "../lib/base-service";
 
 export type QualityProfile = "prototype" | "demo" | "production";
 
@@ -222,16 +223,21 @@ Include:
 
 Output ONLY the markdown content:`;
 
-export class ProductionOrchestrator {
+export class ProductionOrchestrator extends BaseService {
   private settings: LLMSettings;
   private state: ProductionState;
   private onEvent: (event: ProductionEvent) => void;
   private aborted = false;
 
   constructor(settings: LLMSettings, onEvent: (event: ProductionEvent) => void) {
+    super("ProductionOrchestrator");
     this.settings = settings;
     this.onEvent = onEvent;
     this.state = this.createInitialState();
+  }
+
+  destroy(): void {
+    this.log("ProductionOrchestrator shutting down");
   }
 
   private createInitialState(): ProductionState {

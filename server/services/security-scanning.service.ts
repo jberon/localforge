@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileInfo {
   path: string;
@@ -54,11 +54,12 @@ interface SecurityPattern {
   fileTypes?: string[];
 }
 
-class SecurityScanningService {
+class SecurityScanningService extends BaseService {
   private static instance: SecurityScanningService;
   private patterns: SecurityPattern[];
 
   private constructor() {
+    super("SecurityScanningService");
     this.patterns = this.initializePatterns();
   }
 
@@ -198,7 +199,7 @@ class SecurityScanningService {
   }
 
   async scanFiles(files: FileInfo[]): Promise<SecurityScanResult> {
-    logger.info("Starting security scan", { fileCount: files.length });
+    this.log("Starting security scan", { fileCount: files.length });
 
     const issues: SecurityIssue[] = [];
     let scannedFiles = 0;
@@ -227,7 +228,7 @@ class SecurityScanningService {
     const score = this.calculateSecurityScore(summary);
     const recommendations = this.generateRecommendations(issues);
 
-    logger.info("Security scan completed", { 
+    this.log("Security scan completed", { 
       issuesFound: issues.length, 
       score,
       ...summary 
@@ -363,6 +364,11 @@ class SecurityScanningService {
 
   scanSingleFile(content: string, filePath: string): SecurityIssue[] {
     return this.scanFile({ path: filePath, content });
+  }
+
+  destroy(): void {
+    this.patterns = [];
+    this.log("SecurityScanningService shutting down");
   }
 }
 

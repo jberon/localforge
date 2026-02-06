@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { storage } from "../storage";
 
 export interface FileMetadata {
@@ -103,13 +103,14 @@ export interface CodingConvention {
   enforcedSince: number;
 }
 
-class ProjectMemoryService {
+class ProjectMemoryService extends BaseService {
   private static instance: ProjectMemoryService;
-  private projectContexts: Map<string, ProjectContext> = new Map();
+  private projectContexts: ManagedMap<string, ProjectContext>;
   private maxChangesPerProject = 100;
 
   private constructor() {
-    logger.info("ProjectMemoryService initialized");
+    super("ProjectMemoryService");
+    this.projectContexts = this.createManagedMap<string, ProjectContext>({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): ProjectMemoryService {
@@ -133,7 +134,7 @@ class ProjectMemoryService {
         lastUpdated: Date.now()
       };
       this.projectContexts.set(projectId, context);
-      logger.info("Project memory initialized", { projectId });
+      this.log("Project memory initialized", { projectId });
     }
     return context;
   }
@@ -183,8 +184,6 @@ class ProjectMemoryService {
 
     context.files.set(path, updated);
     context.lastUpdated = Date.now();
-    
-    logger.debug("File metadata recorded", { projectId, path, type: updated.type });
   }
 
   private inferFileType(path: string): FileType {
@@ -221,7 +220,7 @@ class ProjectMemoryService {
     context.decisions.push(newDecision);
     context.lastUpdated = Date.now();
     
-    logger.info("Architectural decision recorded", { 
+    this.log("Architectural decision recorded", { 
       projectId, 
       category: decision.category, 
       title: decision.title 
@@ -250,12 +249,6 @@ class ProjectMemoryService {
     }
     
     context.lastUpdated = Date.now();
-    
-    logger.debug("Change recorded", { 
-      projectId, 
-      type: change.type, 
-      filesChanged: change.files.length 
-    });
 
     return newChange;
   }
@@ -399,7 +392,7 @@ class ProjectMemoryService {
       decision.status = "superseded";
       decision.supersededBy = newDecisionId;
       context.lastUpdated = Date.now();
-      logger.info("Decision superseded", { projectId, decisionId, newDecisionId });
+      this.log("Decision superseded", { projectId, decisionId, newDecisionId });
     }
   }
 
@@ -417,16 +410,9 @@ class ProjectMemoryService {
 
   clearProjectMemory(projectId: string): void {
     this.projectContexts.delete(projectId);
-    logger.info("Project memory cleared", { projectId });
+    this.log("Project memory cleared", { projectId });
   }
 
-  // ============================================================================
-  // ENHANCED: DEPENDENCY GRAPH & SMART DIFFING
-  // ============================================================================
-
-  /**
-   * Build a dependency graph for the project
-   */
   async buildDependencyGraph(projectId: string): Promise<{
     nodes: Array<{ id: string; type: FileType; purpose: string }>;
     edges: Array<{ from: string; to: string }>;
@@ -460,7 +446,7 @@ class ProjectMemoryService {
 
     const cycles = this.detectCycles(edges);
 
-    logger.info("Dependency graph built", {
+    this.log("Dependency graph built", {
       projectId,
       nodes: nodes.length,
       edges: edges.length,
@@ -515,9 +501,6 @@ class ProjectMemoryService {
     return cycles;
   }
 
-  /**
-   * Smart diff: Compute minimal changes needed
-   */
   computeSmartDiff(
     oldContent: string,
     newContent: string
@@ -591,9 +574,6 @@ class ProjectMemoryService {
     return merged;
   }
 
-  /**
-   * Get impact analysis for a file change
-   */
   async getChangeImpact(
     projectId: string,
     filePath: string
@@ -659,9 +639,6 @@ class ProjectMemoryService {
     };
   }
 
-  /**
-   * Get file hierarchy for display
-   */
   getFileHierarchy(projectId: string): {
     tree: Record<string, any>;
     stats: { files: number; folders: number; maxDepth: number };
@@ -702,13 +679,8 @@ class ProjectMemoryService {
     };
   }
 
-  // ============================================================================
-  // ERROR HISTORY LEARNING & ACTIVE DEPENDENCY PRIORITIZATION
-  // Track past errors to avoid repeating mistakes and prioritize active files
-  // ============================================================================
-
-  private errorHistory: Map<string, ErrorHistoryEntry[]> = new Map();
-  private activeDependencies: Map<string, ActiveDependency[]> = new Map();
+  private errorHistory: ManagedMap<string, ErrorHistoryEntry[]> = this.createManagedMap<string, ErrorHistoryEntry[]>({ maxSize: 500, strategy: "lru" });
+  private activeDependencies: ManagedMap<string, ActiveDependency[]> = this.createManagedMap<string, ActiveDependency[]>({ maxSize: 500, strategy: "lru" });
 
   recordError(
     projectId: string,
@@ -742,7 +714,6 @@ class ProjectMemoryService {
     }
 
     this.errorHistory.set(projectId, history);
-    logger.debug("Error recorded to history", { projectId, errorType: error.type });
   }
 
   private extractErrorPattern(message: string): string {
@@ -943,7 +914,14 @@ class ProjectMemoryService {
   clearErrorHistory(projectId: string): void {
     this.errorHistory.delete(projectId);
     this.activeDependencies.delete(projectId);
-    logger.info("Error history cleared", { projectId });
+    this.log("Error history cleared", { projectId });
+  }
+
+  destroy(): void {
+    this.projectContexts.clear();
+    this.errorHistory.clear();
+    this.activeDependencies.clear();
+    this.log("ProjectMemoryService destroyed");
   }
 }
 

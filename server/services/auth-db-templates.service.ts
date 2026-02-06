@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface AuthTemplate {
   id: string;
@@ -55,19 +55,18 @@ const DATABASE_INTENT_PATTERNS = [
   /\b(persist|persistence|storage\s*layer)\b/i,
 ];
 
-class AuthDbTemplatesService {
+class AuthDbTemplatesService extends BaseService {
   private static instance: AuthDbTemplatesService;
-  private authTemplates: Map<string, AuthTemplate> = new Map();
-  private databaseTemplates: Map<string, DatabaseTemplate> = new Map();
+  private authTemplates: ManagedMap<string, AuthTemplate>;
+  private databaseTemplates: ManagedMap<string, DatabaseTemplate>;
   private usageStats = { authLookups: 0, dbLookups: 0, codeGenerations: 0 };
 
   private constructor() {
+    super("AuthDbTemplatesService");
+    this.authTemplates = this.createManagedMap({ maxSize: 200, strategy: "lru" });
+    this.databaseTemplates = this.createManagedMap({ maxSize: 200, strategy: "lru" });
     this.initializeAuthTemplates();
     this.initializeDatabaseTemplates();
-    logger.info("AuthDbTemplatesService initialized", {
-      authTemplates: this.authTemplates.size,
-      databaseTemplates: this.databaseTemplates.size,
-    });
   }
 
   static getInstance(): AuthDbTemplatesService {
@@ -991,18 +990,18 @@ interface User {
   generateAuthCode(type: AuthTemplate["type"]): TemplateFile[] {
     const template = this.authTemplates.get(type);
     if (!template) {
-      logger.warn("Auth template not found", { type });
+      this.logWarn("Auth template not found", { type });
       return [];
     }
     this.usageStats.codeGenerations++;
-    logger.info("Auth code generated", { type, fileCount: template.files.length });
+    this.log("Auth code generated", { type, fileCount: template.files.length });
     return template.files;
   }
 
   generateDatabaseCode(type: DatabaseTemplate["type"], schemaDescription?: string): TemplateFile[] {
     const template = this.databaseTemplates.get(type);
     if (!template) {
-      logger.warn("Database template not found", { type });
+      this.logWarn("Database template not found", { type });
       return [];
     }
 
@@ -1016,11 +1015,11 @@ interface User {
       if (schemaFile) {
         schemaFile.content = `// Custom schema based on: ${schemaDescription}\n// Modify the template below to match your requirements\n\n${schemaFile.content}`;
       }
-      logger.info("Database code generated with custom schema", { type, fileCount: customized.length });
+      this.log("Database code generated with custom schema", { type, fileCount: customized.length });
       return customized;
     }
 
-    logger.info("Database code generated", { type, fileCount: template.files.length });
+    this.log("Database code generated", { type, fileCount: template.files.length });
     return template.files;
   }
 
@@ -1042,7 +1041,7 @@ interface User {
     this.authTemplates.clear();
     this.databaseTemplates.clear();
     this.usageStats = { authLookups: 0, dbLookups: 0, codeGenerations: 0 };
-    logger.info("AuthDbTemplatesService destroyed");
+    this.log("AuthDbTemplatesService destroyed");
   }
 }
 

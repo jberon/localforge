@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 export interface ImportInfo {
   source: string;
@@ -59,10 +59,12 @@ const PACKAGE_MAPPINGS: Record<string, { package: string; isDev?: boolean }> = {
   "eslint": { package: "eslint", isDev: true },
 };
 
-export class DependencyResolutionService {
+export class DependencyResolutionService extends BaseService {
   private static instance: DependencyResolutionService;
 
-  private constructor() {}
+  private constructor() {
+    super("DependencyResolutionService");
+  }
 
   static getInstance(): DependencyResolutionService {
     if (!DependencyResolutionService.instance) {
@@ -297,7 +299,7 @@ export class DependencyResolutionService {
         }
       }
     } catch (error) {
-      logger.warn("Failed to read package.json", { error });
+      this.logWarn("Failed to read package.json", { error });
     }
 
     return packages;
@@ -358,6 +360,10 @@ export class DependencyResolutionService {
     }
 
     return unused;
+  }
+
+  destroy(): void {
+    this.log("DependencyResolutionService shutting down");
   }
 }
 

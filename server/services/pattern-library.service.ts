@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface CodePattern {
   id: string;
@@ -40,13 +40,16 @@ interface PatternSuggestion {
   adaptedCode: string;
 }
 
-class PatternLibraryService {
+class PatternLibraryService extends BaseService {
   private static instance: PatternLibraryService;
-  private patterns: Map<string, CodePattern> = new Map();
-  private categoryIndex: Map<PatternCategory, Set<string>> = new Map();
+  private patterns: ManagedMap<string, CodePattern>;
+  private categoryIndex: ManagedMap<PatternCategory, Set<string>>;
   private readonly MAX_PATTERNS = 1000;
 
   private constructor() {
+    super("PatternLibraryService");
+    this.patterns = this.createManagedMap<string, CodePattern>({ maxSize: 1000, strategy: "lru" });
+    this.categoryIndex = this.createManagedMap<PatternCategory, Set<string>>({ maxSize: 200, strategy: "lru" });
     this.initializeBuiltInPatterns();
   }
 
@@ -364,22 +367,11 @@ function SearchComponent() {
 
     this.patterns.set(id, newPattern);
 
-    if (this.patterns.size > this.MAX_PATTERNS) {
-      const oldest = Array.from(this.patterns.entries())
-        .sort((a, b) => a[1].createdAt - b[1].createdAt);
-      const toRemove = oldest.slice(0, this.patterns.size - this.MAX_PATTERNS);
-      for (const [removeId, removePattern] of toRemove) {
-        this.patterns.delete(removeId);
-        const catSet = this.categoryIndex.get(removePattern.category);
-        if (catSet) catSet.delete(removeId);
-      }
-    }
-
     const categoryPatterns = this.categoryIndex.get(pattern.category) || new Set();
     categoryPatterns.add(id);
     this.categoryIndex.set(pattern.category, categoryPatterns);
 
-    logger.info("Pattern added", { id, name: pattern.name, category: pattern.category });
+    this.log("Pattern added", { id, name: pattern.name, category: pattern.category });
     return newPattern;
   }
 
@@ -388,7 +380,7 @@ function SearchComponent() {
     const queryTokens = queryLower.split(/\W+/).filter(t => t.length > 2);
     const results: PatternMatch[] = [];
 
-    let patternsToSearch = Array.from(this.patterns.values());
+    let patternsToSearch = this.patterns.values();
     if (category) {
       const categoryIds = this.categoryIndex.get(category);
       if (categoryIds) {
@@ -510,7 +502,7 @@ function SearchComponent() {
   }
 
   getTopPatterns(limit: number = 10): CodePattern[] {
-    return Array.from(this.patterns.values())
+    return this.patterns.values()
       .sort((a, b) => {
         const scoreA = a.successScore * a.usageCount;
         const scoreB = b.successScore * b.usageCount;
@@ -520,7 +512,7 @@ function SearchComponent() {
   }
 
   exportPatterns(projectId?: string): CodePattern[] {
-    let patterns = Array.from(this.patterns.values());
+    let patterns = this.patterns.values();
     if (projectId) {
       patterns = patterns.filter(p => !p.projectId || p.projectId === projectId);
     }
@@ -537,13 +529,14 @@ function SearchComponent() {
       categoryPatterns.delete(patternId);
     }
 
-    logger.info("Pattern deleted", { patternId });
+    this.log("Pattern deleted", { patternId });
     return true;
   }
 
   destroy(): void {
     this.patterns.clear();
     this.categoryIndex.clear();
+    this.log("PatternLibraryService destroyed");
   }
 }
 

@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { projectMemoryService } from "./project-memory.service";
 
 export interface RefactoringResult {
@@ -60,14 +60,15 @@ export interface RefactoringOptions {
 
 type LLMRefactorFunction = (code: string, instruction: string) => Promise<string>;
 
-class RefactoringAgentService {
+class RefactoringAgentService extends BaseService {
   private static instance: RefactoringAgentService;
   private llmRefactorFunction?: LLMRefactorFunction;
-  private codeSmellPatterns: Map<RefactoringType, RegExp[]> = new Map();
+  private codeSmellPatterns: ManagedMap<RefactoringType, RegExp[]>;
 
   private constructor() {
+    super("RefactoringAgentService");
+    this.codeSmellPatterns = this.createManagedMap<RefactoringType, RegExp[]>({ maxSize: 200, strategy: "lru" });
     this.initializePatterns();
-    logger.info("RefactoringAgentService initialized");
   }
 
   static getInstance(): RefactoringAgentService {
@@ -79,7 +80,7 @@ class RefactoringAgentService {
 
   setLLMRefactorFunction(fn: LLMRefactorFunction): void {
     this.llmRefactorFunction = fn;
-    logger.info("LLM refactor function registered");
+    this.log("LLM refactor function registered");
   }
 
   private initializePatterns(): void {
@@ -318,7 +319,7 @@ class RefactoringAgentService {
       s => typesToFix.includes(s.type) && s.autoFixable
     );
 
-    logger.info("Refactoring code", {
+    this.log("Refactoring code", {
       fileName,
       totalSmells: smells.length,
       autoFixable: fixableSmells.length
@@ -333,7 +334,7 @@ class RefactoringAgentService {
             refactoredCode = this.applyChange(refactoredCode, change);
           }
         } catch (e) {
-          logger.warn("Failed to apply refactoring", { smell: smell.type, error: e });
+          this.logWarn("Failed to apply refactoring", { smell: smell.type, error: e });
         }
       }
     }
@@ -412,7 +413,7 @@ class RefactoringAgentService {
           lineEnd: Math.min(lines.length, smell.line + 5)
         };
       } catch (e) {
-        logger.warn("LLM refactoring failed", { error: e });
+        this.logWarn("LLM refactoring failed", { error: e });
       }
     }
 
@@ -500,7 +501,7 @@ class RefactoringAgentService {
       }
     });
 
-    logger.info("Project refactoring complete", { 
+    this.log("Project refactoring complete", { 
       filesAnalyzed: totalMetrics.filesAnalyzed,
       issuesFound: totalMetrics.issuesFound,
       issuesFixed: totalMetrics.issuesFixed 
@@ -517,6 +518,11 @@ class RefactoringAgentService {
     const isExcluded = excludePaths.some(excluded => path.includes(excluded));
     
     return hasValidExtension && !isExcluded;
+  }
+
+  destroy(): void {
+    this.codeSmellPatterns.clear();
+    this.log("RefactoringAgentService destroyed");
   }
 }
 

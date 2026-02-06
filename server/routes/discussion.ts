@@ -3,6 +3,7 @@ import { discussionModeService } from "../services/discussion-mode.service";
 import { getActiveLLMClient } from "../llm-client";
 import { z } from "zod";
 import logger from "../lib/logger";
+import { asyncHandler } from "../lib/async-handler";
 
 const router = Router();
 
@@ -112,39 +113,29 @@ router.post("/message", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/session/:projectId", (req: Request, res: Response) => {
-  try {
-    const projectId = req.params.projectId as string;
-    const session = discussionModeService.getSessionByProject(projectId);
-    if (!session) {
-      return res.json({ session: null, messages: [] });
-    }
-    res.json({
-      session: {
-        id: session.id,
-        projectId: session.projectId,
-        createdAt: session.createdAt,
-        lastActiveAt: session.lastActiveAt,
-        messageCount: session.messages.length,
-      },
-      messages: session.messages,
-    });
-  } catch (error: any) {
-    logger.error("Failed to get discussion session", { error: error.message });
-    res.status(500).json({ error: "Failed to get session" });
+router.get("/session/:projectId", asyncHandler((req: Request, res: Response) => {
+  const projectId = req.params.projectId as string;
+  const session = discussionModeService.getSessionByProject(projectId);
+  if (!session) {
+    return res.json({ session: null, messages: [] });
   }
-});
+  res.json({
+    session: {
+      id: session.id,
+      projectId: session.projectId,
+      createdAt: session.createdAt,
+      lastActiveAt: session.lastActiveAt,
+      messageCount: session.messages.length,
+    },
+    messages: session.messages,
+  });
+}));
 
-router.post("/analyze/:sessionId", (req: Request, res: Response) => {
-  try {
-    const sessionId = req.params.sessionId as string;
-    const analysis = discussionModeService.analyzeConversation(sessionId);
-    res.json(analysis);
-  } catch (error: any) {
-    logger.error("Failed to analyze discussion", { error: error.message });
-    res.status(500).json({ error: "Failed to analyze discussion" });
-  }
-});
+router.post("/analyze/:sessionId", asyncHandler((req: Request, res: Response) => {
+  const sessionId = req.params.sessionId as string;
+  const analysis = discussionModeService.analyzeConversation(sessionId);
+  res.json(analysis);
+}));
 
 router.post("/classify-intent", (req: Request, res: Response) => {
   try {
@@ -156,24 +147,16 @@ router.post("/classify-intent", (req: Request, res: Response) => {
   }
 });
 
-router.delete("/session/:projectId", (req: Request, res: Response) => {
-  try {
-    const projectId = req.params.projectId as string;
-    const cleared = discussionModeService.clearProjectSession(projectId);
-    res.json({ cleared });
-  } catch (error: any) {
-    res.status(500).json({ error: "Failed to clear session" });
-  }
-});
+router.delete("/session/:projectId", asyncHandler((req: Request, res: Response) => {
+  const projectId = req.params.projectId as string;
+  const cleared = discussionModeService.clearProjectSession(projectId);
+  res.json({ cleared });
+}));
 
-router.get("/stats", (_req: Request, res: Response) => {
-  try {
-    const stats = discussionModeService.getStats();
-    res.json(stats);
-  } catch (error: any) {
-    res.status(500).json({ error: "Failed to get stats" });
-  }
-});
+router.get("/stats", asyncHandler((_req: Request, res: Response) => {
+  const stats = discussionModeService.getStats();
+  res.json(stats);
+}));
 
 function generateFallbackResponse(message: string, intent: string): string {
   if (intent === "build") {

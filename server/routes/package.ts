@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { z } from "zod";
+import { asyncHandler } from "../lib/async-handler";
 
 const router = Router();
 
@@ -11,61 +12,60 @@ const packageSchema = z.object({
   includeEnvTemplate: z.boolean().default(true),
 });
 
-router.post("/:id/package", async (req, res) => {
+router.post("/:id/package", asyncHandler(async (req, res) => {
   const archiver = await import("archiver");
   
-  try {
-    const parsed = packageSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  const parsed = packageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  }
+
+  const project = await storage.getProject(req.params.id as string);
+  if (!project) {
+    return res.status(404).json({ error: "Project not found" });
+  }
+
+  const files = project.generatedFiles || [];
+  if (files.length === 0) {
+    return res.status(400).json({ error: "No files to package" });
+  }
+
+  const safeName = project.name.toLowerCase().replace(/[^a-z0-9]/g, "_");
+  const isFullStack = files.some(f => f.path.includes("server/") || f.path.includes("routes/"));
+  
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeName}-project.zip"`);
+
+  const archive = archiver.default("zip", { zlib: { level: 9 } });
+  archive.pipe(res);
+
+  const sanitizePath = (filePath: string): string | null => {
+    let normalized = filePath.replace(/\\/g, '/');
+    normalized = normalized.replace(/^\/+/, '');
+    if (normalized.includes('..')) {
+      console.warn(`Rejected path with traversal: ${filePath}`);
+      return null;
     }
-
-    const project = await storage.getProject(req.params.id);
-    if (!project) {
-      return res.status(404).json({ error: "Project not found" });
+    if (normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) {
+      console.warn(`Rejected absolute path: ${filePath}`);
+      return null;
     }
-
-    const files = project.generatedFiles || [];
-    if (files.length === 0) {
-      return res.status(400).json({ error: "No files to package" });
+    const parts = normalized.split('/').filter(Boolean);
+    if (parts.length === 0) {
+      return null;
     }
+    return parts.join('/');
+  };
 
-    const safeName = project.name.toLowerCase().replace(/[^a-z0-9]/g, "_");
-    const isFullStack = files.some(f => f.path.includes("server/") || f.path.includes("routes/"));
-    
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeName}-project.zip"`);
-
-    const archive = archiver.default("zip", { zlib: { level: 9 } });
-    archive.pipe(res);
-
-    const sanitizePath = (filePath: string): string | null => {
-      let normalized = filePath.replace(/\\/g, '/');
-      normalized = normalized.replace(/^\/+/, '');
-      if (normalized.includes('..')) {
-        console.warn(`Rejected path with traversal: ${filePath}`);
-        return null;
-      }
-      if (normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) {
-        console.warn(`Rejected absolute path: ${filePath}`);
-        return null;
-      }
-      const parts = normalized.split('/').filter(Boolean);
-      if (parts.length === 0) {
-        return null;
-      }
-      return parts.join('/');
-    };
-
-    for (const file of files) {
-      const safePath = sanitizePath(file.path);
-      if (safePath) {
-        archive.append(file.content, { name: safePath });
-      }
+  for (const file of files) {
+    const safePath = sanitizePath(file.path);
+    if (safePath) {
+      archive.append(file.content, { name: safePath });
     }
+  }
 
-    if (parsed.data.includeDocker) {
-      const dockerfile = `FROM node:18-alpine AS builder
+  if (parsed.data.includeDocker) {
+    const dockerfile = `FROM node:18-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
@@ -80,10 +80,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 EXPOSE 3000
 CMD ["node", "dist/index.js"]`;
-      archive.append(dockerfile, { name: "Dockerfile" });
+    archive.append(dockerfile, { name: "Dockerfile" });
 
-      if (isFullStack) {
-        const dockerCompose = `version: '3.8'
+    if (isFullStack) {
+      const dockerCompose = `version: '3.8'
 
 services:
   app:
@@ -119,18 +119,18 @@ services:
 
 volumes:
   postgres_data:`;
-        archive.append(dockerCompose, { name: "docker-compose.yml" });
-      }
+      archive.append(dockerCompose, { name: "docker-compose.yml" });
+    }
 
-      archive.append(`.env*
+    archive.append(`.env*
 node_modules/
 dist/
 *.log
 .DS_Store`, { name: ".dockerignore" });
-    }
+  }
 
-    if (parsed.data.includeEnvTemplate) {
-      const envTemplate = `# ${project.name} Environment Configuration
+  if (parsed.data.includeEnvTemplate) {
+    const envTemplate = `# ${project.name} Environment Configuration
 
 # Database
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/${safeName}
@@ -143,11 +143,11 @@ NODE_ENV=development
 # OPENAI_API_KEY=your-key-here
 # STRIPE_SECRET_KEY=your-key-here
 `;
-      archive.append(envTemplate, { name: ".env.example" });
-    }
+    archive.append(envTemplate, { name: ".env.example" });
+  }
 
-    if (parsed.data.includeCICD) {
-      const githubAction = `name: CI/CD
+  if (parsed.data.includeCICD) {
+    const githubAction = `name: CI/CD
 
 on:
   push:
@@ -177,10 +177,10 @@ jobs:
       - name: Deploy
         run: echo "Add your deployment commands here"
 `;
-      archive.append(githubAction, { name: ".github/workflows/ci.yml" });
-    }
+    archive.append(githubAction, { name: ".github/workflows/ci.yml" });
+  }
 
-    const readme = `# ${project.name}
+  const readme = `# ${project.name}
 
 Generated by LocalForge
 
@@ -201,15 +201,9 @@ docker-compose up -d
 
 Copy \`.env.example\` to \`.env\` and configure your settings.
 `;
-    archive.append(readme, { name: "README.md" });
+  archive.append(readme, { name: "README.md" });
 
-    await archive.finalize();
-  } catch (error) {
-    console.error("Error creating package:", error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Failed to create package" });
-    }
-  }
-});
+  await archive.finalize();
+}));
 
 export default router;

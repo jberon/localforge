@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export interface Subtask {
   id: string;
@@ -84,14 +84,15 @@ interface DecompositionStrategy {
   estimatedSubtasks: number;
 }
 
-class TaskDecompositionService {
+class TaskDecompositionService extends BaseService {
   private static instance: TaskDecompositionService;
-  private activeTasks: Map<string, DecomposedTask> = new Map();
+  private activeTasks: ManagedMap<string, DecomposedTask>;
   private strategies: DecompositionStrategy[] = [];
 
   private constructor() {
+    super("TaskDecompositionService");
+    this.activeTasks = this.createManagedMap({ maxSize: 500, strategy: "lru" });
     this.initializeStrategies();
-    logger.info("TaskDecompositionService initialized");
   }
 
   static getInstance(): TaskDecompositionService {
@@ -150,7 +151,7 @@ class TaskDecompositionService {
     const taskId = this.generateId();
     const strategy = this.detectStrategy(prompt);
     
-    logger.info("Decomposing prompt", { 
+    this.log("Decomposing prompt", { 
       taskId, 
       projectId, 
       strategy: strategy.name,
@@ -181,7 +182,7 @@ class TaskDecompositionService {
 
     this.activeTasks.set(taskId, decomposedTask);
     
-    logger.info("Task decomposed successfully", {
+    this.log("Task decomposed successfully", {
       taskId,
       subtaskCount: subtasks.length,
       executionOrder: executionOrder.slice(0, 5)
@@ -344,7 +345,7 @@ class TaskDecompositionService {
 
     const visit = (id: string) => {
       if (inProgress.has(id)) {
-        logger.warn("Circular dependency detected", { taskId: id });
+        this.logWarn("Circular dependency detected", { taskId: id });
         return;
       }
       if (visited.has(id)) return;
@@ -374,7 +375,7 @@ class TaskDecompositionService {
     }
 
     task.status = "running";
-    logger.info("Starting task execution", { taskId, subtaskCount: task.subtasks.length });
+    this.log("Starting task execution", { taskId, subtaskCount: task.subtasks.length });
   }
 
   async executeNextSubtask(
@@ -400,7 +401,7 @@ class TaskDecompositionService {
     subtask.startedAt = Date.now();
     task.progress.inProgress++;
 
-    logger.info("Executing subtask", { 
+    this.log("Executing subtask", { 
       taskId, 
       subtaskId: nextSubtaskId, 
       title: subtask.title 
@@ -474,7 +475,7 @@ class TaskDecompositionService {
     const task = this.activeTasks.get(taskId);
     if (task && task.status === "running") {
       task.status = "paused";
-      logger.info("Task paused", { taskId });
+      this.log("Task paused", { taskId });
     }
   }
 
@@ -482,7 +483,7 @@ class TaskDecompositionService {
     const task = this.activeTasks.get(taskId);
     if (task && task.status === "paused") {
       task.status = "running";
-      logger.info("Task resumed", { taskId });
+      this.log("Task resumed", { taskId });
     }
   }
 
@@ -495,12 +496,18 @@ class TaskDecompositionService {
           subtask.status = "skipped";
         }
       }
-      logger.info("Task cancelled", { taskId });
+      this.log("Task cancelled", { taskId });
     }
   }
 
   private generateId(): string {
     return `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  destroy(): void {
+    this.activeTasks.clear();
+    this.strategies = [];
+    this.log("TaskDecompositionService shutting down");
   }
 }
 

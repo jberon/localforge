@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileInfo {
   path: string;
@@ -45,10 +45,12 @@ interface FunctionInfo {
   line: number;
 }
 
-class TestCoverageService {
+class TestCoverageService extends BaseService {
   private static instance: TestCoverageService;
 
-  private constructor() {}
+  private constructor() {
+    super("TestCoverageService");
+  }
 
   static getInstance(): TestCoverageService {
     if (!TestCoverageService.instance) {
@@ -58,7 +60,7 @@ class TestCoverageService {
   }
 
   async analyzeCoverage(files: FileInfo[]): Promise<CoverageResult> {
-    logger.info("Analyzing test coverage", { fileCount: files.length });
+    this.log("Analyzing test coverage", { fileCount: files.length });
 
     const sourceFiles = files.filter(f => this.isSourceFile(f.path));
     const testFiles = files.filter(f => this.isTestFile(f.path));
@@ -320,6 +322,10 @@ describe('${functionName}', () => {
   });
 });
 `.trim();
+  }
+
+  destroy(): void {
+    this.log("TestCoverageService shutting down");
   }
 }
 

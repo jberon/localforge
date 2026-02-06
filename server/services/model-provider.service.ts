@@ -1,17 +1,16 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { LLMCacheService } from "./llm-cache.service";
 import { resilienceService } from "./resilience.service";
 
-// M4 Pro optimized defaults (14-core CPU, 20-core GPU, 48GB unified memory)
 const M4_PRO_DEFAULTS = {
-  maxConcurrentRequests: 2, // Limit to avoid GPU memory contention
-  maxContextLength: 65536, // 64K context for very large applications
-  gpuLayers: -1, // All layers on GPU (Metal acceleration)
-  batchSize: 1024, // Optimized for M4 Pro GPU
-  threads: 10, // Leave 4 cores for system on 14-core CPU
-  memoryBudgetMB: 40960, // 40GB for models (leave 8GB for system)
-  modelWeightsBudgetMB: 32768, // 32GB for model weights
-  contextBufferMB: 8192, // 8GB for context buffer
+  maxConcurrentRequests: 2,
+  maxContextLength: 65536,
+  gpuLayers: -1,
+  batchSize: 1024,
+  threads: 10,
+  memoryBudgetMB: 40960,
+  modelWeightsBudgetMB: 32768,
+  contextBufferMB: 8192,
 };
 
 export interface ModelCapabilities {
@@ -22,7 +21,7 @@ export interface ModelCapabilities {
   optimalTemperature: number;
   strengths: string[];
   estimatedVRAM_MB: number;
-  tokensPerSecond: number; // Estimated throughput on M4 Pro
+  tokensPerSecond: number;
 }
 
 export interface ModelRoutingPolicy {
@@ -45,14 +44,13 @@ export interface LLMExecutionResult {
   tokensUsed: number;
 }
 
-export class ModelProviderService {
+export class ModelProviderService extends BaseService {
   private static instance: ModelProviderService;
   
-  private modelRegistry: Map<string, ModelCapabilities> = new Map();
+  private modelRegistry: ManagedMap<string, ModelCapabilities>;
   private routingPolicies: ModelRoutingPolicy[] = [];
   private cacheService: LLMCacheService;
   
-  // Resource tracking for M4 Pro
   private resourceStatus: ResourceStatus = {
     gpuMemoryUsedMB: 0,
     gpuMemoryTotalMB: M4_PRO_DEFAULTS.memoryBudgetMB,
@@ -61,16 +59,16 @@ export class ModelProviderService {
     estimatedWaitMs: 0,
   };
   
-  // Hot-swapping state
   private hotSwapEnabled = true;
-  private hotSwapThreshold = 0.8; // 80% memory usage triggers hot-swap
+  private hotSwapThreshold = 0.8;
   private hotSwapHistory: Array<{ from: string; to: string; reason: string; timestamp: number }> = [];
   
-  // Concurrency tracking
   private readonly maxConcurrentRequests = M4_PRO_DEFAULTS.maxConcurrentRequests;
 
   private constructor() {
-    this.cacheService = new LLMCacheService();
+    super("ModelProviderService");
+    this.modelRegistry = this.createManagedMap<string, ModelCapabilities>({ maxSize: 200, strategy: "lru" });
+    this.cacheService = LLMCacheService.getInstance();
     this.initializeDefaultModels();
     this.initializeDefaultPolicies();
   }
@@ -83,7 +81,6 @@ export class ModelProviderService {
   }
 
   private initializeDefaultModels(): void {
-    // Recommended planner model for M4 Pro
     this.registerModel({
       id: "ministral-3-14b",
       name: "Ministral 3 14B Reasoning",
@@ -95,7 +92,6 @@ export class ModelProviderService {
       tokensPerSecond: 45,
     });
 
-    // Recommended builder model for M4 Pro
     this.registerModel({
       id: "qwen3-coder-30b",
       name: "Qwen3 Coder 30B",
@@ -107,7 +103,6 @@ export class ModelProviderService {
       tokensPerSecond: 25,
     });
 
-    // Lighter alternative builder
     this.registerModel({
       id: "qwen2.5-coder-14b",
       name: "Qwen2.5 Coder 14B",
@@ -119,7 +114,6 @@ export class ModelProviderService {
       tokensPerSecond: 55,
     });
 
-    // General purpose fallback
     this.registerModel({
       id: "llama-3.2-8b",
       name: "Llama 3.2 8B",
@@ -144,7 +138,7 @@ export class ModelProviderService {
 
   registerModel(capabilities: ModelCapabilities): void {
     this.modelRegistry.set(capabilities.id, capabilities);
-    logger.info("Model registered", { modelId: capabilities.id, role: capabilities.role });
+    this.log("Model registered", { modelId: capabilities.id, role: capabilities.role });
   }
 
   getModel(modelId: string): ModelCapabilities | undefined {
@@ -152,33 +146,27 @@ export class ModelProviderService {
   }
 
   getModelsForRole(role: "planner" | "builder" | "general"): ModelCapabilities[] {
-    return Array.from(this.modelRegistry.values()).filter(m => m.role === role);
+    return this.modelRegistry.values().filter(m => m.role === role);
   }
 
   selectModel(taskType: string, preferredModelId?: string): ModelCapabilities | null {
-    // If specific model requested, use it
     if (preferredModelId) {
       const model = this.modelRegistry.get(preferredModelId);
       if (model) return model;
     }
 
-    // Find policy for task type
     const policy = this.routingPolicies.find(p => p.taskType === taskType);
     if (!policy) {
-      // Default to general role
       const generalModels = this.getModelsForRole("general");
       return generalModels[0] || null;
     }
 
-    // Get models for preferred role
     const candidates = this.getModelsForRole(policy.preferredRole);
     if (candidates.length === 0) {
-      // Fallback to any available model
-      const allModels = Array.from(this.modelRegistry.values());
+      const allModels = this.modelRegistry.values();
       return allModels[0] || null;
     }
 
-    // Select best candidate based on current resource availability
     return this.selectOptimalModel(candidates);
   }
 
@@ -186,11 +174,10 @@ export class ModelProviderService {
     const availableMemory = this.resourceStatus.gpuMemoryTotalMB - this.resourceStatus.gpuMemoryUsedMB;
     const memoryUsageRatio = this.resourceStatus.gpuMemoryUsedMB / this.resourceStatus.gpuMemoryTotalMB;
     
-    // Hot-swap: if memory pressure is high, prefer smaller/faster models
     if (this.hotSwapEnabled && memoryUsageRatio >= this.hotSwapThreshold) {
       const preferredModel = this.selectForHotSwap(candidates, availableMemory);
       if (preferredModel) {
-        logger.info("Hot-swap activated: selecting lighter model", {
+        this.log("Hot-swap activated: selecting lighter model", {
           selectedModel: preferredModel.id,
           memoryUsage: `${(memoryUsageRatio * 100).toFixed(1)}%`,
         });
@@ -201,30 +188,24 @@ export class ModelProviderService {
     const viableCandidates = candidates.filter(m => m.estimatedVRAM_MB <= availableMemory);
     
     if (viableCandidates.length === 0) {
-      // No model fits in available memory, pick smallest
       const smallest = candidates.reduce((a, b) => a.estimatedVRAM_MB < b.estimatedVRAM_MB ? a : b);
       this.recordHotSwap(candidates[0]?.id || "unknown", smallest.id, "memory_constraint");
       return smallest;
     }
 
-    // Pick the one with best throughput among viable options
     return viableCandidates.reduce((a, b) => a.tokensPerSecond > b.tokensPerSecond ? a : b);
   }
 
   private selectForHotSwap(candidates: ModelCapabilities[], availableMemory: number): ModelCapabilities | null {
-    // Sort by VRAM (ascending) then by throughput (descending)
     const sorted = [...candidates].sort((a, b) => {
-      // First priority: fits in available memory
       const aFits = a.estimatedVRAM_MB <= availableMemory;
       const bFits = b.estimatedVRAM_MB <= availableMemory;
       if (aFits !== bFits) return aFits ? -1 : 1;
       
-      // Second priority: lower memory usage
       if (a.estimatedVRAM_MB !== b.estimatedVRAM_MB) {
         return a.estimatedVRAM_MB - b.estimatedVRAM_MB;
       }
       
-      // Third priority: higher throughput
       return b.tokensPerSecond - a.tokensPerSecond;
     });
     
@@ -239,23 +220,22 @@ export class ModelProviderService {
       timestamp: Date.now(),
     });
     
-    // Keep only last 100 entries
     if (this.hotSwapHistory.length > 100) {
       this.hotSwapHistory = this.hotSwapHistory.slice(-100);
     }
     
-    logger.info("Model hot-swap recorded", { from, to, reason });
+    this.log("Model hot-swap recorded", { from, to, reason });
   }
 
   setHotSwapEnabled(enabled: boolean): void {
     this.hotSwapEnabled = enabled;
-    logger.info("Hot-swap setting changed", { enabled });
+    this.log("Hot-swap setting changed", { enabled });
   }
 
   setHotSwapThreshold(threshold: number): void {
     if (threshold >= 0 && threshold <= 1) {
       this.hotSwapThreshold = threshold;
-      logger.info("Hot-swap threshold changed", { threshold });
+      this.log("Hot-swap threshold changed", { threshold });
     }
   }
 
@@ -285,13 +265,6 @@ export class ModelProviderService {
     return policy?.temperatureOverride ?? 0.7;
   }
 
-  /**
-   * Execute an LLM request with caching, resilience, and resource tracking
-   * @param taskType - Type of task (plan/build/refine/fix/question)
-   * @param prompt - The user prompt
-   * @param executor - Function that actually calls the LLM
-   * @param options - Additional options
-   */
   async executeWithResilience<T extends LLMExecutionResult>(
     taskType: string,
     prompt: string,
@@ -306,16 +279,14 @@ export class ModelProviderService {
     const circuitKey = options?.circuitKey || `llm-${taskType}`;
     const temperature = options?.temperature ?? this.getOptimalTemperature(taskType);
 
-    // Check cache first (unless skipped)
     if (!options?.skipCache) {
       const cachedResponse = this.cacheService.get(prompt, options?.systemPrompt, temperature);
       if (cachedResponse) {
-        logger.debug("Request served from cache", { taskType });
+        this.log("Request served from cache", { taskType });
         return { response: cachedResponse, tokensUsed: 0 } as T;
       }
     }
 
-    // Track resource usage
     const model = this.selectModel(taskType);
     if (model) {
       this.resourceStatus.gpuMemoryUsedMB += model.estimatedVRAM_MB;
@@ -323,7 +294,6 @@ export class ModelProviderService {
     this.resourceStatus.activeRequests++;
 
     try {
-      // Execute with resilience (retry, circuit breaker, bulkhead)
       const result = await resilienceService.withRetry(
         () => resilienceService.withBulkhead(
           () => resilienceService.withTimeout(executor, 120000, `LLM ${taskType} request timed out`),
@@ -331,7 +301,7 @@ export class ModelProviderService {
             key: `llm-bulkhead`,
             maxConcurrent: this.maxConcurrentRequests,
             maxQueue: 10,
-            timeoutMs: 300000, // 5 minute queue timeout
+            timeoutMs: 300000,
           }
         ),
         {
@@ -348,12 +318,11 @@ export class ModelProviderService {
             successThreshold: 2,
           },
           onRetry: (attempt, error, delay) => {
-            logger.warn("LLM request retry", { taskType, attempt, delay, error: error.message });
+            this.logWarn("LLM request retry", { taskType, attempt, delay, error: error.message });
           },
         }
       );
 
-      // Cache successful response
       if (!options?.skipCache && result.response) {
         this.cacheService.set(
           prompt,
@@ -367,7 +336,6 @@ export class ModelProviderService {
       return result;
 
     } finally {
-      // Release resources
       if (model) {
         this.resourceStatus.gpuMemoryUsedMB -= model.estimatedVRAM_MB;
       }
@@ -376,38 +344,26 @@ export class ModelProviderService {
     }
   }
 
-  /**
-   * Check if a cached response exists for the given request
-   */
   getCachedResponse(prompt: string, systemPrompt?: string, temperature?: number): string | null {
     return this.cacheService.get(prompt, systemPrompt, temperature);
   }
 
-  /**
-   * Manually cache a response (useful for streaming completions)
-   */
   cacheResponse(prompt: string, response: string, tokensUsed: number, systemPrompt?: string, temperature?: number): void {
     this.cacheService.set(prompt, response, tokensUsed, systemPrompt, temperature);
   }
 
-  /**
-   * Check if circuit breaker allows requests
-   */
   canExecute(taskType: string): boolean {
     const circuitKey = `llm-${taskType}`;
     return resilienceService.canExecute(circuitKey);
   }
 
-  /**
-   * Get circuit breaker state for a task type
-   */
   getCircuitState(taskType: string): string {
     const circuitKey = `llm-${taskType}`;
     return resilienceService.getCircuitState(circuitKey);
   }
 
   private updateEstimatedWait(): void {
-    const avgProcessingTime = 30000; // 30 seconds average per request
+    const avgProcessingTime = 30000;
     this.resourceStatus.estimatedWaitMs = 
       this.resourceStatus.queuedRequests * avgProcessingTime / this.maxConcurrentRequests;
   }
@@ -439,6 +395,7 @@ export class ModelProviderService {
     this.routingPolicies = [];
     this.hotSwapHistory = [];
     this.cacheService.clearCache();
+    this.log("ModelProviderService destroyed");
   }
 
   getM4ProRecommendations(): Record<string, any> {

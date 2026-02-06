@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 export interface FeedbackEntry {
   id: string;
@@ -30,14 +30,16 @@ export interface LearningStats {
   topCategories: Array<{ category: string; count: number }>;
 }
 
-class FeedbackLearningService {
+class FeedbackLearningService extends BaseService {
   private static instance: FeedbackLearningService;
-  private feedback: Map<string, FeedbackEntry[]> = new Map();
-  private patterns: Map<string, LearnedPattern> = new Map();
+  private feedback: ManagedMap<string, FeedbackEntry[]>;
+  private patterns: ManagedMap<string, LearnedPattern>;
   private globalPatterns: LearnedPattern[] = [];
 
   private constructor() {
-    logger.info("FeedbackLearningService initialized");
+    super("FeedbackLearningService");
+    this.feedback = this.createManagedMap<string, FeedbackEntry[]>({ maxSize: 500, strategy: "lru" });
+    this.patterns = this.createManagedMap<string, LearnedPattern>({ maxSize: 500, strategy: "lru" });
   }
 
   static getInstance(): FeedbackLearningService {
@@ -72,7 +74,7 @@ class FeedbackLearningService {
 
     this.attemptPatternExtraction(entry);
 
-    logger.info("Feedback recorded", {
+    this.log("Feedback recorded", {
       projectId,
       type,
       category: entry.category,
@@ -246,7 +248,7 @@ class FeedbackLearningService {
     if (this.patterns.has(patternId)) {
       this.patterns.delete(patternId);
       this.globalPatterns = this.globalPatterns.filter(p => p.id !== patternId);
-      logger.info("Pattern removed", { patternId });
+      this.log("Pattern removed", { patternId });
       return true;
     }
     return false;
@@ -269,7 +271,7 @@ class FeedbackLearningService {
     };
 
     this.patterns.set(newPattern.id, newPattern);
-    logger.info("Pattern added", { id: newPattern.id, category: newPattern.category });
+    this.log("Pattern added", { id: newPattern.id, category: newPattern.category });
     return newPattern;
   }
 
@@ -305,7 +307,7 @@ class FeedbackLearningService {
 
   clearProjectFeedback(projectId: string): void {
     this.feedback.delete(projectId);
-    logger.info("Project feedback cleared", { projectId });
+    this.log("Project feedback cleared", { projectId });
   }
 
   getStats(): LearningStats {
@@ -366,6 +368,13 @@ class FeedbackLearningService {
       default:
         return false;
     }
+  }
+
+  destroy(): void {
+    this.feedback.clear();
+    this.patterns.clear();
+    this.globalPatterns = [];
+    this.log("FeedbackLearningService shut down");
   }
 }
 

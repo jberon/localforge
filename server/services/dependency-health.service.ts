@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface DependencyInfo {
   name: string;
@@ -42,13 +42,15 @@ interface KnownVulnerability {
   fixedIn: string;
 }
 
-class DependencyHealthService {
+class DependencyHealthService extends BaseService {
   private static instance: DependencyHealthService;
   private knownVulnerabilities: KnownVulnerability[] = [];
-  private latestVersionCache: Map<string, { version: string; timestamp: number }> = new Map();
+  private latestVersionCache: ManagedMap<string, { version: string; timestamp: number }>;
   private cacheExpiry: number = 24 * 60 * 60 * 1000;
 
   private constructor() {
+    super("DependencyHealthService");
+    this.latestVersionCache = this.createManagedMap<string, { version: string; timestamp: number }>({ maxSize: 1000, strategy: "lru" });
     this.initializeKnownVulnerabilities();
   }
 
@@ -135,7 +137,7 @@ class DependencyHealthService {
   }
 
   async analyzePackageJson(packageJsonContent: string): Promise<HealthReport> {
-    logger.info("Analyzing package.json for dependency health");
+    this.log("Analyzing package.json for dependency health");
 
     let packageJson: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
     try {
@@ -179,7 +181,7 @@ class DependencyHealthService {
     const recommendations = this.generateRecommendations(dependencies);
     const criticalActions = this.getCriticalActions(dependencies);
 
-    logger.info("Dependency health analysis complete", {
+    this.log("Dependency health analysis complete", {
       total: summary.total,
       vulnerable: summary.vulnerable,
       healthScore
@@ -358,12 +360,18 @@ class DependencyHealthService {
 
   addKnownVulnerability(vuln: KnownVulnerability): void {
     this.knownVulnerabilities.push(vuln);
-    logger.info("Added known vulnerability", { package: vuln.package });
+    this.log("Added known vulnerability", { package: vuln.package });
   }
 
   clearCache(): void {
     this.latestVersionCache.clear();
-    logger.info("Version cache cleared");
+    this.log("Version cache cleared");
+  }
+
+  destroy(): void {
+    this.latestVersionCache.clear();
+    this.knownVulnerabilities = [];
+    this.log("DependencyHealthService shut down");
   }
 }
 

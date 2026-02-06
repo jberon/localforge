@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 
 interface CodeChunk {
   id: string;
@@ -30,13 +30,16 @@ interface CodeIndex {
   lastUpdated: number;
 }
 
-class SemanticCodeSearchService {
+class SemanticCodeSearchService extends BaseService {
   private static instance: SemanticCodeSearchService;
-  private indices: Map<string, CodeIndex> = new Map();
-  private tokenWeights: Map<string, number> = new Map();
+  private indices: ManagedMap<string, CodeIndex>;
+  private tokenWeights: ManagedMap<string, number>;
   private readonly MAX_INDICES = 100;
 
   private constructor() {
+    super("SemanticCodeSearchService");
+    this.indices = this.createManagedMap<string, CodeIndex>({ maxSize: 1000, strategy: "lru" });
+    this.tokenWeights = this.createManagedMap<string, number>({ maxSize: 200, strategy: "lru" });
     this.initializeTokenWeights();
   }
 
@@ -58,7 +61,7 @@ class SemanticCodeSearchService {
   }
 
   indexProject(projectId: string, files: Array<{ path: string; content: string }>): number {
-    logger.info("Indexing project for semantic search", { projectId, fileCount: files.length });
+    this.log("Indexing project for semantic search", { projectId, fileCount: files.length });
 
     const chunks: CodeChunk[] = [];
 
@@ -79,16 +82,7 @@ class SemanticCodeSearchService {
       lastUpdated: Date.now()
     });
 
-    if (this.indices.size > this.MAX_INDICES) {
-      const oldest = Array.from(this.indices.entries())
-        .sort((a, b) => a[1].lastUpdated - b[1].lastUpdated);
-      const toRemove = oldest.slice(0, this.indices.size - this.MAX_INDICES);
-      for (const [removeId] of toRemove) {
-        this.indices.delete(removeId);
-      }
-    }
-
-    logger.info("Project indexed", { projectId, chunkCount: chunks.length });
+    this.log("Project indexed", { projectId, chunkCount: chunks.length });
     return chunks.length;
   }
 
@@ -264,7 +258,7 @@ class SemanticCodeSearchService {
   search(projectId: string, query: string, limit: number = 10): SearchResult[] {
     const index = this.indices.get(projectId);
     if (!index) {
-      logger.warn("No index found for project", { projectId });
+      this.logWarn("No index found for project", { projectId });
       return [];
     }
 
@@ -378,12 +372,13 @@ class SemanticCodeSearchService {
 
   clearIndex(projectId: string): void {
     this.indices.delete(projectId);
-    logger.info("Index cleared", { projectId });
+    this.log("Index cleared", { projectId });
   }
 
   destroy(): void {
     this.indices.clear();
     this.tokenWeights.clear();
+    this.log("SemanticCodeSearchService destroyed");
   }
 }
 

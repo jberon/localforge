@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 interface FileInfo {
   path: string;
@@ -61,11 +61,13 @@ interface CodeBlock {
   endLine: number;
 }
 
-class CodeDeduplicationService {
+class CodeDeduplicationService extends BaseService {
   private static instance: CodeDeduplicationService;
   private minBlockSize = 3;
 
-  private constructor() {}
+  private constructor() {
+    super("CodeDeduplicationService");
+  }
 
   static getInstance(): CodeDeduplicationService {
     if (!CodeDeduplicationService.instance) {
@@ -74,8 +76,12 @@ class CodeDeduplicationService {
     return CodeDeduplicationService.instance;
   }
 
+  destroy(): void {
+    this.log("CodeDeduplicationService shutting down");
+  }
+
   async findDuplicates(files: FileInfo[]): Promise<DeduplicationResult> {
-    logger.info("Scanning for duplicate code", { fileCount: files.length });
+    this.log("Scanning for duplicate code", { fileCount: files.length });
 
     const codeBlocks = this.extractCodeBlocks(files);
     const duplicateGroups = this.findDuplicateBlocks(codeBlocks);
@@ -103,7 +109,7 @@ class CodeDeduplicationService {
 
     const potentialSavings = suggestions.reduce((sum, s) => sum + s.estimatedSaving, 0);
 
-    logger.info("Deduplication analysis complete", {
+    this.log("Deduplication analysis complete", {
       duplicateGroups: duplicateGroups.length,
       linesOfDuplicateCode,
       potentialSavings,

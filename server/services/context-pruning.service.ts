@@ -1,4 +1,4 @@
-import logger from "../lib/logger";
+import { BaseService } from "../lib/base-service";
 
 export interface Message {
   role: "user" | "assistant" | "system";
@@ -32,17 +32,23 @@ const DEFAULT_CONFIG: PruningConfig = {
   preserveSystemMessages: true,
 };
 
-export class ContextPruningService {
+export class ContextPruningService extends BaseService {
   private static instance: ContextPruningService;
   private estimationStats = { totalEstimated: 0, samples: 0, avgRatio: 0 };
 
-  private constructor() {}
+  private constructor() {
+    super("ContextPruningService");
+  }
 
   static getInstance(): ContextPruningService {
     if (!ContextPruningService.instance) {
       ContextPruningService.instance = new ContextPruningService();
     }
     return ContextPruningService.instance;
+  }
+
+  destroy(): void {
+    this.log("ContextPruningService shutting down");
   }
 
   /**
@@ -155,7 +161,7 @@ export class ContextPruningService {
     
     // Log if estimation is significantly off (>20% error)
     if (Math.abs(1 - ratio) > 0.2) {
-      logger.debug("Token estimation variance", { 
+      this.log("Token estimation variance", { 
         estimated, 
         actual: actualTokens, 
         ratio: ratio.toFixed(2),
@@ -185,7 +191,7 @@ export class ContextPruningService {
     const mergedConfig = { ...DEFAULT_CONFIG, ...config };
     const originalTokens = this.calculateTotalTokens(messages);
     
-    logger.info("Starting context pruning", { 
+    this.log("Starting context pruning", { 
       messageCount: messages.length, 
       originalTokens,
       maxTokens: mergedConfig.maxTokens,
@@ -255,7 +261,7 @@ export class ContextPruningService {
             prunedCount = olderMessages.length - (prunedMessages.length - systemMessages.length - recentMessages.length);
           }
         } catch (error) {
-          logger.warn("Summarization failed, falling back to truncation", { error });
+          this.logWarn("Summarization failed, falling back to truncation", { error });
           prunedMessages = this.truncateOlderMessages(
             systemMessages,
             olderMessages,
@@ -287,7 +293,7 @@ export class ContextPruningService {
 
     const finalTokens = this.calculateTotalTokens(compressedMessages);
     
-    logger.info("Context pruning completed", {
+    this.log("Context pruning completed", {
       prunedCount,
       summarizedCount,
       originalTokens,

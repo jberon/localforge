@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger";
+import { BaseService, ManagedMap } from "../lib/base-service";
 import { spawn, ChildProcess } from "child_process";
 import * as path from "path";
 import * as fs from "fs/promises";
@@ -49,14 +49,15 @@ interface RunningProcess {
   command: string;
 }
 
-class CodeRunnerService {
+class CodeRunnerService extends BaseService {
   private static instance: CodeRunnerService;
-  private runningProcesses: Map<string, RunningProcess> = new Map();
+  private runningProcesses: ManagedMap<string, RunningProcess>;
   private defaultTimeout = 30000;
   private maxOutputLength = 50000;
 
   private constructor() {
-    logger.info("CodeRunnerService initialized");
+    super("CodeRunnerService");
+    this.runningProcesses = this.createManagedMap<string, RunningProcess>({ maxSize: 200, strategy: "lru" });
   }
 
   static getInstance(): CodeRunnerService {
@@ -130,7 +131,7 @@ class CodeRunnerService {
     const timeout = options.timeout || this.defaultTimeout;
     const maxOutput = options.maxOutputLength || this.maxOutputLength;
 
-    logger.info("Running command", { runId, command, args: args.join(" ") });
+    this.log("Running command", { runId, command, args: args.join(" ") });
 
     return new Promise((resolve) => {
       let stdout = "";
@@ -196,7 +197,7 @@ class CodeRunnerService {
           executionTimeMs
         };
 
-        logger.info("Command completed", {
+        this.log("Command completed", {
           runId,
           success: result.success,
           exitCode,
@@ -408,7 +409,7 @@ class CodeRunnerService {
       running.process.kill("SIGTERM");
       setTimeout(() => running.process.kill("SIGKILL"), 1000);
       this.runningProcesses.delete(runId);
-      logger.info("Process killed", { runId });
+      this.log("Process killed", { runId });
       return true;
     }
     return false;
@@ -419,7 +420,7 @@ class CodeRunnerService {
       running.process.kill("SIGTERM");
       this.runningProcesses.delete(runId);
     });
-    logger.info("All processes killed");
+    this.log("All processes killed");
   }
 
   getRunningProcesses(): { id: string; command: string; runningTimeMs: number }[] {
@@ -504,7 +505,7 @@ class CodeRunnerService {
             await this.delay(retryDelayMs);
           }
         } catch (e) {
-          logger.warn("Auto-retry fix generation/application failed", { attempt, error: e });
+          this.logWarn("Auto-retry fix generation/application failed", { attempt, error: e });
         }
       }
 
@@ -615,7 +616,7 @@ class CodeRunnerService {
           const fixed = await fixFn(result.errors);
           iteration.fixed = fixed;
         } catch (e) {
-          logger.warn("Fix function failed", { iteration: i + 1, error: e });
+          this.logWarn("Fix function failed", { iteration: i + 1, error: e });
         }
       }
 
@@ -649,6 +650,14 @@ class CodeRunnerService {
 
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  destroy(): void {
+    this.runningProcesses.forEach((running) => {
+      try { running.process.kill(); } catch {}
+    });
+    this.runningProcesses.clear();
+    this.log("CodeRunnerService shut down");
   }
 }
 
