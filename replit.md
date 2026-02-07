@@ -56,7 +56,8 @@ LocalForge features a chat-based interface with streaming responses, project man
 - **Multi-file Refinement:** Parses LLM output for per-file changes using `// FILE:` / `// END FILE` markers, enabling simultaneous updates to all affected files during refinement.
 - **Lifecycle Hooks:** Provides user-configurable lifecycle automation with events and actions. Includes built-in health-check and auto-fix action types.
 - **Performance-Based Model Routing:** ModelRouterService learns from outcome history (success rates, durations) to auto-adjust model selection. Upgrades tier when success rate drops below 50%.
-- **Frontend Panels:** Feature Manifest Progress panel, Build Pipeline Progress tracker, and Project State Dashboard for real-time monitoring of build state, health history, and generation stats.
+- **Frontend Panels:** Feature Manifest Progress panel, Build Pipeline Progress tracker, Project State Dashboard, and Parallel Execution Dashboard for real-time monitoring of build state, health history, generation stats, and model pool utilization.
+- **Parallel Model Execution:** ModelPoolManager discovers loaded models from LM Studio, manages concurrent model slots with checkout/return semantics, supports role assignments (planner/builder/reviewer/any). ParallelPipelineOrchestrator runs pipeline steps concurrently across multiple model instances with lookahead planning, concurrent quality analysis, and parallel file generation. Exposed via `/api/parallel/*` routes.
 
 ## Recent Changes (Feb 2026 - Code Quality & Architecture Phase)
 - **Type Safety Audit**: Replaced 32+ `as any` casts with proper TypeScript types; replaced 14 `Record<string, any>` with `Record<string, unknown>` for type safety

@@ -13,6 +13,7 @@ interface HomePanelsState {
   showFeatureManifest: boolean;
   showBuildProgress: boolean;
   showProjectDashboard: boolean;
+  showParallelExecution: boolean;
 }
 
 interface HomePanelsContextValue extends HomePanelsState {
@@ -39,6 +40,7 @@ const initialState: HomePanelsState = {
   showFeatureManifest: false,
   showBuildProgress: false,
   showProjectDashboard: false,
+  showParallelExecution: false,
 };
 
 function homePanelsReducer(state: HomePanelsState, action: HomePanelsAction): HomePanelsState {

@@ -17,6 +17,7 @@ import intelligenceRoutes from "./routes/intelligence";
 import runtimeRoutes from "./routes/runtime";
 import discussionRoutes from "./routes/discussion";
 import templateRoutes from "./routes/templates";
+import parallelRoutes from "./routes/parallel";
 import { apiRateLimiter } from "./middleware/rate-limit";
 
 export async function registerRoutes(
@@ -55,6 +56,8 @@ export async function registerRoutes(
   app.use("/api/discussion", apiRateLimiter, discussionRoutes);
 
   app.use("/api/templates", apiRateLimiter, templateRoutes);
+
+  app.use("/api/parallel", apiRateLimiter, parallelRoutes);
 
   return httpServer;
 }
