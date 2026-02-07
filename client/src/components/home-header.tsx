@@ -11,10 +11,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { Project } from "@shared/schema";
 
+type ProjectListItem = Pick<Project, "id" | "name"> & Record<string, any>;
+
 interface HomeHeaderProps {
   activeProject: Project | undefined;
   activeProjectId: string | null;
-  projects: Project[];
+  projects: ProjectListItem[];
   testModeActive: boolean;
   testModeConnected: boolean;
   isGenerating: boolean;

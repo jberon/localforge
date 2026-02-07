@@ -1,10 +1,19 @@
 import logger from "./logger";
 import { serviceRegistry } from "./service-registry";
+import { llmConnectionPool } from "./llm-connection-pool";
 
 let isShuttingDown = false;
+let unhandledRejectionCount = 0;
+const MAX_UNHANDLED_REJECTIONS = 10;
+const REJECTION_WINDOW_MS = 60000;
+let rejectionWindowStart = Date.now();
 
 export function isShutdownInProgress(): boolean {
   return isShuttingDown;
+}
+
+export function getUnhandledRejectionCount(): number {
+  return unhandledRejectionCount;
 }
 
 export interface ShutdownOptions {
@@ -25,6 +34,9 @@ export function setupGracefulShutdown(options: ShutdownOptions = {}): void {
     const serviceNames = serviceRegistry.getRegisteredNames();
     logger.info(`[shutdown] Destroying ${serviceNames.length} registered services`);
     serviceRegistry.destroyAll();
+
+    logger.info("[shutdown] Destroying LLM connection pool");
+    llmConnectionPool.destroy();
 
     if (pool) {
       logger.info("[shutdown] Closing database pool");
@@ -59,6 +71,17 @@ export function setupGracefulShutdown(options: ShutdownOptions = {}): void {
   });
 
   process.on("unhandledRejection", (reason) => {
-    logger.error("[shutdown] Unhandled rejection:", { reason });
+    const now = Date.now();
+    if (now - rejectionWindowStart > REJECTION_WINDOW_MS) {
+      unhandledRejectionCount = 0;
+      rejectionWindowStart = now;
+    }
+    unhandledRejectionCount++;
+    logger.error("[shutdown] Unhandled rejection:", { reason, count: unhandledRejectionCount });
+
+    if (unhandledRejectionCount >= MAX_UNHANDLED_REJECTIONS) {
+      logger.error(`[shutdown] ${MAX_UNHANDLED_REJECTIONS} unhandled rejections in ${REJECTION_WINDOW_MS}ms window, initiating shutdown`);
+      shutdown("excessive-unhandled-rejections");
+    }
   });
 }

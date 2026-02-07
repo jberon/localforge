@@ -47,8 +47,10 @@ import { HealthDashboard } from "@/components/health-dashboard";
 import type { Project, LLMSettings } from "@shared/schema";
 import { APP_VERSION, APP_NAME } from "@shared/version";
 
+type ProjectListItem = Pick<Project, "id" | "name"> & Record<string, any>;
+
 interface ProjectSidebarProps {
-  projects: Project[];
+  projects: ProjectListItem[];
   activeProjectId: string | null;
   settings: LLMSettings;
   onSelectProject: (id: string) => void;
@@ -141,7 +143,7 @@ export function ProjectSidebar({
     setSettingsOpen(false);
   };
 
-  const startEditing = (project: Project) => {
+  const startEditing = (project: ProjectListItem) => {
     setEditingId(project.id);
     setEditingName(project.name);
   };

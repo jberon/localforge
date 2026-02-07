@@ -277,11 +277,23 @@ function HomeInner() {
     }
   }, [dreamTeamSettings, settings.endpoint]);
 
-  const { data: projects = [] } = useQuery<Project[]>({
+  const { data: projects = [] } = useQuery<Array<{
+    id: string;
+    name: string;
+    description?: string;
+    createdAt: number;
+    updatedAt: number;
+    messageCount: number;
+    fileCount: number;
+    hasCode: boolean;
+  }>>({
     queryKey: ["/api/projects"],
   });
 
-  const activeProject = projects.find((p) => p.id === activeProjectId);
+  const { data: activeProject } = useQuery<Project>({
+    queryKey: ["/api/projects", activeProjectId],
+    enabled: !!activeProjectId,
+  });
 
   const {
     isConnected: llmConnected,

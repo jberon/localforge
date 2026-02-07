@@ -8,8 +8,13 @@ import { asyncHandler } from "../lib/async-handler";
 const router = Router();
 
 router.get("/", asyncHandler(async (req, res) => {
-  const projects = await storage.getProjects();
-  res.json(projects);
+  if (req.query.full === "true") {
+    const projects = await storage.getProjects();
+    res.json(projects);
+  } else {
+    const summaries = await storage.getProjectSummaries();
+    res.json(summaries);
+  }
 }));
 
 router.get("/:id", asyncHandler(async (req, res) => {

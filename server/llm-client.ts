@@ -387,55 +387,62 @@ export async function streamCompletion(
       const client = createLLMClient(config);
       const startTime = Date.now();
     
-      // Use provided maxTokens or default to fullStack limit (optimized for 48GB M4 Pro)
       const maxTokens = options.maxTokens || LLM_DEFAULTS.maxTokens.fullStack;
-      
-      const stream = await client.chat.completions.create({
-        model: config.model || "local-model",
-        messages: [
-          { role: "system", content: options.systemPrompt },
-          ...options.messages,
-        ],
-        temperature: config.temperature ?? 0.7,
-        max_tokens: maxTokens,
-        stream: true,
-      });
 
-      let fullContent = "";
-      let tokenCount = 0;
-      
-      // Use throttled callback if provided to prevent UI flooding
-      const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
-      const throttler = options.onChunk 
-        ? new ChunkThrottler(throttleMs, options.onChunk)
-        : null;
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => {
+        timeoutController.abort();
+      }, LLM_CONFIG.requestTimeoutMs);
 
+      const combinedAborted = () =>
+        options.signal?.aborted || timeoutController.signal.aborted;
+      
       try {
-        for await (const chunk of stream) {
-          // Check for cancellation
-          if (options.signal?.aborted) {
-            stream.controller?.abort();
-            throw new Error("Request cancelled");
-          }
-          
-          const delta = chunk.choices[0]?.delta?.content || "";
-          if (delta) {
-            fullContent += delta;
-            tokenCount++;
-            throttler?.add(delta);
-          }
-        }
-      } finally {
-        // Ensure remaining buffer is flushed
-        throttler?.destroy();
-        
-        // Update performance telemetry
-        const durationMs = Date.now() - startTime;
-        const estimatedTokens = Math.ceil(fullContent.length / 4);
-        updateTelemetry(durationMs, estimatedTokens);
-      }
+        const stream = await client.chat.completions.create({
+          model: config.model || "local-model",
+          messages: [
+            { role: "system", content: options.systemPrompt },
+            ...options.messages,
+          ],
+          temperature: config.temperature ?? 0.7,
+          max_tokens: maxTokens,
+          stream: true,
+        });
 
-      return fullContent;
+        let fullContent = "";
+        let tokenCount = 0;
+        
+        const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
+        const throttler = options.onChunk 
+          ? new ChunkThrottler(throttleMs, options.onChunk)
+          : null;
+
+        try {
+          for await (const chunk of stream) {
+            if (combinedAborted()) {
+              stream.controller?.abort();
+              throw new Error(timeoutController.signal.aborted ? "Request timed out" : "Request cancelled");
+            }
+            
+            const delta = chunk.choices[0]?.delta?.content || "";
+            if (delta) {
+              fullContent += delta;
+              tokenCount++;
+              throttler?.add(delta);
+            }
+          }
+        } finally {
+          throttler?.destroy();
+          
+          const durationMs = Date.now() - startTime;
+          const estimatedTokens = Math.ceil(fullContent.length / 4);
+          updateTelemetry(durationMs, estimatedTokens);
+        }
+
+        return fullContent;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     });
   });
 }

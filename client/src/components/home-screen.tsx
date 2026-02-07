@@ -55,8 +55,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { Project } from "@shared/schema";
 
+type ProjectListItem = Pick<Project, "id" | "name" | "updatedAt"> & { messageCount?: number } & Record<string, any>;
+
 interface HomeScreenProps {
-  projects: Project[];
+  projects: ProjectListItem[];
   onCreateProject: () => void;
   onSelectProject: (id: string) => void;
   onGenerate: (prompt: string, mode: "app" | "design") => void;
@@ -294,10 +296,10 @@ export function HomeScreen({
                           {project.name}
                         </h3>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          {project.messages && project.messages.length > 0 && (
+                          {(project.messageCount ?? 0) > 0 && (
                             <span className="flex items-center gap-1" data-testid={`text-message-count-${project.id}`}>
                               <MessageSquare className="h-3 w-3" />
-                              {project.messages.length}
+                              {project.messageCount}
                             </span>
                           )}
                           <span className="flex items-center gap-1" data-testid={`text-time-ago-${project.id}`}>
@@ -704,10 +706,10 @@ export function HomeScreen({
                             {project.name}
                           </h3>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            {project.messages && project.messages.length > 0 && (
+                            {(project.messageCount ?? 0) > 0 && (
                               <span className="flex items-center gap-1" data-testid={`text-message-count-${project.id}`}>
                                 <MessageSquare className="h-3 w-3" />
-                                {project.messages.length}
+                                {project.messageCount}
                               </span>
                             )}
                             <span className="flex items-center gap-1" data-testid={`text-time-ago-${project.id}`}>

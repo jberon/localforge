@@ -58,6 +58,17 @@ LocalForge features a chat-based interface with streaming responses, project man
 - **Performance-Based Model Routing:** ModelRouterService learns from outcome history (success rates, durations) to auto-adjust model selection. Upgrades tier when success rate drops below 50%.
 - **Frontend Panels:** Feature Manifest Progress panel, Build Pipeline Progress tracker, and Project State Dashboard for real-time monitoring of build state, health history, and generation stats.
 
+## Recent Changes (Feb 2026 - Local LLM Optimization Phase 2)
+- **LLM Timeout**: Increased default from 120s to 300s (configurable via `LLM_REQUEST_TIMEOUT_MS` env var) for long local generations
+- **Request Abort Controller**: Streaming requests now have timeout-based auto-abort, preventing stuck requests
+- **Client Cache**: Bounded to 10 entries with LRU eviction to prevent memory leaks
+- **Connection Pool**: Timeout synced with configurable `LLM_REQUEST_TIMEOUT_MS`, pool destroyed during graceful shutdown
+- **Circuit Breaker**: Removed console.log, uses structured logger only
+- **Graceful Shutdown**: Now cleans up LLM connection pool; unhandled rejections tracked with auto-shutdown after 10 in 60s window
+- **Hardware Auto-Detection**: M4 Pro config now uses `os` module to detect actual memory, CPU cores, and Apple Silicon; supports 16GB+ machines dynamically
+- **Project Listing Optimization**: GET /api/projects returns slim summaries (no generatedCode/messages payload); full data via `?full=true` or individual project endpoint
+- **Response Logging**: Truncated to 500 chars to prevent massive log lines from large project data
+
 ## External Dependencies
 - **LM Studio**: Local LLM inference.
 - **PostgreSQL**: Primary database.

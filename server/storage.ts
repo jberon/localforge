@@ -1,11 +1,18 @@
 import { db } from "./db";
 import { projects, projectVersions } from "@shared/schema";
 import type { Project, Message, InsertProject, DataModel, GeneratedFile, ValidationResult, ProjectVersion, Plan } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
+
+export type ProjectSummary = Pick<Project, "id" | "name" | "description" | "createdAt" | "updatedAt"> & {
+  messageCount: number;
+  fileCount: number;
+  hasCode: boolean;
+};
 
 export interface IStorage {
   getProjects(): Promise<Project[]>;
+  getProjectSummaries(): Promise<ProjectSummary[]>;
   getProject(id: string): Promise<Project | undefined>;
   createProject(project: InsertProject): Promise<Project>;
   updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined>;
@@ -40,6 +47,21 @@ export class MemoryStorage implements IStorage {
 
   async getProjects(): Promise<Project[]> {
     return Array.from(this.projects.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  async getProjectSummaries(): Promise<ProjectSummary[]> {
+    return Array.from(this.projects.values())
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        messageCount: p.messages?.length ?? 0,
+        fileCount: p.generatedFiles?.length ?? 0,
+        hasCode: !!p.generatedCode,
+      }));
   }
 
   async getProject(id: string): Promise<Project | undefined> {
@@ -142,6 +164,30 @@ export class DatabaseStorage implements IStorage {
   async getProjects(): Promise<Project[]> {
     const rows = await db!.select().from(projects).orderBy(projects.updatedAt);
     return rows.map(dbToProject).reverse();
+  }
+
+  async getProjectSummaries(): Promise<ProjectSummary[]> {
+    const rows = await db!.select({
+      id: projects.id,
+      name: projects.name,
+      description: projects.description,
+      createdAt: projects.createdAt,
+      updatedAt: projects.updatedAt,
+      messageCount: sql<number>`coalesce(jsonb_array_length(${projects.messages}), 0)`,
+      fileCount: sql<number>`coalesce(jsonb_array_length(${projects.generatedFiles}), 0)`,
+      hasCode: sql<boolean>`${projects.generatedCode} is not null`,
+    }).from(projects).orderBy(projects.updatedAt);
+
+    return rows.reverse().map(row => ({
+      id: row.id,
+      name: row.name,
+      description: row.description ?? undefined,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      messageCount: row.messageCount ?? 0,
+      fileCount: row.fileCount ?? 0,
+      hasCode: !!row.hasCode,
+    }));
   }
 
   async getProject(id: string): Promise<Project | undefined> {

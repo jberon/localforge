@@ -1,32 +1,58 @@
+import os from "os";
+
+interface DetectedHardware {
+  totalMemoryGB: number;
+  cpuCores: number;
+  platform: string;
+  arch: string;
+  isAppleSilicon: boolean;
+  freeMemoryGB: number;
+}
+
+function detectHardware(): DetectedHardware {
+  const totalMemoryGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+  const freeMemoryGB = Math.round(os.freemem() / (1024 * 1024 * 1024));
+  const cpuCores = os.cpus().length;
+  const platform = os.platform();
+  const arch = os.arch();
+  const isAppleSilicon = platform === "darwin" && arch === "arm64";
+
+  return { totalMemoryGB, cpuCores, platform, arch, isAppleSilicon, freeMemoryGB };
+}
+
+export const detectedHardware = detectHardware();
+
 export const M4_PRO_OPTIMIZED = {
   memory: {
     maxModelSizeMB: 24576,
     contextReservedMB: 8192,
     systemReservedMB: 4096,
-    totalAvailableMB: 36864,
-    llmPoolSizeMB: 28672,
+    totalAvailableMB: detectedHardware.totalMemoryGB * 1024,
+    llmPoolSizeMB: Math.round(detectedHardware.totalMemoryGB * 0.75) * 1024,
     appReservedMB: 4096,
   },
   lmStudio: {
     gpuLayers: -1,
     contextLength: 32768,
     batchSize: 1024,
-    threads: 12,
+    threads: Math.max(4, Math.floor(detectedHardware.cpuCores * 0.75)),
     flashAttention: true,
     memoryMap: true,
     keepInMemory: true,
-    gpuOffloadPercent: 100,
+    gpuOffloadPercent: detectedHardware.isAppleSilicon ? 100 : 80,
   },
   hardware: {
-    cpuCores: 14,
-    performanceCores: 10,
-    efficiencyCores: 4,
-    gpuCores: 20,
-    neuralEngineCores: 16,
-    unifiedMemoryGB: 36,
-    memoryBandwidthGBps: 273,
+    cpuCores: detectedHardware.cpuCores,
+    performanceCores: Math.ceil(detectedHardware.cpuCores * 0.7),
+    efficiencyCores: Math.floor(detectedHardware.cpuCores * 0.3),
+    gpuCores: detectedHardware.isAppleSilicon ? 20 : 0,
+    neuralEngineCores: detectedHardware.isAppleSilicon ? 16 : 0,
+    unifiedMemoryGB: detectedHardware.totalMemoryGB,
+    memoryBandwidthGBps: detectedHardware.isAppleSilicon ? 273 : 50,
     ssdSpeedGBps: 4.0,
-    architecture: "Apple Silicon M4 Pro",
+    architecture: detectedHardware.isAppleSilicon
+      ? `Apple Silicon (${detectedHardware.arch})`
+      : `${os.platform()} ${detectedHardware.arch}`,
   },
   recommended: {
     plannerModel: "Ministral 3 14B Reasoning",
@@ -40,7 +66,7 @@ export const M4_PRO_OPTIMIZED = {
   },
   connection: {
     maxQueueSize: 20,
-    requestTimeoutMs: 120000,
+    requestTimeoutMs: 300000,
     streamChunkSize: 1024,
     throttleMs: 50,
     maxRetries: 3,
@@ -57,27 +83,29 @@ export const M4_PRO_OPTIMIZED = {
   },
   performance: {
     enableParallelGeneration: true,
-    maxParallelTasks: 3,
+    maxParallelTasks: Math.max(1, Math.floor(detectedHardware.cpuCores / 4)),
     enableStreamingOptimization: true,
     enableMemoryPressureMonitoring: true,
     memoryPressureThresholdPercent: 80,
     enableGCHints: true,
     gcIntervalMs: 30000,
     enableCaching: true,
-    cacheMaxSizeMB: 384,
+    cacheMaxSizeMB: Math.min(512, Math.round(detectedHardware.totalMemoryGB * 10)),
     cacheTTLMs: 300000,
   },
   concurrency: {
     maxConcurrentBuilds: 1,
-    maxConcurrentValidations: 3,
+    maxConcurrentValidations: Math.max(1, Math.floor(detectedHardware.cpuCores / 4)),
     maxConcurrentDeployments: 1,
     taskQueueStrategy: "priority" as const,
-    workerPoolSize: 6,
+    workerPoolSize: Math.max(2, Math.floor(detectedHardware.cpuCores / 2)),
   },
 } as const;
 
-export function getOptimalConfig(availableMemoryGB: number = 36) {
-  if (availableMemoryGB >= 48) {
+export function getOptimalConfig(availableMemoryGB?: number) {
+  const memGB = availableMemoryGB ?? detectedHardware.totalMemoryGB;
+
+  if (memGB >= 48) {
     return {
       ...M4_PRO_OPTIMIZED,
       memory: {
@@ -98,15 +126,34 @@ export function getOptimalConfig(availableMemoryGB: number = 36) {
         builderContextLength: 65536,
       },
     };
-  } else if (availableMemoryGB >= 36) {
+  } else if (memGB >= 36) {
     return M4_PRO_OPTIMIZED;
-  } else if (availableMemoryGB >= 24) {
+  } else if (memGB >= 24) {
     return {
       ...M4_PRO_OPTIMIZED,
       recommended: {
         ...M4_PRO_OPTIMIZED.recommended,
         builderModel: "Qwen2.5 Coder 14B",
         builderMemoryGB: 12,
+        plannerContextLength: 16384,
+        builderContextLength: 16384,
+      },
+      lmStudio: {
+        ...M4_PRO_OPTIMIZED.lmStudio,
+        contextLength: 16384,
+        batchSize: 512,
+      },
+    };
+  } else if (memGB >= 16) {
+    return {
+      ...M4_PRO_OPTIMIZED,
+      recommended: {
+        plannerModel: "Qwen2.5 Coder 7B",
+        builderModel: "Qwen2.5 Coder 14B",
+        plannerMemoryGB: 6,
+        builderMemoryGB: 10,
+        plannerTemperature: 0.3,
+        builderTemperature: 0.35,
         plannerContextLength: 16384,
         builderContextLength: 16384,
       },
