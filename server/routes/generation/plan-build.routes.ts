@@ -15,6 +15,7 @@ import {
   extractLLMLimitations,
 } from "./index";
 import { codeQualityPipelineService } from "../../services/code-quality-pipeline.service";
+import { selfTestingService } from "../../services/self-testing.service";
 
 const generateRequestSchema = z.object({
   projectName: z.string().min(1),
@@ -308,6 +309,15 @@ Generate complete, working code that implements this plan. Follow the file struc
           role: "assistant",
           content: buildMessage,
         });
+
+        try {
+          const testSuite = selfTestingService.generateTestSuite(id, cleanedCode);
+          if (testSuite.scenarios.length > 0) {
+            res.write(`data: ${JSON.stringify({ type: "test_suite", suiteId: testSuite.id, scenarioCount: testSuite.scenarios.length, coverage: testSuite.coverage })}\n\n`);
+          }
+        } catch (testError: any) {
+          console.error(`[selfTest] Auto-test generation failed: ${testError.message}`);
+        }
 
         res.write(`data: ${JSON.stringify({ type: "code", code: cleanedCode })}\n\n`);
         res.write(`data: ${JSON.stringify({ type: "validation", validation })}\n\n`);

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, User, Sparkles, FileCode, Loader2, Mic, MicOff, Paperclip, Image } from "lucide-react";
+import { Send, User, Sparkles, FileCode, Loader2, Mic, MicOff, Paperclip, Image, Puzzle } from "lucide-react";
 import type { Message, DataModel, MessageAttachment, DreamTeamDiscussion, DreamTeamSettings as DreamTeamSettingsType } from "@shared/schema";
 import { DreamTeamInlineCard } from "./dream-team-inline-card";
 import { GenerationWizard } from "./generation-wizard";
@@ -13,6 +13,7 @@ import { ActionGroupRow, type Action } from "./action-group-row";
 import { StatusIndicator, type StatusType } from "./status-indicator";
 import { PlanBuildModeToggle, type AgentMode } from "./plan-build-mode-toggle";
 import { DesignKeywordPicker, type DesignKeyword } from "./design-keyword-picker";
+import { IntegrationsPanel, getEnabledIntegrationPrompt } from "./integrations-panel";
 import { Paintbrush } from "lucide-react";
 
 interface QueueStatus {
@@ -149,6 +150,8 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
   const [input, setInput] = useState("");
   const [selectedKeywords, setSelectedKeywords] = useState<DesignKeyword[]>([]);
   const [showKeywords, setShowKeywords] = useState(false);
+  const [showIntegrations, setShowIntegrations] = useState(false);
+  const [enabledIntegrations, setEnabledIntegrations] = useState<string[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -178,10 +181,23 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
     }
   }, [messages, isLoading]);
 
+  const handleToggleIntegration = useCallback((id: string) => {
+    setEnabledIntegrations(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if ((input.trim() || hasAttachments) && !isLoading) {
-      onSendMessage(input.trim(), undefined, attachments.length > 0 ? attachments : undefined);
+      let finalPrompt = input.trim();
+      if (enabledIntegrations.length > 0) {
+        const enhancement = getEnabledIntegrationPrompt(enabledIntegrations);
+        if (enhancement) {
+          finalPrompt += "\n\n" + enhancement;
+        }
+      }
+      onSendMessage(finalPrompt, undefined, attachments.length > 0 ? attachments : undefined);
       setInput("");
       clearAttachments();
     }
@@ -347,6 +363,15 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
                   />
                 </div>
               )}
+              {showIntegrations && (
+                <div className="mb-2">
+                  <IntegrationsPanel
+                    enabledIntegrations={enabledIntegrations}
+                    onToggle={handleToggleIntegration}
+                    compact
+                  />
+                </div>
+              )}
               <div className="relative" {...dragHandlers}>
                 <DropZoneOverlay isDragging={isDragging} />
                 <input
@@ -370,6 +395,18 @@ export function ChatPanel({ messages, isLoading, loadingPhase, currentActions, o
                   data-testid="input-chat"
                 />
                 <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowIntegrations(!showIntegrations)}
+                    disabled={isLoading}
+                    className={`toggle-elevate ${showIntegrations || enabledIntegrations.length > 0 ? "toggle-elevated text-primary" : ""}`}
+                    data-testid="button-integrations"
+                    title="Add integrations"
+                  >
+                    <Puzzle className="h-4 w-4" />
+                  </Button>
                   <Button
                     type="button"
                     size="icon"

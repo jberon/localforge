@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, Loader2, XCircle, Wand2 } from "lucide-react";
@@ -11,6 +11,7 @@ interface FreeformPromptProps {
   llmConnected: boolean | null;
   onCheckConnection: () => void;
   settings?: LLMSettings;
+  defaultPrompt?: string;
 }
 
 export function FreeformPrompt({
@@ -19,10 +20,17 @@ export function FreeformPrompt({
   llmConnected,
   onCheckConnection,
   settings,
+  defaultPrompt,
 }: FreeformPromptProps) {
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(defaultPrompt || "");
   const [isEnhancing, setIsEnhancing] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (defaultPrompt) {
+      setPrompt(defaultPrompt);
+    }
+  }, [defaultPrompt]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

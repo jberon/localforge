@@ -20,6 +20,8 @@ import {
   attemptCodeFix,
 } from "./index";
 import { codeQualityPipelineService } from "../../services/code-quality-pipeline.service";
+import { iterativeRefinementService } from "../../services/iterative-refinement.service";
+import { selfTestingService } from "../../services/self-testing.service";
 
 const refineRequestSchema = z.object({
   refinement: z.string().min(1),
@@ -122,18 +124,40 @@ export function registerChatRoutes(router: Router): void {
         console.error(`[webSearch] Classification error: ${classifyError.message}`);
       }
 
-      const systemMessage = webSearchUsed && webSearchContext
+      let systemMessage = webSearchUsed && webSearchContext
         ? `${SYSTEM_PROMPT}\n\n${webSearchContext}`
         : SYSTEM_PROMPT;
 
+      let refinementClassification = null;
+      const existingCode = project.generatedCode;
+      if (existingCode && existingCode.length > 50) {
+        refinementClassification = iterativeRefinementService.classifyRefinement(content, existingCode);
+        
+        if (refinementClassification.suggestedApproach !== 'full-rewrite' && refinementClassification.confidence > 0.3) {
+          const refinementPrompt = iterativeRefinementService.buildRefinementPrompt(
+            refinementClassification, content, existingCode
+          );
+          systemMessage = refinementPrompt;
+          
+          res.write(`data: ${JSON.stringify({ type: "status", message: `Applying ${refinementClassification.type} change (${Math.round(refinementClassification.confidence * 100)}% confidence)...` })}\n\n`);
+        }
+      }
+
       try {
+        const effectiveTemp = refinementClassification?.type === 'style' ? 0.2 : builderConfig.temperature;
+        
         const stream = await openai.chat.completions.create({
           model: isCloud ? (builderConfig.model || "gpt-4o-mini") : (builderConfig.model || "local-model"),
-          messages: [
-            { role: "system", content: systemMessage },
-            ...conversationHistory,
-          ],
-          temperature: builderConfig.temperature,
+          messages: refinementClassification?.suggestedApproach !== 'full-rewrite' && refinementClassification?.confidence && refinementClassification.confidence > 0.3
+            ? [
+                { role: "system", content: systemMessage },
+                { role: "user", content: content },
+              ]
+            : [
+                { role: "system", content: systemMessage },
+                ...conversationHistory,
+              ],
+          temperature: effectiveTemp,
           max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
           stream: true,
         });
@@ -208,6 +232,13 @@ export function registerChatRoutes(router: Router): void {
           const codeIsValid = finalValidation.valid || wasAutoFixed;
           
           if (codeIsValid || validation.valid) {
+            if (refinementClassification && refinementClassification.suggestedApproach !== 'full-rewrite' && existingCode) {
+              const refinementResult = iterativeRefinementService.applyRefinement(existingCode, cleanedCode);
+              iterativeRefinementService.recordRefinement(projectId, content, refinementClassification, refinementResult.linesModified + refinementResult.linesAdded, true);
+              
+              res.write(`data: ${JSON.stringify({ type: "refinement_result", changes: { linesModified: refinementResult.linesModified, linesAdded: refinementResult.linesAdded, linesRemoved: refinementResult.linesRemoved, changeCount: refinementResult.changesApplied.length } })}\n\n`);
+            }
+            
             let responseMessage = "I've generated the app for you. Check the preview panel to see it in action!";
             
             if (wasAutoFixed) {
@@ -239,6 +270,15 @@ export function registerChatRoutes(router: Router): void {
                 retryCount,
               },
             });
+
+            try {
+              const testSuite = selfTestingService.generateTestSuite(projectId, cleanedCode);
+              if (testSuite.scenarios.length > 0) {
+                res.write(`data: ${JSON.stringify({ type: "test_suite", suiteId: testSuite.id, scenarioCount: testSuite.scenarios.length, coverage: testSuite.coverage })}\n\n`);
+              }
+            } catch (testError: any) {
+              console.error(`[selfTest] Auto-test generation failed: ${testError.message}`);
+            }
           } else {
             await storage.addMessage(projectId, {
               role: "assistant",
