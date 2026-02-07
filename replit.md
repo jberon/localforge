@@ -59,7 +59,17 @@ LocalForge features a chat-based interface with streaming responses, project man
 - **Frontend Panels:** Feature Manifest Progress panel, Build Pipeline Progress tracker, Project State Dashboard, and Parallel Execution Dashboard for real-time monitoring of build state, health history, generation stats, and model pool utilization.
 - **Parallel Model Execution:** ModelPoolManager discovers loaded models from LM Studio, manages concurrent model slots with checkout/return semantics, supports role assignments (planner/builder/reviewer/any). ParallelPipelineOrchestrator runs pipeline steps concurrently across multiple model instances with lookahead planning, concurrent quality analysis, and parallel file generation. Exposed via `/api/parallel/*` routes.
 
-## Recent Changes (Feb 2026 - Code Quality & Architecture Phase)
+## Recent Changes (Feb 2026 - Intelligence Engine v2)
+- **Outcome-Driven Learning Loop**: OutcomeLearningService tracks generation outcomes (quality scores, test results, user acceptance) with weighted exponential decay scoring. Continuously recalculates model performance per taskType for optimal routing.
+- **Semantic Context Retrieval**: SemanticContextService builds embedding indices over project files. Tries LM Studio embeddings, falls back to TF-IDF (256-dim word-hash vectors). Retrieves most relevant code chunks by cosine similarity for generation/refinement context.
+- **Predictive Error Prevention**: PredictiveErrorPreventionService scans prompts before generation against 15+ risk patterns (complex-state, async-fetch, auth-flow, etc.). Injects preventive scaffolding for high-risk prompts. Learns new patterns from outcomes.
+- **Adaptive Prompt Decomposition**: AdaptiveDecompositionService tracks which decomposition strategies work best per model/taskType. Auto-tunes step count, granularity, merge/split thresholds using weighted outcome history.
+- **Cross-Project Knowledge Transfer**: CrossProjectKnowledgeService extracts reusable patterns (hooks, API routes, components, forms, auth, etc.) from successful generations. Searchable library auto-injects relevant patterns into future prompts.
+- **Speculative Generation with Verification**: SpeculativeGenerationService generates 2-5 candidate solutions in parallel with diversity modes (temperature/model/prompt). Evaluates each for quality, ranks, selects best. Configurable via UI.
+- **Intelligence Dashboard**: Frontend panel showing real-time status of all 6 intelligence services with key metrics, model leaderboards, risk patterns, and knowledge library stats.
+- **Intelligence API v2**: 32 REST endpoints under `/api/intelligence-v2/*` exposing all 6 services.
+
+### Earlier Changes (Code Quality & Architecture Phase)
 - **Type Safety Audit**: Replaced 32+ `as any` casts with proper TypeScript types; replaced 14 `Record<string, any>` with `Record<string, unknown>` for type safety
 - **Orchestrator Refactoring**: Split orchestrator.ts from 1796 → 1367 lines; extracted prompts (orchestrator/prompts.ts), validation (orchestrator/validation.ts), enhanced operations (orchestrator/enhanced-ops.ts) into sub-modules
 - **Code Quality Pipeline Refactoring**: Split code-quality-pipeline.service.ts from 1774 → 217 lines; extracted 5 analysis passes (structural, react-jsx, import, completeness, llm-cleanup) to code-quality/ directory

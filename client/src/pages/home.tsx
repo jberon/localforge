@@ -55,6 +55,7 @@ import { DesignModePanel } from "@/components/design-mode-panel";
 import { AIInsightsPanel } from "@/components/ai-insights-panel";
 import { SmartModelSettings } from "@/components/smart-model-settings";
 import { ParallelExecutionPanel } from "@/components/parallel-execution-panel";
+import { IntelligenceDashboardPanel } from "@/components/intelligence-dashboard-panel";
 import { SelfTestingPanel } from "@/components/self-testing-panel";
 import { HooksConfigDialog } from "@/components/hooks-config-dialog";
 import { ImageImportDialog } from "@/components/image-import-dialog";
@@ -153,7 +154,7 @@ function HomeInner() {
     showAIInsights, showSelfTesting, showSmartModel,
     showImageImport, showHomeSettings, showHooksConfig,
     showFeatureManifest, showBuildProgress, showProjectDashboard,
-    showParallelExecution,
+    showParallelExecution, showIntelligenceDashboard,
     togglePanel, setPanel,
   } = useHomePanels();
   const [currentActions, setCurrentActions] = useState<Action[]>([]);
@@ -2030,6 +2031,20 @@ function HomeInner() {
           </SheetContent>
         </Sheet>
 
+        <Sheet open={showIntelligenceDashboard} onOpenChange={(v) => setPanel('showIntelligenceDashboard', v)}>
+          <SheetContent side="right" className="w-full max-w-full sm:max-w-[420px] p-0">
+            <SheetHeader className="px-4 py-3 border-b">
+              <SheetTitle className="flex items-center gap-2">
+                <Brain className="h-5 w-5" />
+                Intelligence Dashboard
+              </SheetTitle>
+            </SheetHeader>
+            <div className="h-[calc(100dvh-60px)] overflow-y-auto p-4">
+              <IntelligenceDashboardPanel />
+            </div>
+          </SheetContent>
+        </Sheet>
+
         <ImageImportDialog
           projectId={activeProjectId || "default"}
           open={showImageImport}
@@ -2117,6 +2132,16 @@ function HomeInner() {
             className={showParallelExecution ? "toggle-elevate toggle-elevated" : ""}
           >
             <Layers className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={showIntelligenceDashboard ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => togglePanel('showIntelligenceDashboard')}
+            title="Intelligence Dashboard"
+            data-testid="button-strip-intelligence"
+            className={showIntelligenceDashboard ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <Brain className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
@@ -2679,6 +2704,20 @@ function HomeInner() {
           </SheetHeader>
           <div className="h-[calc(100vh-60px)] overflow-y-auto p-4">
             <ParallelExecutionPanel />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={showIntelligenceDashboard} onOpenChange={(v) => setPanel('showIntelligenceDashboard', v)}>
+        <SheetContent side="right" className="w-[420px] sm:max-w-[420px] p-0">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              Intelligence Dashboard
+            </SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(100vh-60px)] overflow-y-auto p-4">
+            <IntelligenceDashboardPanel />
           </div>
         </SheetContent>
       </Sheet>
