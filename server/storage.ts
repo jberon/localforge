@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { logger } from "./lib/logger";
 import { projects, projectVersions } from "@shared/schema";
 import type { Project, Message, InsertProject, DataModel, GeneratedFile, ValidationResult, ProjectVersion, Plan } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
@@ -129,7 +130,7 @@ export class MemoryStorage implements IStorage {
         generatedCode: project.generatedCode,
         generatedFiles: project.generatedFiles,
         dataModel: project.dataModel,
-        plan: (project as any).plan,
+        plan: project.plan,
       },
       createdAt: Date.now(),
       isAutoSave,
@@ -299,7 +300,7 @@ export class DatabaseStorage implements IStorage {
       generatedCode: project.generatedCode,
       generatedFiles: project.generatedFiles,
       dataModel: project.dataModel,
-      plan: (project as any).plan,
+      plan: project.plan,
     };
 
     const [row] = await db!.insert(projectVersions).values({
@@ -359,4 +360,4 @@ export class DatabaseStorage implements IStorage {
 
 export const storage: IStorage = db ? new DatabaseStorage() : new MemoryStorage();
 
-console.log(`[storage] Using ${db ? 'DatabaseStorage' : 'MemoryStorage (in-memory)'}`);
+logger.info("[storage] Storage type selected", { type: db ? "DatabaseStorage" : "MemoryStorage" });

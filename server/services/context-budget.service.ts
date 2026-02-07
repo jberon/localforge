@@ -507,7 +507,7 @@ export class ContextBudgetService {
     taskProfile: TaskProfile
   ): LocalModelAllocation {
     const modelLower = modelName.toLowerCase();
-    let preset: typeof this.m4ModelPresets extends Map<string, infer V> ? V : never = null as any;
+    let preset: { contextWindow: number; optimalBatchSize: number; gpuLayers: number; temperatureRange: { min: number; max: number; default: number }; taskAdjustments: Partial<Record<TaskProfile, Partial<AllocationProfile>>>; notes: string } | null = null;
     
     for (const [key, p] of Array.from(this.m4ModelPresets.entries())) {
       if (modelLower.includes(key)) {

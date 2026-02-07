@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { asyncHandler } from "../../lib/async-handler";
-import { designModeService } from "../../services/design-mode.service";
+import { designModeService, type DesignKeyword } from "../../services/design-mode.service";
 
 const designModeToggleSchema = z.object({
   enabled: z.boolean(),
@@ -60,7 +60,7 @@ export function registerDesignModeRoutes(router: Router): void {
   }));
 
   router.get("/design-mode/templates", asyncHandler((req, res) => {
-    const category = req.query.category as any;
+    const category = req.query.category as "landing" | "dashboard" | "form" | "blog" | "ecommerce" | "portfolio" | "saas" | undefined;
     const templates = designModeService.getTemplates(category);
     res.json(templates);
   }));
@@ -86,7 +86,7 @@ export function registerDesignModeRoutes(router: Router): void {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
     const { projectId, name, description, style, templateId } = parsed.data;
-    const mockup = designModeService.createMockup(projectId, name, description, style, templateId);
+    const mockup = designModeService.createMockup(projectId, name, description || "", style, templateId);
     res.status(201).json(mockup);
   }));
 
@@ -105,7 +105,7 @@ export function registerDesignModeRoutes(router: Router): void {
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
-    const component = designModeService.addComponent(req.params.mockupId as string, parsed.data);
+    const component = designModeService.addComponent(req.params.mockupId as string, parsed.data as any);
     res.json(component || { error: "Failed to add component" });
   }));
 
@@ -143,7 +143,7 @@ export function registerDesignModeRoutes(router: Router): void {
   }));
 
   router.get("/design-mode/keywords/:keyword", asyncHandler((req, res) => {
-    const keyword = designModeService.getDesignKeyword(req.params.keyword as string as any);
+    const keyword = designModeService.getDesignKeyword(req.params.keyword as DesignKeyword);
     if (!keyword) {
       return res.status(404).json({ error: "Keyword not found" });
     }
@@ -167,7 +167,7 @@ export function registerDesignModeRoutes(router: Router): void {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
     const { prompt, keywords } = parsed.data;
-    const enhanced = designModeService.enhancePromptWithKeywords(prompt, keywords);
+    const enhanced = designModeService.enhancePromptWithKeywords(prompt, keywords as DesignKeyword[] | undefined);
     const detected = designModeService.detectKeywordsInPrompt(prompt);
     res.json({ enhanced, detectedKeywords: detected });
   }));
@@ -178,8 +178,8 @@ export function registerDesignModeRoutes(router: Router): void {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
     const { keywords } = parsed.data;
-    const cssProperties = designModeService.getKeywordCSSProperties(keywords);
-    const tailwindClasses = designModeService.getKeywordTailwindClasses(keywords);
+    const cssProperties = designModeService.getKeywordCSSProperties(keywords as DesignKeyword[]);
+    const tailwindClasses = designModeService.getKeywordTailwindClasses(keywords as DesignKeyword[]);
     res.json({ cssProperties, tailwindClasses });
   }));
 }

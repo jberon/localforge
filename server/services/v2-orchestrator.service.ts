@@ -382,7 +382,9 @@ class V2OrchestratorService extends BaseService {
       if (sessionId) {
         try {
           streamingBudgetService.endSession(sessionId);
-        } catch (_) {}
+        } catch (cleanupErr) {
+          this.log("Failed to end streaming session during error cleanup", { sessionId, error: String(cleanupErr) });
+        }
       }
       if (requestId && this.config.performanceProfiling) {
         performanceProfilerService.endOperation(requestId, false, String(error));

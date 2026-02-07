@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { logger } from "./lib/logger";
 
 export function serveStatic(app: Express) {
   // Get the directory of this file at runtime
@@ -44,7 +45,7 @@ export function serveStatic(app: Express) {
     );
   }
   
-  console.log(`[static] Serving static files from: ${distPath}`);
+  logger.info("[static] Serving static files", { distPath });
 
   app.use(express.static(distPath));
 

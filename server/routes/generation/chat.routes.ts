@@ -19,6 +19,7 @@ import {
   extractLLMLimitations,
   attemptCodeFix,
 } from "./index";
+import { logger } from "../../lib/logger";
 import { codeQualityPipelineService } from "../../services/code-quality-pipeline.service";
 import { iterativeRefinementService } from "../../services/iterative-refinement.service";
 import { selfTestingService } from "../../services/self-testing.service";
@@ -114,7 +115,7 @@ export function registerChatRoutes(router: Router): void {
       
       try {
         const classificationResult = await shouldUseWebSearch(content, settings);
-        console.log(`[webSearch] Classification: ${classificationResult.needsWeb ? "USE_WEB" : "NO_WEB"}`);
+        logger.info("[webSearch] Classification", { needsWeb: classificationResult.needsWeb });
         
         const decision = decideWebSearchAction(
           classificationResult.needsWeb,
@@ -122,7 +123,7 @@ export function registerChatRoutes(router: Router): void {
           !!settings.serperApiKey
         );
         webSearchAction = decision.action;
-        console.log(`[webSearch] Decision: ${decision.action} - ${decision.reason}`);
+        logger.info("[webSearch] Decision", { action: decision.action, reason: decision.reason });
         
         if (decision.action === "search" && settings.serperApiKey) {
           res.write(`data: ${JSON.stringify({ type: "status", message: "Searching the web..." })}\n\n`);
@@ -132,10 +133,10 @@ export function registerChatRoutes(router: Router): void {
           if (searchResult.success && searchResult.results.length > 0) {
             webSearchContext = formatSearchResultsForContext(searchResult.results);
             webSearchUsed = true;
-            console.log(`[webSearch] Found ${searchResult.results.length} results`);
+            logger.info("[webSearch] Results found", { count: searchResult.results.length });
             res.write(`data: ${JSON.stringify({ type: "status", message: `Found ${searchResult.results.length} web results` })}\n\n`);
           } else if (!searchResult.success) {
-            console.log(`[webSearch] Failed: ${searchResult.error}`);
+            logger.warn("[webSearch] Search failed", { error: searchResult.error });
             res.write(`data: ${JSON.stringify({ type: "status", message: "Web search unavailable, using local knowledge" })}\n\n`);
           }
         } else if (decision.action === "ask_permission") {
@@ -146,7 +147,7 @@ export function registerChatRoutes(router: Router): void {
           })}\n\n`);
         }
       } catch (classifyError: any) {
-        console.error(`[webSearch] Classification error: ${classifyError.message}`);
+        logger.error("[webSearch] Classification error", { message: classifyError.message });
       }
 
       projectStateService.initializeState(projectId);
@@ -178,7 +179,7 @@ export function registerChatRoutes(router: Router): void {
             const pipeline = sequentialBuildService.createPipeline(
               projectId,
               content,
-              decomposition.steps.map(s => s.description)
+              decomposition.steps.map(s => ({ description: s.description, prompt: s.prompt, category: s.category }))
             );
             buildPipelineId = pipeline.id;
 
@@ -212,16 +213,16 @@ export function registerChatRoutes(router: Router): void {
           );
           systemMessage = refinementPrompt;
 
-          const generatedFiles = (project as any).generatedFiles;
+          const generatedFiles = project.generatedFiles;
           if (Array.isArray(generatedFiles) && generatedFiles.length > 1) {
-            const files = generatedFiles.map((f: any) => ({ path: f.path || f.filename, content: f.content || "" }));
+            const files = generatedFiles.map((f: { path?: string; filename?: string; content?: string }) => ({ path: f.path || f.filename || "", content: f.content || "" }));
             const targetElements = refinementClassification.targetElements || [];
-            let targetFile = files.find((f: any) =>
-              targetElements.some((el: string) => f.path.toLowerCase().includes(el.toLowerCase()))
+            let targetFile = files.find((f: { path?: string; content?: string }) =>
+              targetElements.some((el: string) => (f.path || "").toLowerCase().includes(el.toLowerCase()))
             )?.path;
             if (!targetFile) {
-              const mainFile = files.find((f: any) =>
-                f.path.includes("App.") || f.path.includes("index.") || f.path.includes("main.")
+              const mainFile = files.find((f: { path?: string; content?: string }) =>
+                (f.path || "").includes("App.") || (f.path || "").includes("index.") || (f.path || "").includes("main.")
               );
               targetFile = mainFile?.path || files[0]?.path || "App.tsx";
             }
@@ -435,7 +436,7 @@ export function registerChatRoutes(router: Router): void {
                       res.write(`data: ${JSON.stringify({ type: "pipeline_complete", pipelineId: buildPipelineId, ...finalProgress })}\n\n`);
                     }
                   } catch (pipelineError: any) {
-                    console.error(`[pipeline] Autonomous build failed: ${pipelineError.message}`);
+                    logger.error("[pipeline] Autonomous build failed", { message: pipelineError.message });
                     if (isClientConnected) {
                       res.write(`data: ${JSON.stringify({ type: "pipeline_error", error: pipelineError.message })}\n\n`);
                     }
@@ -445,7 +446,7 @@ export function registerChatRoutes(router: Router): void {
                 runRemainingSteps();
               }
             } catch (stateError: any) {
-              console.error(`[projectState] State tracking failed: ${stateError.message}`);
+              logger.error("[projectState] State tracking failed", { message: stateError.message });
             }
 
             try {
@@ -454,7 +455,7 @@ export function registerChatRoutes(router: Router): void {
                 res.write(`data: ${JSON.stringify({ type: "test_suite", suiteId: testSuite.id, scenarioCount: testSuite.scenarios.length, coverage: testSuite.coverage })}\n\n`);
               }
             } catch (testError: any) {
-              console.error(`[selfTest] Auto-test generation failed: ${testError.message}`);
+              logger.error("[selfTest] Auto-test generation failed", { message: testError.message });
             }
 
             try {
@@ -467,7 +468,7 @@ export function registerChatRoutes(router: Router): void {
                 res.write(`data: ${JSON.stringify({ type: "hooks_executed", event: "post-generation", count: hookResults.length })}\n\n`);
               }
             } catch (hookError: any) {
-              console.error(`[hooks] Post-generation hooks failed: ${hookError.message}`);
+              logger.error("[hooks] Post-generation hooks failed", { message: hookError.message });
             }
           } else {
             await storage.addMessage(projectId, {
@@ -512,7 +513,7 @@ export function registerChatRoutes(router: Router): void {
         res.write(`data: ${JSON.stringify({ type: "done", project: finalProject })}\n\n`);
         res.end();
       } catch (llmError: any) {
-        console.error("LLM Error:", llmError);
+        logger.error("LLM Error", {}, llmError instanceof Error ? llmError : new Error(String(llmError)));
         modelRouterService.recordOutcome(projectId, builderConfig.model || "unknown", false, Date.now() - generationStartTime);
         
         const errorEndTime = Date.now();
@@ -539,7 +540,7 @@ export function registerChatRoutes(router: Router): void {
         res.end();
       }
     } catch (error: any) {
-      console.error("Chat error:", error);
+      logger.error("Chat error", {}, error instanceof Error ? error : new Error(String(error)));
       res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
       res.end();
     }
@@ -613,13 +614,13 @@ export function registerChatRoutes(router: Router): void {
               autoHealed: fixResult.wasFixed,
             });
           } catch (hookErr: any) {
-            console.error(`[hooks] Self-heal hooks failed: ${hookErr.message}`);
+            logger.error("[hooks] Self-heal hooks failed", { message: hookErr.message });
           }
         } else {
           projectStateService.updateHealth(projectId, { renders: true, errors: [] });
         }
       } catch (healthError: any) {
-        console.error(`[healthCheck] Pre-refinement check failed: ${healthError.message}`);
+        logger.error("[healthCheck] Pre-refinement check failed", { message: healthError.message });
       }
 
       const { client: openai, isCloud } = getActiveLLMClient({
@@ -636,11 +637,11 @@ export function registerChatRoutes(router: Router): void {
       try {
         let refinementUserContent = `EXISTING CODE:\n\`\`\`jsx\n${project.generatedCode}\n\`\`\`\n\nMODIFICATION REQUEST: ${refinement}`;
 
-        const generatedFiles = (project as any).generatedFiles;
+        const generatedFiles = project.generatedFiles;
         if (Array.isArray(generatedFiles) && generatedFiles.length > 1) {
-          const files = generatedFiles.map((f: any) => ({ path: f.path || f.filename, content: f.content || "" }));
-          const mainFile = files.find((f: any) =>
-            f.path.includes("App.") || f.path.includes("index.") || f.path.includes("main.")
+          const files = generatedFiles.map((f: { path?: string; filename?: string; content?: string }) => ({ path: f.path || f.filename || "", content: f.content || "" }));
+          const mainFile = files.find((f: { path?: string; content?: string }) =>
+            (f.path || "").includes("App.") || (f.path || "").includes("index.") || (f.path || "").includes("main.")
           );
           const targetFile = mainFile?.path || files[0]?.path || "App.tsx";
 
@@ -790,7 +791,7 @@ If changes only affect the main file, just return the complete updated code norm
               await storage.updateProject(projectId, {
                 generatedCode: cleanedCode,
                 generatedFiles: updatedFiles,
-              } as any);
+              });
               res.write(`data: ${JSON.stringify({
                 type: "multi_file_update",
                 filesUpdated: multiFileChanges.length,
@@ -810,7 +811,7 @@ If changes only affect the main file, just return the complete updated code norm
                 res.write(`data: ${JSON.stringify({ type: "hooks_executed", event: "post-refinement", count: hookResults.length })}\n\n`);
               }
             } catch (stateError: any) {
-              console.error(`[projectState] Refinement state tracking failed: ${stateError.message}`);
+              logger.error("[projectState] Refinement state tracking failed", { message: stateError.message });
             }
           } else {
             await storage.addMessage(projectId, {
@@ -848,7 +849,7 @@ If changes only affect the main file, just return the complete updated code norm
                 phase: "refinement",
               });
             } catch (hookError: any) {
-              console.error(`[hooks] Error hooks failed: ${hookError.message}`);
+              logger.error("[hooks] Error hooks failed", { message: hookError.message });
             }
           }
         } else {
@@ -862,7 +863,7 @@ If changes only affect the main file, just return the complete updated code norm
         res.write(`data: ${JSON.stringify({ type: "done", project: finalProject })}\n\n`);
         res.end();
       } catch (llmError: any) {
-        console.error("Refinement LLM Error:", llmError);
+        logger.error("Refinement LLM Error", {}, llmError instanceof Error ? llmError : new Error(String(llmError)));
         await storage.addMessage(projectId, {
           role: "assistant",
           content: `I couldn't refine the app. Error: ${llmError.message}`,
@@ -871,7 +872,7 @@ If changes only affect the main file, just return the complete updated code norm
         res.end();
       }
     } catch (error: any) {
-      console.error("Refinement error:", error);
+      logger.error("Refinement error", {}, error instanceof Error ? error : new Error(String(error)));
       res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
       res.end();
     }

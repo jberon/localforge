@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response } from "express";
 import { chatStorage } from "../chat/storage";
 import { openai, speechToText, ensureCompatibleFormat } from "./client";
+import { logger } from "../../lib/logger";
 
 // Body parser with 50MB limit for audio payloads
 const audioBodyParser = express.json({ limit: "50mb" });
@@ -12,7 +13,7 @@ export function registerAudioRoutes(app: Express): void {
       const conversations = await chatStorage.getAllConversations();
       res.json(conversations);
     } catch (error) {
-      console.error("Error fetching conversations:", error);
+      logger.error("Error fetching conversations", {}, error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({ error: "Failed to fetch conversations" });
     }
   });
@@ -28,7 +29,7 @@ export function registerAudioRoutes(app: Express): void {
       const messages = await chatStorage.getMessagesByConversation(id);
       res.json({ ...conversation, messages });
     } catch (error) {
-      console.error("Error fetching conversation:", error);
+      logger.error("Error fetching conversation", {}, error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({ error: "Failed to fetch conversation" });
     }
   });
@@ -40,7 +41,7 @@ export function registerAudioRoutes(app: Express): void {
       const conversation = await chatStorage.createConversation(title || "New Chat");
       res.status(201).json(conversation);
     } catch (error) {
-      console.error("Error creating conversation:", error);
+      logger.error("Error creating conversation", {}, error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({ error: "Failed to create conversation" });
     }
   });
@@ -52,7 +53,7 @@ export function registerAudioRoutes(app: Express): void {
       await chatStorage.deleteConversation(id);
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting conversation:", error);
+      logger.error("Error deleting conversation", {}, error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({ error: "Failed to delete conversation" });
     }
   });
@@ -124,7 +125,7 @@ export function registerAudioRoutes(app: Express): void {
       res.write(`data: ${JSON.stringify({ type: "done", transcript: assistantTranscript })}\n\n`);
       res.end();
     } catch (error) {
-      console.error("Error processing voice message:", error);
+      logger.error("Error processing voice message", {}, error instanceof Error ? error : new Error(String(error)));
       if (res.headersSent) {
         res.write(`data: ${JSON.stringify({ type: "error", error: "Failed to process voice message" })}\n\n`);
         res.end();

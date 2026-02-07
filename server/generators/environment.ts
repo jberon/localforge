@@ -388,7 +388,7 @@ export function requestLogger(): express.RequestHandler {
     const requestId = Math.random().toString(36).substring(7);
     
     // Attach request ID to request object
-    (req as any).requestId = requestId;
+    (req as Express.Request & { requestId?: string }).requestId = requestId;
 
     res.on('finish', () => {
       const duration = Date.now() - start;

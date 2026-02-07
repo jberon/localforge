@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { asyncHandler } from "../../lib/async-handler";
-import { healthAlertsService } from "../../services/health-alerts.service";
+import { healthAlertsService, type AlertSeverity } from "../../services/health-alerts.service";
 
 export function registerAlertsRoutes(router: Router): void {
   router.get("/alerts/stream", asyncHandler((req: Request, res: Response) => {
@@ -43,7 +43,7 @@ export function registerAlertsRoutes(router: Router): void {
     const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
 
     const alerts = healthAlertsService.getAlerts({ 
-      severity: severity as any, 
+      severity: severity as AlertSeverity | undefined, 
       acknowledged, 
       limit 
     });

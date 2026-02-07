@@ -59,7 +59,7 @@ export function registerIntelligenceRoutes(router: Router): void {
     }
     const recommendation = adaptiveTemperatureService.getRecommendedTemperature(
       model as string,
-      taskType as any
+      taskType as "code-generation" | "planning" | "refactoring" | "bug-fix" | "documentation" | "design" | "discussion" | "question-answering"
     );
     res.json(recommendation);
   }));

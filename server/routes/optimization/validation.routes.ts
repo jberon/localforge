@@ -33,7 +33,7 @@ export function registerValidationRoutes(router: Router): void {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
     const { code, filePath } = parsed.data;
-    const result = selfValidationService.validate(code, filePath);
+    const result = selfValidationService.validate(code, filePath || "");
     res.json(result);
   }));
 
@@ -71,19 +71,19 @@ export function registerValidationRoutes(router: Router): void {
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
-    const pattern = patternLibraryService.addPattern(parsed.data);
+    const pattern = patternLibraryService.addPattern(parsed.data as any);
     res.status(201).json(pattern);
   }));
 
   router.get("/patterns/search", asyncHandler((req, res) => {
     const query = req.query.q as string;
-    const category = req.query.category as any;
+    const category = req.query.category as "component" | "hook" | "utility" | "api" | "form" | "layout" | "state" | "auth" | "data-fetching" | "error-handling" | undefined;
     const results = patternLibraryService.findPatterns(query, category);
     res.json(results);
   }));
 
   router.get("/patterns/category/:category", asyncHandler((req, res) => {
-    const patterns = patternLibraryService.getByCategory(req.params.category as string as any);
+    const patterns = patternLibraryService.getByCategory(req.params.category as "component" | "hook" | "utility" | "api" | "form" | "layout" | "state" | "auth" | "data-fetching" | "error-handling");
     res.json(patterns);
   }));
 
@@ -99,7 +99,7 @@ export function registerValidationRoutes(router: Router): void {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
     const { code, filePath } = parsed.data;
-    const suggestions = patternLibraryService.suggestPatterns(code, filePath);
+    const suggestions = patternLibraryService.suggestPatterns(code, filePath || "");
     res.json(suggestions);
   }));
 

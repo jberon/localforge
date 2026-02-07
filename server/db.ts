@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pkg from "pg";
 import * as schema from "@shared/schema";
+import { logger } from "./lib/logger";
 
 const { Pool } = pkg;
 
@@ -17,11 +18,11 @@ if (process.env.DATABASE_URL) {
   });
   
   pool.on('error', (err) => {
-    console.error('[db] Pool connection error:', err.message);
+    logger.error("[db] Pool connection error", { message: err.message });
   });
   
   pool.on('connect', () => {
-    console.log('[db] New pool connection established');
+    logger.debug("[db] New pool connection established");
   });
   
   db = drizzle(pool, { schema });

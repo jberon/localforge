@@ -263,7 +263,7 @@ class SequentialBuildService extends BaseService {
   async runAutonomousPipeline(
     pipelineId: string,
     executor: (prompt: string, contextCode: string, stepNumber: number, totalSteps: number) => Promise<{ code: string; qualityScore: number }>,
-    onStepComplete?: (step: { stepNumber: number; description: string; qualityScore: number; status: string }, pipeline: BuildPipeline) => void
+    onStepComplete?: (step: { stepNumber: number; description: string; qualityScore: number; status: string; code?: string }, pipeline: BuildPipeline) => void
   ): Promise<BuildPipeline | null> {
     const pipeline = this.pipelines.get(pipelineId);
     if (!pipeline) return null;

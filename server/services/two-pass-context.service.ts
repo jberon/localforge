@@ -10,6 +10,9 @@ interface ContextReduction {
   focusedSummary: string;
   relevantSnippets: { file: string; snippet: string; reason: string }[];
   timestamp: number;
+  reducedFiles: { path: string; content?: string; summary?: string; relevanceScore?: number }[];
+  originalTokens: number;
+  reducedTokens: number;
 }
 
 class TwoPassContextService extends BaseService {
@@ -97,6 +100,9 @@ class TwoPassContextService extends BaseService {
       focusedSummary,
       relevantSnippets,
       timestamp: Date.now(),
+      reducedFiles: relevantSnippets.map(s => ({ path: s.file, content: s.snippet, summary: s.reason })),
+      originalTokens: originalTokenEstimate,
+      reducedTokens: reducedTokenEstimate,
     };
 
     const key = `${projectId}_${targetFile}_${Date.now()}`;

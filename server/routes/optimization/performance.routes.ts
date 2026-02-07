@@ -51,7 +51,7 @@ export function registerPerformanceRoutes(router: Router): void {
 
     const result = await performanceProfilerService.trackOperation(
       name,
-      category,
+      category as "llm_generation" | "file_operation" | "database_query" | "api_request" | "validation" | "bundling" | "parsing",
       async () => new Promise(resolve => setTimeout(resolve, 0)),
       metadata
     );
@@ -77,7 +77,7 @@ export function registerPerformanceRoutes(router: Router): void {
       ? parseInt(req.query.timeWindow as string) 
       : 3600000;
 
-    const stats = performanceProfilerService.getCategoryStats(category as any, timeWindow);
+    const stats = performanceProfilerService.getCategoryStats(category as "llm_generation" | "file_operation" | "database_query" | "api_request" | "validation" | "bundling" | "parsing", timeWindow);
     res.json(stats || { message: "No data for this category" });
   }));
 
@@ -113,7 +113,7 @@ export function registerPerformanceRoutes(router: Router): void {
       originalCode,
       modifiedCode,
       filePath,
-      changeType
+      changeType: changeType as "addition" | "deletion" | "modification"
     });
     res.json({ success: true });
   }));
@@ -154,10 +154,11 @@ export function registerPerformanceRoutes(router: Router): void {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
     const { projectId, generationId, rating, originalPrompt, generatedCode, userComment } = parsed.data;
+    const ratingValue = rating >= 4 ? "positive" : rating <= 2 ? "negative" : "neutral";
     const entry = feedbackLoopService.recordFeedback(
       projectId,
       generationId,
-      rating,
+      ratingValue,
       originalPrompt,
       generatedCode,
       userComment

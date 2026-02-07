@@ -6,6 +6,7 @@ import { llmSettingsSchema, analyticsEventTypes } from "@shared/schema";
 import type { AnalyticsEventType } from "@shared/schema";
 import { z } from "zod";
 import { asyncHandler } from "../lib/async-handler";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -148,7 +149,7 @@ Output as JSON array:
       parsedInsights = JSON.parse(jsonMatch[0]);
     }
   } catch (parseError) {
-    console.error("Failed to parse insights JSON:", parseError);
+    logger.error("Failed to parse insights JSON", {}, parseError instanceof Error ? parseError : new Error(String(parseError)));
   }
 
   const savedInsights = [];
@@ -286,7 +287,7 @@ router.get("/code-inventory", asyncHandler(async (req, res) => {
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       hasCode: totalLines > 0,
-      prompt: project.lastPrompt || (project.messages as any)?.[0]?.content?.substring(0, 200),
+      prompt: project.lastPrompt || project.messages?.[0]?.content?.substring(0, 200),
     };
   });
 
@@ -334,8 +335,8 @@ router.get("/export-manifest", asyncHandler(async (req, res) => {
       id: p.id,
       name: p.name,
       description: p.description,
-      prompt: p.lastPrompt || (p.messages as any)?.[0]?.content,
-      hasFullStack: p.generatedFiles && (p.generatedFiles as any[]).length > 0,
+      prompt: p.lastPrompt || p.messages?.[0]?.content,
+      hasFullStack: p.generatedFiles && (Array.isArray(p.generatedFiles) ? p.generatedFiles.length : 0) > 0,
       hasSingleFile: !!p.generatedCode,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,

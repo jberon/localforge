@@ -16,6 +16,7 @@ import {
 } from "./index";
 import { codeQualityPipelineService } from "../../services/code-quality-pipeline.service";
 import { selfTestingService } from "../../services/self-testing.service";
+import { logger } from "../../lib/logger";
 
 const generateRequestSchema = z.object({
   projectName: z.string().min(1),
@@ -175,7 +176,7 @@ export function registerPlanBuildRoutes(router: Router): void {
         res.end();
       }
     } catch (error: any) {
-      console.error("Plan error:", error);
+      logger.error("Plan error", {}, error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({ error: error.message });
     }
   }));
@@ -316,7 +317,7 @@ Generate complete, working code that implements this plan. Follow the file struc
             res.write(`data: ${JSON.stringify({ type: "test_suite", suiteId: testSuite.id, scenarioCount: testSuite.scenarios.length, coverage: testSuite.coverage })}\n\n`);
           }
         } catch (testError: any) {
-          console.error(`[selfTest] Auto-test generation failed: ${testError.message}`);
+          logger.error("[selfTest] Auto-test generation failed", { message: testError.message });
         }
 
         res.write(`data: ${JSON.stringify({ type: "code", code: cleanedCode })}\n\n`);
@@ -332,7 +333,7 @@ Generate complete, working code that implements this plan. Follow the file struc
         res.end();
       }
     } catch (error: any) {
-      console.error("Build error:", error);
+      logger.error("Build error", {}, error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({ error: error.message });
     }
   }));

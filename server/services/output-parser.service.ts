@@ -536,14 +536,18 @@ class OutputParserService extends BaseService {
     try {
       const parsed = JSON.parse(fixed);
       return { raw, parsed, isValid: true, errors: [] };
-    } catch {}
+    } catch (parseErr1) {
+      this.log("JSON parse attempt 1 failed, trying quote replacement", { error: String(parseErr1) });
+    }
 
     fixed = fixed.replace(/'/g, '"');
 
     try {
       const parsed = JSON.parse(fixed);
       return { raw, parsed, isValid: true, errors: [] };
-    } catch {}
+    } catch (parseErr2) {
+      this.log("JSON parse attempt 2 failed, trying key quoting", { error: String(parseErr2) });
+    }
 
     fixed = raw.replace(/(['"])?(\w+)(['"])?\s*:/g, '"$2":');
     fixed = fixed.replace(/,\s*([}\]])/g, "$1");

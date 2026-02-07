@@ -9,6 +9,7 @@ import {
   createProductionOrchestrator,
 } from "./index";
 import type { OrchestratorEvent, ProductionEvent } from "./index";
+import { logger } from "../../lib/logger";
 
 const dreamTeamRequestSchema = z.object({
   content: z.string().min(1, "Request is required"),
@@ -128,7 +129,7 @@ export function registerTeamRoutes(router: Router): void {
       res.end();
       
     } catch (error: any) {
-      console.error("Dream Team error:", error);
+      logger.error("Dream Team error", {}, error instanceof Error ? error : new Error(String(error)));
       res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
       res.end();
     }
@@ -255,7 +256,7 @@ export function registerTeamRoutes(router: Router): void {
       res.end();
       
     } catch (error: any) {
-      console.error("Production mode error:", error);
+      logger.error("Production mode error", {}, error instanceof Error ? error : new Error(String(error)));
       res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
       res.end();
     }

@@ -654,7 +654,9 @@ class CodeRunnerService extends BaseService {
 
   destroy(): void {
     this.runningProcesses.forEach((running) => {
-      try { running.process.kill(); } catch {}
+      try { running.process.kill(); } catch (killErr) {
+        this.log("Failed to kill running process during shutdown", { error: String(killErr) });
+      }
     });
     this.runningProcesses.clear();
     this.log("CodeRunnerService shut down");

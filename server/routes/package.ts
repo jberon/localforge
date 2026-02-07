@@ -2,6 +2,7 @@ import { Router } from "express";
 import { storage } from "../storage";
 import { z } from "zod";
 import { asyncHandler } from "../lib/async-handler";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -43,11 +44,11 @@ router.post("/:id/package", asyncHandler(async (req, res) => {
     let normalized = filePath.replace(/\\/g, '/');
     normalized = normalized.replace(/^\/+/, '');
     if (normalized.includes('..')) {
-      console.warn(`Rejected path with traversal: ${filePath}`);
+      logger.warn("Rejected path with traversal", { filePath });
       return null;
     }
     if (normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) {
-      console.warn(`Rejected absolute path: ${filePath}`);
+      logger.warn("Rejected absolute path", { filePath });
       return null;
     }
     const parts = normalized.split('/').filter(Boolean);

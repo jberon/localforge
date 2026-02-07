@@ -80,7 +80,7 @@ router.get("/tables/:tableName/data", asyncHandler(async (req, res) => {
   const { tableName } = req.params;
   const { limit = "50", offset = "0", orderBy, orderDir = "asc" } = req.query;
 
-  const validTableName = tableName.replace(/[^a-zA-Z0-9_]/g, "");
+  const validTableName = (tableName as string).replace(/[^a-zA-Z0-9_]/g, "");
   
   let query = `SELECT * FROM "${validTableName}"`;
   
@@ -97,7 +97,7 @@ router.get("/tables/:tableName/data", asyncHandler(async (req, res) => {
 
   res.json({
     data: dataResult.rows,
-    total: parseInt(String((countResult.rows[0] as any)?.count || 0), 10),
+    total: parseInt(String((countResult.rows[0] as Record<string, unknown>)?.count || 0), 10),
     limit: parseInt(limit as string, 10),
     offset: parseInt(offset as string, 10),
   });
@@ -202,8 +202,8 @@ router.get("/stats", asyncHandler(async (req, res) => {
 
   res.json({
     tables: tableStats.rows,
-    databaseSize: (dbSize.rows[0] as any)?.size || "Unknown",
-    tableCount: parseInt(String((tableCount.rows[0] as any)?.count || 0), 10),
+    databaseSize: (dbSize.rows[0] as Record<string, unknown>)?.size || "Unknown",
+    tableCount: parseInt(String((tableCount.rows[0] as Record<string, unknown>)?.count || 0), 10),
   });
 }));
 

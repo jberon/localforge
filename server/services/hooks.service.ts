@@ -112,7 +112,12 @@ class HooksService extends BaseService {
     code?: string;
     prompt?: string;
     errors?: string[];
+    error?: string;
     testResults?: { passed: number; failed: number };
+    qualityScore?: number;
+    refinement?: string;
+    phase?: string;
+    autoHealed?: boolean;
   }): Promise<HookExecutionResult[]> {
     const hooks = this.getHooks(projectId);
     const activeHooks = hooks.hooks.filter(h => h.event === event && h.enabled);
@@ -165,7 +170,7 @@ class HooksService extends BaseService {
   private async executeHook(
     projectId: string,
     hook: Hook,
-    context: { code?: string; prompt?: string; errors?: string[]; testResults?: { passed: number; failed: number } }
+    context: { code?: string; prompt?: string; errors?: string[]; error?: string; testResults?: { passed: number; failed: number }; qualityScore?: number; refinement?: string; phase?: string; autoHealed?: boolean }
   ): Promise<{ success: boolean; message: string; details?: Record<string, unknown> }> {
     switch (hook.action.type) {
       case "validate":
