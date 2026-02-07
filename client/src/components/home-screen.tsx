@@ -27,6 +27,9 @@ import {
   Wand2,
   Shield,
   ArrowLeft,
+  CheckCircle2,
+  Server,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -353,6 +356,32 @@ export function HomeScreen({
 
               <div className="space-y-6">
                 <Card className="overflow-visible">
+                  <div className="p-5 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-5 w-5 text-primary" />
+                      <h2 className="text-lg font-semibold text-foreground" data-testid="text-docs-welcome">Welcome to LocalForge</h2>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Build apps with AI running on your Mac. No cloud required - your data stays local.
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-3">
+                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                        <span className="text-sm text-muted-foreground">Uses your local LLM via LM Studio</span>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                        <span className="text-sm text-muted-foreground">Generates complete React applications</span>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                        <span className="text-sm text-muted-foreground">Preview and download instantly</span>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="overflow-visible">
                   <div className="p-5 space-y-3">
                     <div className="flex items-center gap-2">
                       <Zap className="h-5 w-5 text-foreground" />
@@ -362,7 +391,8 @@ export function HomeScreen({
                       LocalForge generates full-stack web applications from natural language descriptions. Simply describe what you want to build and LocalForge will generate the code for you.
                     </p>
                     <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
-                      <li>Open LM Studio and load a model (recommended: Qwen 2.5 Coder 14B or Qwen3 Coder 30B)</li>
+                      <li>Download and install <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">LM Studio</a> (free for Mac, Windows, Linux)</li>
+                      <li>Load a coding model (recommended: Qwen 2.5 Coder 14B or Qwen3 Coder 30B)</li>
                       <li>Start the local server in LM Studio's Developer tab</li>
                       <li>Open Settings in LocalForge and enter your server URL (usually http://localhost:1234/v1)</li>
                       <li>Describe your app idea and click Start</li>

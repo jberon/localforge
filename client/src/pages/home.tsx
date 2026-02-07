@@ -9,7 +9,6 @@ import { GenerationWizard } from "@/components/generation-wizard";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MinimalLanding } from "@/components/minimal-landing";
 import { SuccessCelebration } from "@/components/success-celebration";
-import { OnboardingModal } from "@/components/onboarding-modal";
 import { PlanReviewPanel } from "@/components/plan-review-panel";
 import { DreamTeamSettings } from "@/components/dream-team-settings";
 import { DreamTeamFullPanel } from "@/components/dream-team-full-panel";
@@ -1518,7 +1517,6 @@ function HomeInner() {
           onOpenSettings={() => setPanel('showHomeSettings', true)}
           onNavigateAnalytics={() => navigate("/analytics")}
         />
-        <OnboardingModal />
         <CommandPalette
           onNewProject={() => createProject()}
           onDownload={undefined}
@@ -1899,7 +1897,6 @@ function HomeInner() {
         </Sheet>
 
         <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
-        <OnboardingModal />
 
         <AlertDialog
           open={!!webSearchPermissionPending}
@@ -2549,7 +2546,6 @@ function HomeInner() {
       </Sheet>
       
       <SuccessCelebration show={showCelebration} onComplete={() => setShowCelebration(false)} />
-      <OnboardingModal />
       
       <AlertDialog 
         open={!!webSearchPermissionPending} 
