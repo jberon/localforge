@@ -55,6 +55,7 @@ import { DesignModePanel } from "@/components/design-mode-panel";
 import { AIInsightsPanel } from "@/components/ai-insights-panel";
 import { SmartModelSettings } from "@/components/smart-model-settings";
 import { SelfTestingPanel } from "@/components/self-testing-panel";
+import { HooksConfigDialog } from "@/components/hooks-config-dialog";
 import { ImageImportDialog } from "@/components/image-import-dialog";
 import type { Action, ActionType } from "@/components/action-group-row";
 import {
@@ -146,7 +147,7 @@ function HomeInner() {
   const {
     showQuickUndo, showFileExplorer, showDatabasePanel,
     showAIInsights, showSelfTesting, showSmartModel,
-    showImageImport, showHomeSettings,
+    showImageImport, showHomeSettings, showHooksConfig,
     togglePanel, setPanel,
   } = useHomePanels();
   const [currentActions, setCurrentActions] = useState<Action[]>([]);
@@ -1601,6 +1602,11 @@ function HomeInner() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <HooksConfigDialog
+          open={showHooksConfig}
+          onOpenChange={(v) => setPanel('showHooksConfig', v)}
+          projectId={activeProjectId}
+        />
       </>
     );
   }
@@ -2063,6 +2069,16 @@ function HomeInner() {
             data-testid="button-strip-image-import"
           >
             <ImageIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={showHooksConfig ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => togglePanel('showHooksConfig')}
+            title="Lifecycle Hooks"
+            data-testid="button-strip-hooks"
+            className={showHooksConfig ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <Zap className="h-4 w-4" />
           </Button>
         </div>
         <div className="mt-auto flex flex-col items-center gap-1 py-2 border-t">
@@ -2574,6 +2590,12 @@ function HomeInner() {
           setPanel('showImageImport', false);
           toast({ title: "Design analyzed", description: "Code generation prompt ready. Paste it in the chat to generate." });
         }}
+      />
+
+      <HooksConfigDialog
+        open={showHooksConfig}
+        onOpenChange={(v) => setPanel('showHooksConfig', v)}
+        projectId={activeProjectId}
       />
     </div>
   );

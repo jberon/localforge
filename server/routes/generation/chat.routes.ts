@@ -24,6 +24,11 @@ import { iterativeRefinementService } from "../../services/iterative-refinement.
 import { selfTestingService } from "../../services/self-testing.service";
 import { dependencyGraphService } from "../../services/dependency-graph.service";
 import { promptDecomposerService } from "../../services/prompt-decomposer.service";
+import { projectStateService } from "../../services/project-state.service";
+import { initializerService } from "../../services/initializer.service";
+import { sequentialBuildService } from "../../services/sequential-build.service";
+import { twoPassContextService } from "../../services/two-pass-context.service";
+import { hooksService } from "../../services/hooks.service";
 
 const refineRequestSchema = z.object({
   refinement: z.string().min(1),
@@ -126,8 +131,11 @@ export function registerChatRoutes(router: Router): void {
         console.error(`[webSearch] Classification error: ${classifyError.message}`);
       }
 
+      projectStateService.initializeState(projectId);
+
       const complexityAnalysis = promptDecomposerService.analyzeComplexity(content);
       let decomposedPrompt: string | null = null;
+      let buildPipelineId: string | null = null;
       if (complexityAnalysis.score >= 8) {
         res.write(`data: ${JSON.stringify({
           type: "complexity_analysis",
@@ -136,17 +144,33 @@ export function registerChatRoutes(router: Router): void {
           categories: complexityAnalysis.categories,
         })}\n\n`);
 
+        const manifest = initializerService.generateManifest(projectId, content);
+        res.write(`data: ${JSON.stringify({
+          type: "feature_manifest",
+          features: manifest.features.map((f: any) => ({ name: f.name, status: f.status })),
+          totalFeatures: manifest.features.length,
+        })}\n\n`);
+
         if (!project.generatedCode || project.generatedCode.length < 50) {
           const decomposition = promptDecomposerService.decompose(content);
           if (decomposition.shouldDecompose && decomposition.steps.length > 1) {
             const sequentialPrompts = promptDecomposerService.buildSequentialPrompts(decomposition);
             decomposedPrompt = sequentialPrompts[0];
+
+            const pipeline = sequentialBuildService.createPipeline(
+              projectId,
+              content,
+              decomposition.steps.map(s => s.description)
+            );
+            buildPipelineId = pipeline.id;
+
             res.write(`data: ${JSON.stringify({
               type: "decomposition",
               totalSteps: decomposition.steps.length,
               currentStep: 1,
               stepDescription: decomposition.steps[0]?.description || "Foundation",
               remainingSteps: decomposition.steps.slice(1).map(s => s.description),
+              pipelineId: pipeline.id,
             })}\n\n`);
             res.write(`data: ${JSON.stringify({ type: "status", message: `Complex prompt detected (${decomposition.steps.length} features). Building foundation first...` })}\n\n`);
           }
@@ -328,12 +352,45 @@ export function registerChatRoutes(router: Router): void {
             });
 
             try {
+              const detectedFeatures = projectStateService.detectFeaturesFromCode(cleanedCode);
+              projectStateService.recordGeneration(projectId, content, cleanedCode, detectedFeatures, true);
+
+              initializerService.markFeaturesByCode(projectId, cleanedCode);
+
+              if (buildPipelineId) {
+                const nextStep = sequentialBuildService.getNextStep(buildPipelineId);
+                if (nextStep) {
+                  sequentialBuildService.completeStep(buildPipelineId, nextStep.step.id, {
+                    code: cleanedCode,
+                    qualityScore: qualityReport.overallScore,
+                    healthPassed: true,
+                  });
+                }
+              }
+            } catch (stateError: any) {
+              console.error(`[projectState] State tracking failed: ${stateError.message}`);
+            }
+
+            try {
               const testSuite = selfTestingService.generateTestSuite(projectId, cleanedCode);
               if (testSuite.scenarios.length > 0) {
                 res.write(`data: ${JSON.stringify({ type: "test_suite", suiteId: testSuite.id, scenarioCount: testSuite.scenarios.length, coverage: testSuite.coverage })}\n\n`);
               }
             } catch (testError: any) {
               console.error(`[selfTest] Auto-test generation failed: ${testError.message}`);
+            }
+
+            try {
+              const hookResults = await hooksService.fireHooks(projectId, "post-generation", {
+                code: cleanedCode,
+                prompt: content,
+                qualityScore: qualityReport.overallScore,
+              });
+              if (hookResults.length > 0) {
+                res.write(`data: ${JSON.stringify({ type: "hooks_executed", event: "post-generation", count: hookResults.length })}\n\n`);
+              }
+            } catch (hookError: any) {
+              console.error(`[hooks] Post-generation hooks failed: ${hookError.message}`);
             }
           } else {
             await storage.addMessage(projectId, {
@@ -434,6 +491,23 @@ export function registerChatRoutes(router: Router): void {
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders();
 
+      try {
+        const healthCheck = selfTestingService.generateHealthCheck(projectId, project.generatedCode);
+        if (healthCheck.isBroken) {
+          projectStateService.updateHealth(projectId, { renders: false, errors: healthCheck.issues });
+          res.write(`data: ${JSON.stringify({
+            type: "health_warning",
+            isBroken: true,
+            issues: healthCheck.issues,
+            message: "Current code has issues that should be fixed before refinement",
+          })}\n\n`);
+        } else {
+          projectStateService.updateHealth(projectId, { renders: true, errors: [] });
+        }
+      } catch (healthError: any) {
+        console.error(`[healthCheck] Pre-refinement check failed: ${healthError.message}`);
+      }
+
       const builderConfig = getModelForPhase(settings, "builder");
 
       const { client: openai, isCloud } = getActiveLLMClient({
@@ -457,11 +531,26 @@ export function registerChatRoutes(router: Router): void {
             f.path.includes("App.") || f.path.includes("index.") || f.path.includes("main.")
           );
           const targetFile = mainFile?.path || files[0]?.path || "App.tsx";
-          const depContext = dependencyGraphService.buildRefinementContext(
-            projectId, targetFile, files, refinement, 3000
+
+          const contextReduction = twoPassContextService.reduceContext(
+            projectId, targetFile, refinement,
+            files.map((f: any) => ({ path: f.path, content: f.content })),
+            3000
           );
-          if (depContext) {
-            refinementUserContent = refinementUserContent + "\n" + depContext;
+
+          if (contextReduction.reducedFiles.length > 0) {
+            const contextBlock = contextReduction.reducedFiles
+              .map((rf: any) => `// --- ${rf.path} (relevance: ${rf.relevanceScore}) ---\n${rf.summary || rf.content}`)
+              .join("\n\n");
+            refinementUserContent = refinementUserContent + "\n\nRELATED FILES CONTEXT:\n" + contextBlock;
+            res.write(`data: ${JSON.stringify({ type: "status", message: `Context reduced: ${contextReduction.originalTokens} -> ${contextReduction.reducedTokens} tokens (${contextReduction.reducedFiles.length} files)` })}\n\n`);
+          } else {
+            const depContext = dependencyGraphService.buildRefinementContext(
+              projectId, targetFile, files, refinement, 3000
+            );
+            if (depContext) {
+              refinementUserContent = refinementUserContent + "\n" + depContext;
+            }
           }
         }
 
@@ -550,11 +639,35 @@ export function registerChatRoutes(router: Router): void {
             await storage.updateProject(projectId, {
               generatedCode: cleanedCode,
             });
+
+            try {
+              projectStateService.recordRefinement(projectId, refinement, cleanedCode.split("\n").length, [], true);
+              initializerService.markFeaturesByCode(projectId, cleanedCode);
+
+              const hookResults = await hooksService.fireHooks(projectId, "post-refinement", {
+                code: cleanedCode,
+                refinement,
+              });
+              if (hookResults.length > 0) {
+                res.write(`data: ${JSON.stringify({ type: "hooks_executed", event: "post-refinement", count: hookResults.length })}\n\n`);
+              }
+            } catch (stateError: any) {
+              console.error(`[projectState] Refinement state tracking failed: ${stateError.message}`);
+            }
           } else {
             await storage.addMessage(projectId, {
               role: "assistant",
               content: `I couldn't safely update the app - the generated code had issues that couldn't be fixed automatically. Your original code is preserved.\n\n**Issues found:** ${validation.errors.join(", ")}`,
             });
+
+            try {
+              await hooksService.fireHooks(projectId, "on-error", {
+                error: validation.errors.join(", "),
+                phase: "refinement",
+              });
+            } catch (hookError: any) {
+              console.error(`[hooks] Error hooks failed: ${hookError.message}`);
+            }
           }
         } else {
           await storage.addMessage(projectId, {

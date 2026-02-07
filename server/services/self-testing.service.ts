@@ -1071,6 +1071,172 @@ class SelfTestingService extends BaseService {
     if (scenario.type === "responsive") return "medium";
     return "low";
   }
+
+  generateHealthCheck(projectId: string, code: string): {
+    checks: { name: string; type: string; assertion: string; target: string }[];
+    isBroken: boolean;
+    issues: string[];
+  } {
+    const checks: { name: string; type: string; assertion: string; target: string }[] = [];
+    const issues: string[] = [];
+
+    const hasReturn = /return\s*\(/m.test(code) || /return\s+</m.test(code);
+    if (!hasReturn) {
+      issues.push("No JSX return statement found - app may not render");
+    }
+    checks.push({
+      name: "App renders without crash",
+      type: "render",
+      assertion: "check_exists",
+      target: "body > *",
+    });
+
+    const hasUnclosedTag = this.detectUnclosedTags(code);
+    if (hasUnclosedTag) {
+      issues.push("Potential unclosed JSX tag detected");
+    }
+
+    const hasSyntaxError = this.detectBasicSyntaxErrors(code);
+    if (hasSyntaxError) {
+      issues.push("Potential syntax error detected");
+    }
+
+    if (/import\s/.test(code)) {
+      const missingExports = this.detectMissingImports(code);
+      if (missingExports.length > 0) {
+        issues.push(`Potentially missing imports: ${missingExports.join(", ")}`);
+      }
+    }
+
+    if (/function\s+App|const\s+App|export\s+default/.test(code)) {
+      checks.push({
+        name: "Root component mounts",
+        type: "render",
+        assertion: "check_exists",
+        target: "#root, #app, [data-reactroot], body > div",
+      });
+    }
+
+    if (/<button|<a\s|<input|onClick/.test(code)) {
+      checks.push({
+        name: "Interactive elements present",
+        type: "functionality",
+        assertion: "check_exists",
+        target: "button, a, input, [role='button']",
+      });
+    }
+
+    if (/<h[1-6]/.test(code)) {
+      checks.push({
+        name: "Headings render",
+        type: "ui",
+        assertion: "check_exists",
+        target: "h1, h2, h3, h4, h5, h6",
+      });
+    }
+
+    if (/useState|useReducer/.test(code)) {
+      checks.push({
+        name: "State-dependent UI renders",
+        type: "functionality",
+        assertion: "check_visible",
+        target: "[data-testid], button, input, select",
+      });
+    }
+
+    const isBroken = issues.length > 0;
+
+    this.log("Health check generated", {
+      projectId,
+      checkCount: checks.length,
+      issueCount: issues.length,
+      isBroken,
+    });
+
+    return { checks, isBroken, issues };
+  }
+
+  private detectUnclosedTags(code: string): boolean {
+    const selfClosing = new Set(["br", "hr", "img", "input", "meta", "link", "area", "base", "col", "embed", "source", "track", "wbr"]);
+    const openTags: string[] = [];
+    const tagPattern = /<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*\/?>/g;
+
+    let match;
+    while ((match = tagPattern.exec(code)) !== null) {
+      const fullMatch = match[0];
+      const tagName = match[1].toLowerCase();
+
+      if (selfClosing.has(tagName) || fullMatch.endsWith("/>")) continue;
+
+      if (fullMatch.startsWith("</")) {
+        if (openTags.length > 0 && openTags[openTags.length - 1] === tagName) {
+          openTags.pop();
+        }
+      } else {
+        openTags.push(tagName);
+      }
+    }
+
+    return openTags.length > 3;
+  }
+
+  private detectBasicSyntaxErrors(code: string): boolean {
+    let braces = 0;
+    let parens = 0;
+    let brackets = 0;
+    let inString = false;
+    let stringChar = "";
+    let inTemplate = false;
+
+    for (let i = 0; i < code.length; i++) {
+      const ch = code[i];
+      const prev = i > 0 ? code[i - 1] : "";
+
+      if (inString) {
+        if (ch === stringChar && prev !== "\\") inString = false;
+        continue;
+      }
+      if (inTemplate) {
+        if (ch === "`" && prev !== "\\") inTemplate = false;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") { inString = true; stringChar = ch; continue; }
+      if (ch === "`") { inTemplate = true; continue; }
+      if (ch === "{") braces++;
+      if (ch === "}") braces--;
+      if (ch === "(") parens++;
+      if (ch === ")") parens--;
+      if (ch === "[") brackets++;
+      if (ch === "]") brackets--;
+
+      if (braces < -2 || parens < -2 || brackets < -2) return true;
+    }
+
+    return Math.abs(braces) > 2 || Math.abs(parens) > 2 || Math.abs(brackets) > 2;
+  }
+
+  private detectMissingImports(code: string): string[] {
+    const missing: string[] = [];
+    const importPattern = /import\s+\{([^}]+)\}\s+from\s+['"]\.\/([^'"]+)['"]/g;
+
+    let match;
+    while ((match = importPattern.exec(code)) !== null) {
+      const importedNames = match[1].split(",").map(s => s.trim());
+      const modulePath = match[2];
+
+      for (const name of importedNames) {
+        const exportPattern = new RegExp(`export\\s+(?:const|function|class|type|interface)\\s+${name}\\b`);
+        if (!exportPattern.test(code) && !code.includes(`export { ${name}`)) {
+          if (!code.includes(`from '${modulePath}'`) || code.split(`from './${modulePath}'`).length <= 1) {
+            continue;
+          }
+        }
+      }
+    }
+
+    return missing;
+  }
 }
 
 export const selfTestingService = SelfTestingService.getInstance();

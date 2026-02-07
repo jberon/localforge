@@ -13,116 +13,47 @@ LocalForge is an AI-powered web application builder that generates working React
 - Mobile-friendly: Responsive layout with bottom tab navigation (Chat/Preview/Tools) for ideation on-the-go
 
 ## System Architecture
+LocalForge features a chat-based interface with streaming responses, project management, live preview, and code validation. It employs AI-powered prompt enhancement and iterative refinement, routing requests to optimize LLM configurations.
 
-### Core Functionality
-LocalForge offers a chat-based interface with streaming responses, project management, live preview, and code validation. It incorporates AI-powered prompt enhancement and iterative refinement, intelligently routing requests to optimize LLM configurations based on intent.
+**Core Modes & Features:**
+- **Plan/Build Modes:** Toggle between generating a task list (Plan Mode) or direct code generation (Build Mode) with Fast and Full Build options.
+- **Autonomy Levels:** Four-tier control for AI intervention, including an "Extended Thinking Mode" for complex tasks.
+- **Discussion Mode:** For brainstorming without code generation.
+- **Design Mode:** Rapid mockup and wireframe generation with five design styles and ten design style keywords for enhanced prompting.
+- **Visual Editor:** Click-to-edit UI manipulation within the live preview iframe.
+- **Smart Model Auto-Selection:** A ModelRouterService intelligently routes between local LLMs and cloud providers (OpenAI, Groq, Together AI) based on a 3-tier routing system with cloud fallback.
+- **Self-Testing Loop:** Generates and executes comprehensive test suites, provides real-time progress, and suggests fixes for failed tests. Tests are executable via postMessage injection into the preview iframe.
+- **Image/Design Import:** Converts uploaded images into design analysis and code generation prompts.
+- **One-Click Auth & Database Templates:** Provides 5 authentication and 5 database templates with production-quality code.
+- **Static Deploy:** Generates deployable static HTML bundles.
+- **AI Dream Team:** Orchestrates project planning, task tracking, and code generation when dual LLMs are configured.
+- **Production-Grade Output:** Generates full-stack applications with multi-file architecture, TypeScript, automated test generation, code quality analysis, and auto-generated `README.md`. It classifies requests into 12+ app types and validates generated code.
+- **Production-Grade Security:** Implements standard security headers, rate limiting, structured logging, Zod schema validation, and frontend error boundaries.
 
-### Plan/Build Modes & Build Speed Options
-A Replit-style Plan/Build mode toggle allows AI to either generate a structured task list (Plan Mode) or directly write code (Build Mode). Users can choose between **Fast Mode** for quick, targeted edits, and **Full Build Mode** for comprehensive full-stack generation.
-
-### Autonomy Levels & Extended Thinking Mode
-A four-tier autonomy control system governs AI intervention. For complex tasks, an "Extended Thinking Mode" provides deep reasoning capabilities with three levels, automatically triggering based on prompt complexity or detected issues.
-
-### Discussion Mode
-A third mode enabling brainstorming and architectural exploration without generating code, differentiated by a teal accent color.
-
-### Design Mode & Design Style Keywords
-Enables rapid mockup and wireframe generation with five design styles and pre-built templates. Approved mockups are used to automatically generate full code. Ten design style keywords enhance prompts with CSS properties and Tailwind classes.
-
-### Visual Editor
-Click-to-edit UI manipulation via iframe inspector using postMessage communication, with a property editing panel for inspected elements.
-
-### Smart Model Auto-Selection
-A ModelRouterService intelligently routes between local LLMs and cloud providers (OpenAI, Groq, Together AI). It features 3-tier routing (fast/balanced/powerful), outcome tracking, cloud fallback, and configurable provider priorities.
-
-### Self-Testing Loop with Executable Tests
-A SelfTestingService generates comprehensive test suites by analyzing code features, producing test scenarios with steps/assertions, and generating fix suggestions for failed tests. Tests are executable via postMessage injection into the preview iframe, running DOM assertions (check_exists, check_text, click, check_visible, check_accessible) with real-time progress reporting. Test button in preview toolbar triggers the full cycle. API: `POST /api/runtime/test-suite/:projectId`, `POST /api/runtime/test-results/:suiteId`, `POST /api/runtime/test-fixes/:suiteId`.
-
-### Image/Design Import
-An ImageImportService handles design-to-code conversion from uploaded images, generating analysis prompts for LLM vision processing, extracting design elements, and producing code generation prompts.
-
-### One-Click Auth & Database Templates
-An AuthDbTemplatesService provides 5 authentication templates and 5 database templates with production-quality code and setup instructions.
-
-### Static Deploy
-Generates deployable static HTML bundles from generated code with inline React/Babel CDN loading and Tailwind CSS.
-
-### AI Dream Team
-When dual LLMs are configured, an "AI Dream Team" orchestrates project planning, task tracking, code generation, validation, and documentation.
-
-### Production-Grade Output & App Classification
-Generated applications are production-grade, featuring multi-file architecture, TypeScript, automated test generation, code quality analysis, and auto-generated `README.md`. LocalForge classifies requests into 12+ app types, applying specific templates, and validates generated code.
-
-### Production-Grade Security & Infrastructure
-Implements standard security headers, rate limiting, structured logging, Zod schema validation, request size limits, and frontend error boundaries.
-
-### Frontend
-Built with React + TypeScript, Vite, Tailwind CSS, and Shadcn UI. Features Monaco Editor, TanStack Query, a chat panel, live preview, project sidebar, generation wizard, command palette, voice input, and a Replit-like file explorer.
-
-### Backend
-An Express.js API server with modular routes for project management, LLM interactions, and code generation. Uses OpenAI SDK for LM Studio, Server-Sent Events (SSE) for streaming, and PostgreSQL with Drizzle ORM.
-
-### Code Generation & Quality
-Generates full-stack applications with agentic auto-fix capabilities for syntax errors, retrying with LLMs, and surfacing LLM limitation messages. Features a Multi-Pass Code Quality Pipeline with 5 deterministic fix passes that run automatically after every generation, producing a quality score and auto-fixing issues without LLM calls.
-
-### Smart Template Gallery
-Provides 12+ app templates in Quick Start and Production categories with search/filter capabilities and optimized prompt builders.
-
-### One-Click Integrations Panel
-Offers 12 common integrations that enhance generation prompts with detailed implementation instructions.
-
-### Iterative Refinement Engine
-Uses regex-based intent classification to build targeted surgical prompts for focused code changes, tracking refinement history with diff summaries. Integrates DependencyGraphService for multi-file awareness during refinement, automatically including related files (imports, dependents, shared types) as context.
-
-### Code Scaffold Library (25+ Patterns)
-CodeScaffoldLibraryService provides production-ready code patterns organized by app category (ecommerce, dashboard, social, etc.). Scaffolds are auto-matched to prompts via category classification and tag matching, then injected into generation prompts. Includes React data tables, auth contexts, shopping carts, CRUD APIs, navigation bars, chat UIs, multi-step forms, pricing cards, and more.
-
-### Autonomous Self-Healing Loop
-Preview iframe errors are captured (console.error, unhandledrejection) and fed to RuntimeFeedbackService, which triggers LLM-powered auto-fix through code quality pipeline. Heal count resets on meaningful code changes (>200 chars) or new generations. SSE parsing uses double-newline buffering. Max 3 heal attempts per error cycle.
-
-### Dependency Graph Service
-DependencyGraphService analyzes import/export relationships between generated files. Calculates relevance scores for context file selection during refinement. Supports direct imports (0.9 relevance), reverse dependencies (0.7), transitive imports (0.4), and shared types/schema files (0.8). Token-budget-aware context selection. API: `POST /api/runtime/dependency-graph/:projectId`, `POST /api/runtime/dependency-context/:projectId`.
-
-### Environment Variable Detection
-EnvDetectionService scans generated code for API keys, database URLs, secrets, and service URLs. Detects 20+ common patterns (OpenAI, Stripe, Supabase, AWS, Twilio, etc.). Shows amber notification banner in preview with setup instructions and links. API: `POST /api/runtime/detect-env/:projectId`.
-
-### Prompt Decomposer (Difficulty Reducer)
-PromptDecomposerService analyzes prompt complexity and auto-decomposes complex requests (score >= 8) into sequential sub-tasks ordered by dependency. Categorizes features into layout, navigation, data, forms, logic, auth, api, and styling. Generates incremental build prompts that smaller local models can handle effectively. API: `POST /api/runtime/analyze-complexity`.
-
-### Enhanced Deployment Packages
-Generates platform-specific deployment configurations for Vercel, Netlify, Docker, Railway, and static HTML bundles.
-
-### Auto Self-Testing
-SelfTestingService is auto-triggered after code generation, producing test suites with coverage metrics.
-
-### Version Control & Publishing
-Includes built-in version control with checkpoints, history viewing, and rollback. Supports downloading projects as ZIP files and one-click deployment to various platforms.
-
-### Local LLM Optimization & Multi-Agent Architecture
-Optimized for local LLM performance, integrating with LM Studio via client connection caching, extended timeouts, automatic retry logic, and array-based streaming. A multi-agent architecture utilizes specialized services for task decomposition, project memory, code execution, auto-fixing, and refactoring.
-
-### Intelligence Services
-Five specialized services for local LLM optimization:
-- **PromptChunkingService**: Breaks complex requests into chunks with dependency tracking.
-- **OutputParserService**: Structurally parses raw LLM output, extracting code fences, validating JSON, and cleaning markdown.
-- **AdaptiveTemperatureService**: Learns optimal temperature per model and task type from quality signals.
-- **ConversationMemoryService**: Compresses multi-turn history into structured project state summaries.
-- **SmartRetryService**: Intelligent retry with 6 strategies selected based on failure mode detection.
-
-### Autonomous Development Loop & Error Learning
-Features an autonomous development loop with runtime feedback capture, UI/UX analysis, enhanced auto-fix capabilities, and improved project memory. An error learning service tracks common LLM mistakes and generates prevention prompts.
-
-### In-Browser Bundler & Local Build
-Uses esbuild-wasm for in-browser bundling of multi-file TypeScript/React projects with a virtual file system and hot refresh. Enables building generated apps locally using npm/Vite tooling.
-
-### Memory Safety & Performance Optimization
-All singleton services with unbounded Maps/arrays now have TTL/eviction policies. Services with `setInterval` timers have `destroy()` methods. The V2 Orchestrator is optimized with `Promise.all` parallelization, prompt hash caching, and streaming session cleanup. Hardware optimizer uses direct CPU model string parsing for accurate Apple Silicon chip detection.
-
-### Production Readiness Audit
-Includes SSE memory leak prevention, rate limiting via `apiRateLimiter` middleware, and Zod `safeParse` validation for input. M4 Pro configuration has been refined for optimal performance.
-
-### Service Architecture & Lifecycle
-Standardized service architecture with `BaseService` for logging and `ManagedMap`, a `ServiceRegistry` for auto-discovery and unified shutdown, and `asyncHandler` for error handling in Express routes. Route and Orchestrator modules have been refactored for better organization, and frontend contexts extracted into dedicated hooks and components.
+**Technical Implementations:**
+- **Frontend:** Built with React, TypeScript, Vite, Tailwind CSS, and Shadcn UI. Includes Monaco Editor, TanStack Query, a chat panel, live preview, project sidebar, generation wizard, command palette, voice input, and a Replit-like file explorer.
+- **Backend:** Express.js API server with modular routes for project management, LLM interactions, and code generation. Utilizes OpenAI SDK for LM Studio, Server-Sent Events (SSE) for streaming, and PostgreSQL with Drizzle ORM.
+- **Code Generation & Quality:** Features agentic auto-fix capabilities for syntax errors, a Multi-Pass Code Quality Pipeline with 5 deterministic fix passes, and auto-fixing without LLM calls to produce a quality score.
+- **Smart Template Gallery:** Provides 12+ app templates with search/filter and optimized prompt builders.
+- **One-Click Integrations Panel:** Offers 12 common integrations that enhance generation prompts.
+- **Iterative Refinement Engine:** Uses regex-based intent classification for surgical prompts and integrates a DependencyGraphService for multi-file awareness.
+- **Code Scaffold Library:** Provides 25+ production-ready code patterns, auto-matched and injected into generation prompts.
+- **Autonomous Self-Healing Loop:** Captures preview iframe errors and triggers LLM-powered auto-fix through the code quality pipeline.
+- **Dependency Graph Service:** Analyzes import/export relationships for relevant context file selection during refinement.
+- **Environment Variable Detection:** Scans generated code for API keys and secrets, providing setup instructions.
+- **Prompt Decomposer:** Analyzes prompt complexity and decomposes complex requests into sequential sub-tasks for smaller local models.
+- **Enhanced Deployment Packages:** Generates platform-specific deployment configurations for Vercel, Netlify, Docker, Railway, and static HTML.
+- **Version Control & Publishing:** Built-in version control with checkpoints, history, rollback, and project download.
+- **Local LLM Optimization & Multi-Agent Architecture:** Optimized for local LLM performance with client connection caching, extended timeouts, and a multi-agent architecture for task decomposition, project memory, code execution, auto-fixing, and refactoring.
+- **Intelligence Services:** Five specialized services: PromptChunkingService, OutputParserService, AdaptiveTemperatureService, ConversationMemoryService, and SmartRetryService.
+- **Autonomous Development Loop & Error Learning:** Features runtime feedback, UI/UX analysis, enhanced auto-fix, improved project memory, and an error learning service.
+- **In-Browser Bundler & Local Build:** Uses `esbuild-wasm` for in-browser bundling of multi-file TypeScript/React projects with hot refresh and local build capabilities.
+- **Project State Tracking:** Provides cross-session memory, tracking features, changes, health, and generation/refinement history per project.
+- **Health Check Before Refinement:** Validates code integrity before refinement to prevent compounding bugs.
+- **Feature Manifest:** Generates structured JSON feature lists with acceptance criteria from user prompts, tracking feature completion.
+- **Sequential Build Pipeline:** Decomposes complex prompts into step-by-step build pipelines with quality gates.
+- **Two-Pass Context Reduction:** Reduces token usage for refinements by analyzing relevant parts of related files and generating focused summaries.
+- **Lifecycle Hooks:** Provides user-configurable lifecycle automation with events and actions.
 
 ## External Dependencies
 - **LM Studio**: Local LLM inference.

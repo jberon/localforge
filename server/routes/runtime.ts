@@ -8,6 +8,11 @@ import { selfTestingService } from "../services/self-testing.service";
 import { dependencyGraphService } from "../services/dependency-graph.service";
 import { envDetectionService } from "../services/env-detection.service";
 import { promptDecomposerService } from "../services/prompt-decomposer.service";
+import { projectStateService } from "../services/project-state.service";
+import { initializerService } from "../services/initializer.service";
+import { sequentialBuildService } from "../services/sequential-build.service";
+import { twoPassContextService } from "../services/two-pass-context.service";
+import { hooksService } from "../services/hooks.service";
 import { logger } from "../lib/logger";
 import { asyncHandler } from "../lib/async-handler";
 
@@ -392,7 +397,7 @@ Output ONLY the fixed code, no explanations.`;
 }));
 
 router.post("/test-suite/:projectId", asyncHandler(async (req: Request, res: Response) => {
-  const { projectId } = req.params;
+  const projectId = String(req.params.projectId);
   const { code } = req.body;
 
   if (!code) {
@@ -496,7 +501,7 @@ router.post("/detect-env/:projectId", asyncHandler(async (req: Request, res: Res
 }));
 
 router.post("/dependency-graph/:projectId", asyncHandler(async (req: Request, res: Response) => {
-  const projectId = req.params.projectId;
+  const projectId = String(req.params.projectId);
   const { files } = req.body;
 
   if (!Array.isArray(files) || files.length === 0) {
@@ -517,7 +522,7 @@ router.post("/dependency-graph/:projectId", asyncHandler(async (req: Request, re
 }));
 
 router.post("/dependency-context/:projectId", asyncHandler(async (req: Request, res: Response) => {
-  const projectId = req.params.projectId;
+  const projectId = String(req.params.projectId);
   const { targetFile, files, userMessage, maxTokens } = req.body;
 
   if (!Array.isArray(files) || !targetFile) {
@@ -529,6 +534,255 @@ router.post("/dependency-context/:projectId", asyncHandler(async (req: Request, 
   );
 
   res.json(selection);
+}));
+
+router.get("/project-state/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const state = projectStateService.getState(projectId);
+  if (!state) {
+    return res.json({ exists: false, state: null });
+  }
+  res.json({ exists: true, state });
+}));
+
+router.post("/project-state/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { action, description, code, linesChanged, featuresAffected, successful } = req.body;
+
+  if (action === "init") {
+    const state = projectStateService.initializeState(projectId);
+    return res.json(state);
+  }
+
+  if (action === "generation" && code) {
+    const features = projectStateService.detectFeaturesFromCode(code);
+    const state = projectStateService.recordGeneration(
+      projectId,
+      description || "Code generation",
+      code,
+      featuresAffected || features,
+      successful !== false
+    );
+    return res.json(state);
+  }
+
+  if (action === "refinement") {
+    const state = projectStateService.recordRefinement(
+      projectId,
+      description || "Code refinement",
+      linesChanged || 0,
+      featuresAffected || [],
+      successful !== false
+    );
+    return res.json(state);
+  }
+
+  res.status(400).json({ error: "Invalid action. Use 'init', 'generation', or 'refinement'" });
+}));
+
+router.post("/health-check/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ error: "code is required" });
+  }
+
+  const healthCheck = selfTestingService.generateHealthCheck(projectId, code);
+
+  if (healthCheck.isBroken) {
+    projectStateService.updateHealth(projectId, {
+      renders: false,
+      errors: healthCheck.issues,
+    });
+  } else {
+    projectStateService.updateHealth(projectId, {
+      renders: true,
+      errors: [],
+    });
+  }
+
+  res.json(healthCheck);
+}));
+
+router.post("/feature-manifest/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { prompt } = req.body;
+
+  if (!prompt) {
+    return res.status(400).json({ error: "prompt is required" });
+  }
+
+  const manifest = initializerService.generateManifest(projectId, prompt);
+  res.json(manifest);
+}));
+
+router.get("/feature-manifest/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const manifest = initializerService.getManifest(projectId);
+  if (!manifest) {
+    return res.json({ exists: false, manifest: null });
+  }
+  res.json({ exists: true, manifest });
+}));
+
+router.post("/feature-manifest/:projectId/mark", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ error: "code is required" });
+  }
+
+  const manifest = initializerService.markFeaturesByCode(projectId, code);
+  if (!manifest) {
+    return res.json({ exists: false, manifest: null });
+  }
+
+  res.json({ exists: true, manifest });
+}));
+
+router.post("/sequential-build/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { prompt, steps } = req.body;
+
+  if (!prompt || !Array.isArray(steps) || steps.length === 0) {
+    return res.status(400).json({ error: "prompt and steps array are required" });
+  }
+
+  const pipeline = sequentialBuildService.createPipeline(projectId, prompt, steps);
+  res.json(pipeline);
+}));
+
+router.get("/sequential-build/:pipelineId/progress", asyncHandler(async (req: Request, res: Response) => {
+  const pipelineId = String(req.params.pipelineId);
+  const progress = sequentialBuildService.getPipelineProgress(pipelineId);
+  if (!progress) {
+    return res.json({ exists: false, progress: null });
+  }
+  res.json({ exists: true, progress });
+}));
+
+router.post("/sequential-build/:pipelineId/next", asyncHandler(async (req: Request, res: Response) => {
+  const pipelineId = String(req.params.pipelineId);
+  const next = sequentialBuildService.getNextStep(pipelineId);
+  if (!next) {
+    return res.json({ hasNext: false, step: null });
+  }
+  res.json({ hasNext: true, ...next });
+}));
+
+router.post("/sequential-build/:pipelineId/complete", asyncHandler(async (req: Request, res: Response) => {
+  const pipelineId = String(req.params.pipelineId);
+  const { stepId, code, qualityScore, healthPassed } = req.body;
+
+  if (!stepId || !code) {
+    return res.status(400).json({ error: "stepId and code are required" });
+  }
+
+  const pipeline = sequentialBuildService.completeStep(pipelineId, stepId, {
+    code,
+    qualityScore: qualityScore || 0,
+    healthPassed: healthPassed !== false,
+  });
+
+  if (!pipeline) {
+    return res.status(404).json({ error: "Pipeline or step not found" });
+  }
+
+  res.json(pipeline);
+}));
+
+router.post("/sequential-build/:pipelineId/fail", asyncHandler(async (req: Request, res: Response) => {
+  const pipelineId = String(req.params.pipelineId);
+  const { stepId, error } = req.body;
+
+  if (!stepId || !error) {
+    return res.status(400).json({ error: "stepId and error are required" });
+  }
+
+  const pipeline = sequentialBuildService.failStep(pipelineId, stepId, error);
+  if (!pipeline) {
+    return res.status(404).json({ error: "Pipeline or step not found" });
+  }
+
+  res.json(pipeline);
+}));
+
+router.post("/context-reduce/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { targetFile, userMessage, relatedFiles, maxTokenBudget } = req.body;
+
+  if (!targetFile || !userMessage || !Array.isArray(relatedFiles)) {
+    return res.status(400).json({ error: "targetFile, userMessage, and relatedFiles array are required" });
+  }
+
+  const reduction = twoPassContextService.reduceContext(
+    projectId,
+    targetFile,
+    userMessage,
+    relatedFiles,
+    maxTokenBudget || 3000
+  );
+
+  res.json(reduction);
+}));
+
+router.get("/hooks/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const hooks = hooksService.getHooks(projectId);
+  res.json(hooks);
+}));
+
+router.post("/hooks/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { event, action } = req.body;
+
+  if (!event || !action) {
+    return res.status(400).json({ error: "event and action are required" });
+  }
+
+  const hook = hooksService.addHook(projectId, event, action);
+  res.json(hook);
+}));
+
+router.delete("/hooks/:projectId/:hookId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const hookId = String(req.params.hookId);
+
+  const removed = hooksService.removeHook(projectId, hookId);
+  res.json({ removed });
+}));
+
+router.post("/hooks/:projectId/toggle", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { hookId, enabled } = req.body;
+
+  if (!hookId || typeof enabled !== "boolean") {
+    return res.status(400).json({ error: "hookId and enabled (boolean) are required" });
+  }
+
+  const toggled = hooksService.toggleHook(projectId, hookId, enabled);
+  res.json({ toggled });
+}));
+
+router.post("/hooks/:projectId/fire", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const { event, context } = req.body;
+
+  if (!event) {
+    return res.status(400).json({ error: "event is required" });
+  }
+
+  const results = await hooksService.fireHooks(projectId, event, context || {});
+  res.json({ results, count: results.length });
+}));
+
+router.get("/hooks/:projectId/history", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const limit = parseInt(String(req.query.limit || "20"), 10);
+  const history = hooksService.getExecutionHistory(projectId, limit);
+  res.json({ history });
 }));
 
 export default router;

@@ -9,6 +9,7 @@ interface HomePanelsState {
   showImageImport: boolean;
   showHomeSettings: boolean;
   showQuickUndo: boolean;
+  showHooksConfig: boolean;
 }
 
 interface HomePanelsContextValue extends HomePanelsState {
@@ -31,6 +32,7 @@ const initialState: HomePanelsState = {
   showImageImport: false,
   showHomeSettings: false,
   showQuickUndo: false,
+  showHooksConfig: false,
 };
 
 function homePanelsReducer(state: HomePanelsState, action: HomePanelsAction): HomePanelsState {
