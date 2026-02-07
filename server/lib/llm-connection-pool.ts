@@ -37,10 +37,11 @@ export class LLMConnectionPool {
   }
 
   private createNew(endpoint: string, apiKey: string, key: string): OpenAI {
+    const timeoutMs = parseInt(process.env.LLM_REQUEST_TIMEOUT_MS || "300000", 10);
     const client = new OpenAI({
       baseURL: endpoint,
       apiKey,
-      timeout: 120000,
+      timeout: timeoutMs,
       maxRetries: 2,
     });
 

@@ -124,7 +124,4 @@ export const llmCircuitBreaker = new CircuitBreaker({
   failureThreshold: 3,
   successThreshold: 2,
   timeout: 30000,
-  onStateChange: (from, to) => {
-    console.log(`[CircuitBreaker] LLM connection state: ${from} → ${to}`);
-  },
 });

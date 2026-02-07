@@ -78,8 +78,8 @@ const LLM_CONFIG = {
   // Max queue size before rejecting new requests
   maxQueueSize: parseInt(process.env.LLM_MAX_QUEUE_SIZE || "20", 10),
   
-  // Request timeout in milliseconds (2 minutes default for large generations)
-  requestTimeoutMs: parseInt(process.env.LLM_REQUEST_TIMEOUT_MS || "120000", 10),
+  // Request timeout in milliseconds (5 minutes default for large local LLM generations)
+  requestTimeoutMs: parseInt(process.env.LLM_REQUEST_TIMEOUT_MS || "300000", 10),
   
   // Chunk size for streaming responses (1KB default)
   streamChunkSize: parseInt(process.env.LLM_STREAM_CHUNK_SIZE || "1024", 10),
@@ -101,6 +101,7 @@ const DEFAULT_THROTTLE_MS = LLM_CONFIG.throttleMs;
 const DEFAULT_ENDPOINT = LLM_CONFIG.defaultEndpoint;
 const LOCAL_API_KEY = LLM_CONFIG.apiKey;
 
+const MAX_CLIENT_CACHE_SIZE = 10;
 const clientCache = new Map<string, OpenAI>();
 
 // ============================================================================
@@ -352,10 +353,15 @@ export function createLLMClient(config: LLMClientConfig): OpenAI {
     return clientCache.get(endpoint)!;
   }
 
+  if (clientCache.size >= MAX_CLIENT_CACHE_SIZE) {
+    const oldest = clientCache.keys().next().value;
+    if (oldest) clientCache.delete(oldest);
+  }
+
   const client = new OpenAI({
     baseURL: endpoint,
     apiKey: LOCAL_API_KEY,
-    timeout: 120000,
+    timeout: LLM_CONFIG.requestTimeoutMs,
     maxRetries: 2,
   });
 
