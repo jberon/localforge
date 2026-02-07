@@ -57,7 +57,7 @@ router.post("/errors", asyncHandler(async (req: Request, res: Response) => {
     file,
     line,
     column,
-    source: source || "browser"
+    source: (source || "browser") as "browser" | "server" | "build"
   });
 
   logger.info("Runtime error reported via API", { projectId, errorId: error.id });
@@ -107,10 +107,10 @@ router.post("/logs", asyncHandler(async (req: Request, res: Response) => {
   const { projectId, level, message, args, source } = parsed.data;
 
   const log = runtimeFeedbackService.reportLog(projectId, {
-    level: level || "log",
+    level: (level || "log") as "log" | "info" | "warn" | "error" | "debug",
     message,
     args,
-    source: source || "browser"
+    source: (source || "browser") as "browser" | "server"
   });
 
   res.json({
@@ -259,6 +259,132 @@ router.post("/impact/:projectId", asyncHandler(async (req: Request, res: Respons
     success: true,
     impact
   });
+}));
+
+const autoHealSchema = z.object({
+  code: z.string().min(1),
+  errors: z.array(z.object({
+    message: z.string(),
+    stack: z.string().optional(),
+    line: z.number().optional(),
+    type: z.string().optional(),
+  })),
+  settings: z.object({
+    endpoint: z.string().optional(),
+    model: z.string().optional(),
+    temperature: z.number().optional(),
+    provider: z.string().optional(),
+    apiKey: z.string().optional(),
+  }).optional(),
+});
+
+router.post("/auto-heal/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = req.params.projectId as string;
+  const parsed = autoHealSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+  }
+
+  const { code, errors, settings } = parsed.data;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  let isClientConnected = true;
+  req.on("close", () => { isClientConnected = false; });
+
+  const errorSummary = errors.map((e, i) => {
+    let desc = `Error ${i + 1}: ${e.message}`;
+    if (e.line) desc += ` (line ${e.line})`;
+    if (e.type) desc += ` [${e.type}]`;
+    return desc;
+  }).join("\n");
+
+  const fixPrompt = `You are fixing runtime errors in a React application. The code was generated and is running in a browser preview, but it has runtime errors.
+
+## Runtime Errors Detected
+${errorSummary}
+
+## Current Code
+\`\`\`jsx
+${code}
+\`\`\`
+
+## Instructions
+1. Analyze each runtime error carefully
+2. Fix ONLY the issues causing these specific errors
+3. Do NOT change unrelated code
+4. Return the COMPLETE fixed code (not just the changed parts)
+5. If an error is about a missing import, add the import
+6. If an error is about undefined variables/functions, define them or fix the reference
+7. If an error is about incorrect JSX, fix the JSX syntax
+8. Wrap the code in a single code fence
+
+Output ONLY the fixed code, no explanations.`;
+
+  res.write(`data: ${JSON.stringify({ type: "status", message: `Analyzing ${errors.length} runtime error(s)...` })}\n\n`);
+
+  try {
+    const { getActiveLLMClient, LLM_DEFAULTS } = await import("../llm-client");
+
+    const { client: openai, isCloud } = getActiveLLMClient(settings || undefined);
+
+    const stream = await openai.chat.completions.create({
+      model: isCloud ? "gpt-4o-mini" : (settings?.model || "local-model"),
+      messages: [
+        { role: "system", content: fixPrompt },
+        { role: "user", content: `Fix the ${errors.length} runtime error(s) listed above. Return the complete fixed code.` },
+      ],
+      temperature: 0.2,
+      max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
+      stream: true,
+    });
+
+    const chunks: string[] = [];
+
+    for await (const chunk of stream) {
+      if (!isClientConnected) break;
+      const delta = chunk.choices[0]?.delta?.content || "";
+      if (delta) {
+        chunks.push(delta);
+        res.write(`data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`);
+      }
+    }
+
+    const fullContent = chunks.join("");
+    let fixedCode = fullContent
+      .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+      .replace(/```$/gm, "")
+      .trim();
+
+    if (fixedCode && fixedCode.length > 50) {
+      const { codeQualityPipelineService } = await import("../services/code-quality-pipeline.service");
+      const qualityReport = await codeQualityPipelineService.analyzeAndFix(fixedCode);
+      if (qualityReport.totalIssuesFixed > 0) {
+        fixedCode = qualityReport.fixedCode;
+      }
+
+      for (const error of errors) {
+        runtimeFeedbackService.reportError(projectId, {
+          message: error.message,
+          stack: error.stack,
+          line: error.line,
+          source: "browser" as "browser" | "server" | "build",
+        });
+      }
+
+      res.write(`data: ${JSON.stringify({ type: "fixed_code", code: fixedCode, errorsFixed: errors.length, qualityScore: qualityReport.overallScore })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "done", success: true })}\n\n`);
+    } else {
+      res.write(`data: ${JSON.stringify({ type: "done", success: false, message: "Could not generate a fix" })}\n\n`);
+    }
+  } catch (error: any) {
+    logger.error("Auto-heal failed", { projectId, error: error.message });
+    res.write(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`);
+  }
+
+  res.end();
 }));
 
 export default router;

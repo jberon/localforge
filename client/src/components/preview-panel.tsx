@@ -19,6 +19,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@shared/schema";
 import type { editor } from "monaco-editor";
 import { useBundler } from "@/hooks/use-bundler";
+import { useAutoHeal } from "@/hooks/use-auto-heal";
 import { VisualEditorOverlay } from "./visual-editor-overlay";
 
 export function getFileLanguage(path: string): string {
@@ -75,6 +76,10 @@ interface PreviewToolbarProps {
   canRegenerate: boolean;
   handleOpenRegenerate: () => void;
   onDownload: () => void;
+  autoHealEnabled: boolean;
+  setAutoHealEnabled: (v: boolean) => void;
+  isHealing: boolean;
+  healCount: number;
 }
 
 function PreviewToolbar({
@@ -109,6 +114,10 @@ function PreviewToolbar({
   canRegenerate,
   handleOpenRegenerate,
   onDownload,
+  autoHealEnabled,
+  setAutoHealEnabled,
+  isHealing,
+  healCount,
 }: PreviewToolbarProps) {
   return (
     <div className="flex items-center justify-between gap-2 px-4 py-3 border-b min-w-0">
@@ -218,6 +227,16 @@ function PreviewToolbar({
               title="Refresh preview (⌘R / Ctrl+R)"
             >
               <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant={autoHealEnabled ? "default" : "ghost"}
+              onClick={() => setAutoHealEnabled(!autoHealEnabled)}
+              title={autoHealEnabled ? "Auto-heal ON - click to disable" : "Auto-heal OFF - click to enable"}
+              data-testid="button-toggle-auto-heal"
+              className={isHealing ? "animate-pulse" : ""}
+            >
+              <Zap className={`h-4 w-4 ${autoHealEnabled ? "" : "text-muted-foreground"}`} />
             </Button>
             <Button
               size="icon"
@@ -935,6 +954,15 @@ export function PreviewPanel({
           timestamp: Date.now(),
         };
         setConsoleLogs((prev) => [...prev.slice(-99), log]);
+
+        if (event.data.level === "error" && autoHealEnabledRef.current) {
+          const lineMatch = event.data.message.match(/at line (\d+)/);
+          reportAutoHealErrorRef.current({
+            message: event.data.message,
+            line: lineMatch ? parseInt(lineMatch[1], 10) : undefined,
+            type: "runtime",
+          });
+        }
       }
     };
     window.addEventListener("message", handleMessage);
@@ -974,6 +1002,48 @@ export function PreviewPanel({
   
   const hasRunnableMultiFileProject = hasFullStackProject && bundledPreviewHtml && !isCompiling && bundleErrors.length === 0;
   const canRegenerate = hasFullStackProject && onRegenerate && !isGenerating;
+
+  const [autoHealEnabled, setAutoHealEnabled] = useState(true);
+  const autoHealEnabledRef = useRef(autoHealEnabled);
+  useEffect(() => { autoHealEnabledRef.current = autoHealEnabled; }, [autoHealEnabled]);
+
+  const handleAutoHealCodeFixed = useCallback((fixedCode: string) => {
+    setLocalCode(fixedCode);
+    setIframeKey(k => k + 1);
+    if (onCodeUpdate) onCodeUpdate(fixedCode);
+    toast({
+      title: "Auto-Healed",
+      description: "Runtime errors were detected and fixed automatically.",
+    });
+  }, [onCodeUpdate, toast]);
+
+  const reportAutoHealErrorRef = useRef<(err: { message: string; line?: number; type?: string }) => void>(() => {});
+
+  const {
+    isHealing,
+    healCount,
+    status: healStatus,
+    qualityScore: healQualityScore,
+    reportError: reportAutoHealError,
+    resetHealCount,
+    cancelHeal,
+    canHeal,
+  } = useAutoHeal({
+    projectId,
+    code: localCode,
+    enabled: autoHealEnabled && !isGenerating && !!code,
+    maxAutoHeals: 3,
+    cooldownMs: 5000,
+    settings: settings ? {
+      endpoint: settings.endpoint,
+      model: settings.builderModel || settings.model,
+      temperature: settings.temperature,
+    } : undefined,
+    onCodeFixed: handleAutoHealCodeFixed,
+    isGenerating,
+  });
+
+  useEffect(() => { reportAutoHealErrorRef.current = reportAutoHealError; }, [reportAutoHealError]);
   
   useEffect(() => {
     setShowFeedback(true);
@@ -1187,9 +1257,15 @@ export function PreviewPanel({
       console.info = function(...args) { sendToParent('info', args); originalConsole.info.apply(console, args); };
       
       window.onerror = function(message, source, lineno, colno, error) {
-        sendToParent('error', [message + ' at line ' + lineno]);
+        sendToParent('error', [message + ' at line ' + lineno + (error && error.stack ? '\\nStack: ' + error.stack : '')]);
         return false;
       };
+      window.addEventListener('unhandledrejection', function(e) {
+        var reason = e.reason;
+        var msg = reason instanceof Error ? reason.message : String(reason);
+        var stack = reason instanceof Error ? reason.stack : '';
+        sendToParent('error', ['Unhandled Promise Rejection: ' + msg + (stack ? '\\nStack: ' + stack : '')]);
+      });
     })();
     `;
     
@@ -1295,6 +1371,10 @@ ${localCode}
         canRegenerate={!!canRegenerate}
         handleOpenRegenerate={handleOpenRegenerate}
         onDownload={onDownload}
+        autoHealEnabled={autoHealEnabled}
+        setAutoHealEnabled={setAutoHealEnabled}
+        isHealing={isHealing}
+        healCount={healCount}
       />
 
       <div className="flex-1 overflow-hidden">
@@ -1311,7 +1391,25 @@ ${localCode}
         ) : (
           <>
             {activeTab === "preview" ? (
-              <div className="h-full flex flex-col bg-white dark:bg-background transition-opacity duration-300">
+              <div className="h-full flex flex-col bg-white dark:bg-background transition-opacity duration-300 relative">
+                {isHealing && (
+                  <div className="absolute top-2 right-2 z-40 flex items-center gap-2 bg-card/95 backdrop-blur-sm border rounded-md px-3 py-1.5 shadow-sm" data-testid="status-auto-heal">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-500" />
+                    <span className="text-xs text-muted-foreground">{healStatus || "Auto-healing..."}</span>
+                    <Button size="icon" variant="ghost" className="h-5 w-5" onClick={cancelHeal} data-testid="button-cancel-heal">
+                      <Square className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+                {!isHealing && healCount > 0 && healStatus && (
+                  <div className="absolute top-2 right-2 z-40 flex items-center gap-2 bg-card/95 backdrop-blur-sm border rounded-md px-3 py-1.5 shadow-sm" data-testid="status-heal-result">
+                    <Zap className="h-3.5 w-3.5 text-green-500" />
+                    <span className="text-xs text-muted-foreground">{healStatus} ({healCount}/3)</span>
+                    {healQualityScore !== null && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">{healQualityScore}%</Badge>
+                    )}
+                  </div>
+                )}
                 <PreviewIframe
                   code={code}
                   localCode={localCode}
