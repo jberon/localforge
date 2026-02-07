@@ -105,7 +105,7 @@ export function registerDesignModeRoutes(router: Router): void {
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
-    const component = designModeService.addComponent(req.params.mockupId as string, parsed.data as any);
+    const component = designModeService.addComponent(req.params.mockupId as string, parsed.data as Parameters<typeof designModeService.addComponent>[1]);
     res.json(component || { error: "Failed to add component" });
   }));
 

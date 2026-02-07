@@ -169,14 +169,14 @@ router.post("/templates", asyncHandler((req, res) => {
 // Search templates
 router.get("/templates/search", asyncHandler((req, res) => {
   const query = req.query.q as string;
-  const category = req.query.category as any;
-  const templates = smartTemplatesService.findTemplates(query, category);
+  const category = req.query.category as string | undefined;
+  const templates = smartTemplatesService.findTemplates(query, category as Parameters<typeof smartTemplatesService.findTemplates>[1]);
   res.json(templates);
 }));
 
 // Get templates by category
 router.get("/templates/category/:category", asyncHandler((req, res) => {
-  const templates = smartTemplatesService.getByCategory(req.params.category as string as any);
+  const templates = smartTemplatesService.getByCategory(req.params.category as Parameters<typeof smartTemplatesService.getByCategory>[0]);
   res.json(templates);
 }));
 

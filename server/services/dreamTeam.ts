@@ -25,7 +25,7 @@ export interface TeamActivity {
   member: DreamTeamMember;
   action: ActivityLogEntry["action"];
   content: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 const SPECIALIST_CREATION_PROMPT = `You ARE Marty Cagan, and you're building the product team for this initiative. You have your core Dream Team—the best in the world at what they do—but you're evaluating whether this project needs additional specialists.
@@ -217,7 +217,7 @@ export class DreamTeamService {
     return logs.map(log => ({
       ...log,
       action: log.action as ActivityLogEntry["action"],
-      metadata: log.metadata as Record<string, any> | undefined,
+      metadata: log.metadata as Record<string, unknown> | undefined,
     }));
   }
 

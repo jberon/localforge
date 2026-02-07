@@ -6,16 +6,13 @@ import { z } from "zod";
 import { logger } from "../lib/logger";
 import { smartContextService } from "./smart-context.service";
 import { feedbackLearningService } from "./feedback-learning.service";
-import { enhancedAnalysisService } from "./enhanced-analysis.service";
 import { extendedThinkingService } from "./extended-thinking.service";
 import { buildEnhancedPlanningPrompt, buildEnhancedBuildingPrompt, buildEnhancedReviewPrompt, type EnhancedPromptContext } from "../prompts/enhanced-prompts";
-import { taskDecompositionService, type DecomposedTask, type Subtask } from "./task-decomposition.service";
+import { type DecomposedTask } from "./task-decomposition.service";
 import { projectMemoryService } from "./project-memory.service";
-import { codeRunnerService, type RunResult } from "./code-runner.service";
 import { autoFixLoopService, type AutoFixSession } from "./auto-fix-loop.service";
-import { refactoringAgentService, type RefactoringResult } from "./refactoring-agent.service";
+import { type RefactoringResult } from "./refactoring-agent.service";
 import { runtimeFeedbackService } from "./runtime-feedback.service";
-import { uiuxAgentService } from "./uiux-agent.service";
 import { localModelOptimizerService } from "./local-model-optimizer.service";
 import { contextBudgetService } from "./context-budget.service";
 import { fewShotCacheService } from "./few-shot-cache.service";
@@ -23,6 +20,9 @@ import { v2OrchestratorService, type V2GenerationContext, type V2GenerationResul
 import { getModelInstructions } from "./orchestrator/model-instructions";
 import { safeParseJSON } from "./orchestrator/json-parser";
 import type { PlannerMode, LLMSettings, OrchestratorTask, QualityProfile, OrchestratorPlan, ReviewSummary, OrchestratorState, OrchestratorEvent } from "./orchestrator/types";
+import { PLANNING_PROMPT, BUILDING_PROMPT, FIX_PROMPT, DIAGNOSIS_PROMPT, REVIEW_PROMPT } from "./orchestrator/prompts";
+import { validateCode } from "./orchestrator/validation";
+import { decomposeRequest, recordToMemory, runEnhancedAutoFix as runEnhancedAutoFixOp, runUIUXAnalysis as runUIUXAnalysisOp, runRefactoringPass as runRefactoringPassOp, getProjectContext as getProjectContextOp } from "./orchestrator/enhanced-ops";
 import { outputParserService } from "./output-parser.service";
 import { adaptiveTemperatureService } from "./adaptive-temperature.service";
 import { conversationMemoryService } from "./conversation-memory.service";
@@ -30,146 +30,6 @@ import { smartRetryService } from "./smart-retry.service";
 import { promptChunkingService } from "./prompt-chunking.service";
 
 export type { OrchestratorTask, QualityProfile, OrchestratorPlan, ReviewSummary, OrchestratorState, OrchestratorEvent, PlannerMode, LLMSettings } from "./orchestrator/types";
-
-const PLANNING_PROMPT = `You ARE Marty Cagan and Martin Fowler, collaborating on a product plan. Marty brings product thinking; Martin brings architectural rigor.
-
-MARTY'S LENS: What problem are we really solving? Who has this problem? What outcome will make users successful?
-MARTIN'S LENS: What's the simplest architecture that could work? How do we make this easy to change? What would make this a joy to maintain?
-
-Analyze the user's request. Create a plan that's both user-outcome focused and architecturally sound.
-
-QUALITY PROFILES:
-- "prototype": Fast iteration, minimal tests, quick proof of concept
-- "demo": Stable for demos, core flows tested, reasonable error handling
-- "production": Tests required, no security flaws, clear error handling, no TODOs in critical paths
-
-Infer the appropriate qualityProfile based on the user's request:
-- Explicit mentions of "production", "enterprise", "secure" → "production"
-- Quick prototypes, experiments, learning exercises → "prototype"
-- Default to "demo" for most requests
-
-RESPOND WITH VALID JSON ONLY (no markdown):
-{
-  "summary": "What problem this solves and for whom (Marty) + the technical approach (Martin)",
-  "architecture": "Clean architecture: components, state management, separation of concerns (Martin's principles)",
-  "qualityProfile": "prototype" | "demo" | "production",
-  "designNotes": "Optional: UX flows, empty states, loading states, accessibility considerations",
-  "searchNeeded": true/false,
-  "searchQueries": ["query 1", "query 2"] (if searchNeeded),
-  "tasks": [
-    {"id": "1", "title": "Task name", "description": "What to implement and why it matters", "type": "build"},
-    {"id": "2", "title": "Task name", "description": "What to implement and why it matters", "type": "build"}
-  ]
-}
-
-Task types: "build" for code, "validate" for testing, "review" for final review
-Keep tasks focused and implementable. Maximum 5 tasks for simple apps.
-For API integrations, add searchNeeded: true with relevant queries.`;
-
-const BUILDING_PROMPT = `You ARE Martin Fowler. You're writing code that humans will read, maintain, and extend. Kent Beck is reviewing your work—every line should pass TDD principles.
-
-MARTIN'S CODE PRINCIPLES:
-- Any fool can write code a computer understands. You write code HUMANS understand.
-- Keep it simple—but no simpler. Complexity only where it adds real value.
-- Make the implicit explicit. Every function name, every variable reveals intent.
-- Separate concerns ruthlessly. Each component has one reason to change.
-
-KENT'S QUALITY BAR:
-- Would I be confident refactoring this at 3am during an incident?
-- Is every behavior testable in isolation?
-- Is this the simplest thing that could possibly work?
-
-TECHNICAL REQUIREMENTS:
-1. Output ONLY executable React code - no explanations, no markdown
-2. Include all necessary imports (React, useState, useEffect, etc.)
-3. Create a complete, self-contained component that renders properly
-4. Use modern React patterns (hooks, functional components)
-5. Include inline Tailwind CSS for styling
-6. The code must be production-ready and error-free
-7. Export default the main App component
-8. Include ReactDOM.createRoot render call at the bottom
-
-CONTEXT:
-{context}
-
-PLAN:
-{plan}
-
-As Martin Fowler, generate clean, readable, maintainable code:`;
-
-const FIX_PROMPT = `You ARE Kent Beck. You created TDD. When code breaks, you don't patch—you understand WHY it broke and fix the root cause.
-
-YOUR APPROACH:
-- Read the error. Understand it. Don't guess.
-- Fix the actual problem, not just the symptom.
-- Make it work first. Then make it right.
-- The fix should make the code BETTER, not just passing.
-
-ERRORS:
-{errors}
-
-CODE:
-{code}
-
-As Kent Beck, output ONLY the complete fixed code - no explanations, no markdown:`;
-
-const DIAGNOSIS_PROMPT = `You ARE Kent Beck. You created TDD because you were tired of code that breaks in mysterious ways. Now you're debugging—your favorite activity, because every bug reveals a design flaw.
-
-YOUR DEBUGGING PHILOSOPHY:
-- Bugs are design feedback. They tell you where your abstractions are wrong.
-- Don't just find the bug—understand why it was possible.
-- The best fix is the one that makes this class of bug impossible.
-
-Analyze these errors:
-1. What caused each error? (Root cause, not symptoms)
-2. What's the specific fix? (Minimal, targeted change)
-3. What design flaw allowed this? (So we prevent future bugs)
-
-ERRORS:
-{errors}
-
-CODE SNIPPET:
-{codeSnippet}
-
-As Kent Beck, provide a brief, actionable diagnosis:`;
-
-const REVIEW_PROMPT = `You ARE Julie Zhuo, former VP of Design at Facebook, combined with Martin Fowler's architectural rigor. You're performing a Principal Engineer review.
-
-YOUR REVIEW PHILOSOPHY:
-- Quality is not negotiable. Every line of code should be defensible.
-- Look for what could break in production, not just what works in development.
-- Consider the user experience as much as the code quality.
-- Security vulnerabilities are showstoppers.
-
-REVIEW THE FOLLOWING CODE:
-
-PLAN SUMMARY:
-{planSummary}
-
-QUALITY PROFILE: {qualityProfile}
-
-CODE:
-{code}
-
-Perform a comprehensive review covering:
-1. Architecture and code organization
-2. Error handling and edge cases
-3. Security concerns (injection, secrets, unsafe patterns)
-4. Performance hotspots
-5. UX issues (if UI is present)
-6. Code quality and maintainability
-
-RESPOND WITH VALID JSON ONLY:
-{
-  "summary": "High-level assessment of the code quality",
-  "strengths": ["What the code does well"],
-  "issues": [
-    {"severity": "high|medium|low", "file": "optional/path", "description": "Issue description"}
-  ],
-  "recommendations": ["Specific, actionable recommendations for improvement"]
-}
-
-Be honest and critical. This code is going to production.`;
 
 export class AIOrchestrator {
   private settings: LLMSettings;
@@ -1305,51 +1165,7 @@ export class AIOrchestrator {
   }
 
   private validateCode(code: string): { valid: boolean; errors: string[]; analysisScore?: number } {
-    const errors: string[] = [];
-
-    // Run enhanced code analysis
-    const analysis = enhancedAnalysisService.analyzeCode(code, "generated.tsx");
-    
-    // Add critical issues as errors
-    for (const issue of analysis.issues) {
-      if (issue.severity === "critical" || issue.severity === "high") {
-        errors.push(`[${issue.type}] ${issue.message}`);
-      }
-    }
-    
-    // Add security findings as errors
-    for (const finding of analysis.securityFindings) {
-      if (finding.severity === "critical" || finding.severity === "high") {
-        errors.push(`[SECURITY] ${finding.description}`);
-      }
-    }
-
-    // Basic syntax checks (still needed for quick validation)
-    const openBraces = (code.match(/\{/g) || []).length;
-    const closeBraces = (code.match(/\}/g) || []).length;
-    if (openBraces !== closeBraces) {
-      errors.push(`Mismatched braces: ${openBraces} open, ${closeBraces} close`);
-    }
-
-    const openParens = (code.match(/\(/g) || []).length;
-    const closeParens = (code.match(/\)/g) || []).length;
-    if (openParens !== closeParens) {
-      errors.push(`Mismatched parentheses: ${openParens} open, ${closeParens} close`);
-    }
-
-    if (code.trim().endsWith(",") || code.trim().endsWith("(") || code.trim().endsWith("{")) {
-      errors.push("Code appears truncated");
-    }
-
-    if (!code.includes("export default") && !code.includes("ReactDOM")) {
-      errors.push("Missing export or render call");
-    }
-
-    return { 
-      valid: errors.length === 0, 
-      errors,
-      analysisScore: analysis.score
-    };
+    return validateCode(code);
   }
 
   private async fixLoop(code: string, errors: string[]): Promise<string> {
@@ -1505,284 +1321,40 @@ export class AIOrchestrator {
     return files;
   }
 
-  // ============================================================================
-  // MULTI-AGENT SERVICES INTEGRATION
-  // Task decomposition, project memory, auto-fix loop, and refactoring
-  // ============================================================================
-
-  /**
-   * Decompose a complex request into manageable subtasks with dependency ordering
-   */
   async decomposeRequest(userRequest: string, existingCode?: string): Promise<DecomposedTask | null> {
-    if (!this.projectId) return null;
-
-    try {
-      const task = await taskDecompositionService.decomposePrompt(
-        this.projectId,
-        userRequest,
-        existingCode ? { existingCode } : undefined
-      );
-
-      this.emit({
-        type: "phase_change",
-        phase: "planning",
-        message: `Task decomposed into ${task.subtasks.length} subtasks`
-      });
-
-      return task;
-    } catch (error) {
-      logger.error("Task decomposition failed", {}, error as Error);
-      return null;
-    }
+    return decomposeRequest(this.projectId, (e) => this.emit(e), userRequest, existingCode);
   }
 
-  /**
-   * Record file metadata and architectural decisions to project memory
-   */
   async recordToMemory(
     files: Array<{ path: string; purpose: string; content?: string }>,
     decision?: { category: string; title: string; description: string; rationale: string }
   ): Promise<void> {
-    if (!this.projectId) return;
-
-    try {
-      for (const file of files) {
-        await projectMemoryService.recordFileMetadata(this.projectId, file.path, {
-          purpose: file.purpose,
-          linesOfCode: file.content?.split("\n").length || 0
-        });
-      }
-
-      if (decision) {
-        await projectMemoryService.recordDecision(this.projectId, {
-          category: decision.category as any,
-          title: decision.title,
-          description: decision.description,
-          rationale: decision.rationale,
-          alternatives: [],
-          consequences: []
-        });
-      }
-
-      await projectMemoryService.recordChange(this.projectId, {
-        type: "creation",
-        description: `Generated ${files.length} file(s)`,
-        files: files.map(f => f.path),
-        metrics: {
-          filesChanged: files.length,
-          linesAdded: files.reduce((acc, f) => acc + (f.content?.split("\n").length || 0), 0),
-          linesRemoved: 0,
-          tokensUsed: 0
-        }
-      });
-    } catch (error) {
-      logger.error("Failed to record to memory", {}, error as Error);
-    }
+    return recordToMemory(this.projectId, files, decision);
   }
 
-  /**
-   * Run automated validation and fix loop using CodeRunner + AutoFixLoop services
-   * Enhanced with runtime feedback capture for real-time error detection
-   */
   async runEnhancedAutoFix(code: string): Promise<{ success: boolean; fixedCode: string; session?: AutoFixSession }> {
-    if (!this.projectId) {
-      return { success: true, fixedCode: code };
-    }
-
-    try {
-      // Start runtime session for error capture
-      runtimeFeedbackService.startSession(this.projectId);
-      
-      const session = await autoFixLoopService.startAutoFixSession(this.projectId, {
-        maxIterations: this.state.maxFixAttempts
-      });
-
-      const result = await autoFixLoopService.runFixLoop(
-        session.id,
-        async () => {
-          return await codeRunnerService.runTypeCheck();
-        },
-        async (fix, error) => {
-          this.emit({
-            type: "phase_change",
-            phase: "fixing",
-            message: `Applying fix for: ${error.message.slice(0, 50)}...`
-          });
-          return true;
-        }
-      );
-
-      // Check for any unhandled runtime errors after fix loop and feed into auto-fix
-      const unhandledErrors = runtimeFeedbackService.getUnhandledErrors(this.projectId);
-      if (unhandledErrors.length > 0 && result.status === "completed") {
-        this.emit({
-          type: "thinking",
-          model: "builder",
-          content: `Runtime feedback: ${unhandledErrors.length} runtime error(s) detected`
-        });
-        
-        // Format errors for LLM context - store for potential re-fix cycles
-        const errorContext = runtimeFeedbackService.formatErrorsForLLM(this.projectId);
-        if (errorContext) {
-          // Store runtime error context in the session for next generation cycle
-          // This enables the autonomous loop to learn from runtime failures
-          for (const err of unhandledErrors.slice(0, 3)) {
-            this.emit({
-              type: "phase_change",
-              phase: "fixing",
-              message: `Runtime error: ${err.type} - ${err.message.slice(0, 50)}...`
-            });
-            
-            // Mark with suggested fix if available
-            if (err.suggestion) {
-              this.emit({
-                type: "thinking",
-                model: "builder",
-                content: `Suggested fix: ${err.suggestion}`
-              });
-            }
-          }
-        }
-      }
-
-      return {
-        success: result.status === "completed",
-        fixedCode: code,
-        session: result
-      };
-    } catch (error) {
-      logger.error("Enhanced auto-fix failed", {}, error as Error);
-      return { success: false, fixedCode: code };
-    }
+    return runEnhancedAutoFixOp(this.projectId, code, this.state.maxFixAttempts, (e) => this.emit(e));
   }
 
-  /**
-   * Run UI/UX analysis pass on generated frontend files
-   */
   async runUIUXAnalysis(
     files: Array<{ path: string; content: string }>
   ): Promise<{ score: string; issues: number; suggestions: string[] } | null> {
-    if (!this.projectId || files.length === 0) return null;
-
-    try {
-      const frontendFiles = files.filter(f => 
-        f.path.endsWith('.tsx') || f.path.endsWith('.jsx') || 
-        f.path.endsWith('.css') || f.path.includes('component')
-      );
-
-      if (frontendFiles.length === 0) return null;
-
-      this.emit({
-        type: "phase_change",
-        phase: "reviewing",
-        message: "Analyzing UI/UX patterns..."
-      });
-
-      const analysis = await uiuxAgentService.analyzeFiles(frontendFiles);
-      
-      // Convert score (0-100) to letter grade
-      const getGrade = (s: number): string => {
-        if (s >= 90) return "A";
-        if (s >= 80) return "B";
-        if (s >= 70) return "C";
-        if (s >= 60) return "D";
-        return "F";
-      };
-      const grade = getGrade(analysis.score);
-      
-      if (analysis.issuesFound.length > 0) {
-        this.emit({
-          type: "thinking",
-          model: "builder",
-          content: `UI/UX Analysis: Grade ${grade}, ${analysis.issuesFound.length} issue(s) found`
-        });
-      }
-
-      return {
-        score: grade,
-        issues: analysis.issuesFound.length,
-        suggestions: analysis.issuesFound.slice(0, 5).map((i: { suggestion: string }) => i.suggestion)
-      };
-    } catch (error) {
-      logger.error("UI/UX analysis failed", {}, error as Error);
-      return null;
-    }
+    return runUIUXAnalysisOp(this.projectId, files, (e) => this.emit(e));
   }
 
-  /**
-   * Run post-generation refactoring pass to improve code quality
-   */
   async runRefactoringPass(
     files: Array<{ path: string; content: string }>
   ): Promise<RefactoringResult | null> {
-    if (!this.projectId || files.length === 0) return null;
-
-    try {
-      const sam = CORE_DREAM_TEAM.find(m => m.id === "sam");
-      
-      if (this.dreamTeam && sam) {
-        await this.dreamTeam.logActivity(this.projectId, {
-          member: sam,
-          action: "refactoring",
-          content: `Analyzing ${files.length} file(s) for code improvements...`
-        });
-      }
-
-      this.emit({
-        type: "phase_change",
-        phase: "reviewing",
-        message: "Running refactoring analysis..."
-      });
-
-      const { totalMetrics } = await refactoringAgentService.refactorProject(
-        this.projectId,
-        files,
-        { autoFix: false, dryRun: true }
-      );
-
-      if (totalMetrics.issuesFound > 0) {
-        this.emit({
-          type: "thinking",
-          model: "builder",
-          content: `Found ${totalMetrics.issuesFound} potential improvements across ${totalMetrics.filesAnalyzed} files`
-        });
-      }
-
-      return {
-        success: true,
-        changes: [],
-        summary: `Analyzed ${totalMetrics.filesAnalyzed} files, found ${totalMetrics.issuesFound} potential improvements`,
-        metrics: totalMetrics
-      };
-    } catch (error) {
-      logger.error("Refactoring pass failed", {}, error as Error);
-      return null;
-    }
+    return runRefactoringPassOp(this.projectId, files, (e) => this.emit(e), this.dreamTeam);
   }
 
-  /**
-   * Get project context from memory for enhanced generation
-   */
   async getProjectContext(): Promise<{
     summary: string;
     conventions: Array<{ name: string; description: string }>;
     recentDecisions: Array<{ title: string; description: string }>;
     fileStructure: string;
   } | null> {
-    if (!this.projectId) return null;
-
-    try {
-      const context = await projectMemoryService.getContextForGeneration(this.projectId);
-      return {
-        summary: context.summary,
-        conventions: context.conventions.map(c => ({ name: c.name, description: c.description })),
-        recentDecisions: context.recentDecisions.map(d => ({ title: d.title, description: d.description })),
-        fileStructure: context.fileStructure
-      };
-    } catch (error) {
-      logger.error("Failed to get project context", {}, error as Error);
-      return null;
-    }
+    return getProjectContextOp(this.projectId);
   }
 }
 

@@ -26,7 +26,7 @@ export interface BuildStatus {
 interface RunningProject {
   projectId: string;
   projectName: string;
-  process: ChildProcess;
+  process: ChildProcess | null;
   port: number;
   logs: string[];
   status: BuildStatus["status"];
@@ -273,7 +273,7 @@ class LocalProjectBuilderService extends EventEmitter {
       
       await new Promise<void>((resolve) => {
         setTimeout(() => {
-          if (!project.process.killed) {
+          if (project.process && !project.process.killed) {
             project.process.kill("SIGKILL");
           }
           resolve();
@@ -328,7 +328,7 @@ class LocalProjectBuilderService extends EventEmitter {
       project = {
         projectId,
         projectName,
-        process: null as any,
+        process: null,
         port: port || 0,
         logs: logs || [],
         status,

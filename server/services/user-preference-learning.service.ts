@@ -219,17 +219,17 @@ class UserPreferenceLearningService extends BaseService {
       learnedPreferences: prefs.filter(p => p.confidence > 0.5),
       topPatterns: this.patterns.slice(0, 10),
       codingStyle: {
-        indentation: getPreferenceValue("codingStyle", "indentation", "spaces") as any,
+        indentation: getPreferenceValue("codingStyle", "indentation", "spaces") as "spaces" | "tabs" | "mixed",
         semicolons: getPreferenceValue("codingStyle", "semicolons", "true") === "true",
-        quotes: getPreferenceValue("codingStyle", "quotes", "double") as any,
+        quotes: getPreferenceValue("codingStyle", "quotes", "double") as "single" | "double" | "mixed",
         trailingCommas: getPreferenceValue("codingStyle", "trailingCommas", "true") === "true"
       },
       preferredLibraries: libraries,
       namingConventions: {
-        components: getPreferenceValue("naming", "components", "PascalCase") as any,
-        functions: getPreferenceValue("naming", "functions", "camelCase") as any,
-        variables: getPreferenceValue("naming", "variables", "camelCase") as any,
-        constants: getPreferenceValue("naming", "constants", "UPPER_CASE") as any
+        components: getPreferenceValue("naming", "components", "PascalCase") as "PascalCase" | "camelCase" | "mixed",
+        functions: getPreferenceValue("naming", "functions", "camelCase") as "camelCase" | "snake_case" | "mixed",
+        variables: getPreferenceValue("naming", "variables", "camelCase") as "camelCase" | "snake_case" | "mixed",
+        constants: getPreferenceValue("naming", "constants", "UPPER_CASE") as "UPPER_CASE" | "camelCase" | "mixed"
       }
     };
   }

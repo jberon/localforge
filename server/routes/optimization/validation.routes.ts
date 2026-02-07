@@ -71,7 +71,7 @@ export function registerValidationRoutes(router: Router): void {
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
-    const pattern = patternLibraryService.addPattern(parsed.data as any);
+    const pattern = patternLibraryService.addPattern(parsed.data as Parameters<typeof patternLibraryService.addPattern>[0]);
     res.status(201).json(pattern);
   }));
 

@@ -18,7 +18,7 @@ function getDb() {
 }
 
 export interface IAnalyticsStorage {
-  trackEvent(type: AnalyticsEventType, projectId?: string, data?: Record<string, any>): Promise<AnalyticsEvent>;
+  trackEvent(type: AnalyticsEventType, projectId?: string, data?: Record<string, unknown>): Promise<AnalyticsEvent>;
   getEvents(limit?: number, type?: AnalyticsEventType): Promise<AnalyticsEvent[]>;
   getEventsSince(timestamp: number): Promise<AnalyticsEvent[]>;
   
@@ -39,7 +39,7 @@ function dbToEvent(row: typeof analyticsEvents.$inferSelect): AnalyticsEvent {
     id: row.id,
     type: row.type as AnalyticsEventType,
     projectId: row.projectId ?? undefined,
-    data: (row.data as Record<string, any>) ?? {},
+    data: (row.data as Record<string, unknown>) ?? {},
     timestamp: row.timestamp,
   };
 }
@@ -65,7 +65,7 @@ function dbToInsight(row: typeof insights.$inferSelect): Insight {
     description: row.description,
     actionable: row.actionable === "true",
     priority: row.priority as Insight["priority"],
-    data: (row.data as Record<string, any>) ?? undefined,
+    data: (row.data as Record<string, unknown>) ?? undefined,
     generatedAt: row.generatedAt,
     expiresAt: row.expiresAt ?? undefined,
   };
@@ -75,7 +75,7 @@ export class AnalyticsStorage implements IAnalyticsStorage {
   async trackEvent(
     type: AnalyticsEventType, 
     projectId?: string, 
-    data: Record<string, any> = {}
+    data: Record<string, unknown> = {}
   ): Promise<AnalyticsEvent> {
     const id = randomUUID();
     const timestamp = Date.now();

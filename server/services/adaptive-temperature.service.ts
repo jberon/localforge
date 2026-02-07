@@ -46,7 +46,7 @@ const DEFAULT_TEMPERATURES: Record<TaskType, number> = {
 const CODE_TASKS: TaskType[] = ["code-generation", "refactoring", "bug-fix"];
 
 class AdaptiveTemperatureService extends BaseService {
-  private static instance: AdaptiveTemperatureService;
+  private static instance: AdaptiveTemperatureService | undefined;
   private profiles: ManagedMap<string, TemperatureProfile>;
   private signals: ManagedMap<string, QualitySignal>;
   private signalCounter: number = 0;
@@ -68,7 +68,7 @@ class AdaptiveTemperatureService extends BaseService {
     this.profiles.clear();
     this.signals.clear();
     this.signalCounter = 0;
-    AdaptiveTemperatureService.instance = undefined as any;
+    AdaptiveTemperatureService.instance = undefined;
     this.log("AdaptiveTemperatureService destroyed");
   }
 

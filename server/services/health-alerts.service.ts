@@ -23,7 +23,7 @@ export interface HealthAlert {
   type: AlertType;
   severity: AlertSeverity;
   message: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
   timestamp: number;
   acknowledged: boolean;
 }
@@ -144,7 +144,7 @@ export class HealthAlertsService extends EventEmitter {
     type: AlertType,
     severity: AlertSeverity,
     message: string,
-    details?: Record<string, any>
+    details?: Record<string, unknown>
   ): HealthAlert {
     const recentIdentical = this.alerts.find(a => 
       a.type === type && 
@@ -270,7 +270,7 @@ export class HealthAlertsService extends EventEmitter {
     );
   }
 
-  notifyGenerationError(error: string, context?: Record<string, any>): void {
+  notifyGenerationError(error: string, context?: Record<string, unknown>): void {
     this.createAlert("generation_error", "warning",
       `Generation error: ${error}`,
       context

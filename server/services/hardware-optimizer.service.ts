@@ -365,7 +365,7 @@ class HardwareOptimizerService extends BaseService {
     return Math.floor((this.profile.freeMemoryGB - reservedGB - kvCacheGB) * 0.9);
   }
 
-  formatLMStudioConfig(): Record<string, any> {
+  formatLMStudioConfig(): Record<string, unknown> {
     if (!this.profile) return {};
     
     const config = this.getOptimizationConfig(8);

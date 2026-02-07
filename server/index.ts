@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { securityHeaders } from "./middleware/security";
 import logger from "./lib/logger";
 import { setupGracefulShutdown } from "./lib/graceful-shutdown";
+import { heapMonitorService } from "./services/heap-monitor.service";
 
 const app = express();
 const httpServer = createServer(app);
@@ -103,6 +104,7 @@ app.use((req, res, next) => {
   const host = process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0";
   
   setupGracefulShutdown({ httpServer });
+  heapMonitorService.start(30_000);
 
   httpServer.listen(port, host, () => {
     log(`serving on ${host}:${port}`);

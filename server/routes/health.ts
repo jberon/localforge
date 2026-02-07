@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { healthAlertsService } from "../services/health-alerts.service";
 import { resilienceService } from "../services/resilience.service";
 import { contextPruningService } from "../services/context-pruning.service";
+import { heapMonitorService } from "../services/heap-monitor.service";
 import { asyncHandler } from "../lib/async-handler";
 
 const router = Router();
@@ -179,5 +180,10 @@ router.get("/dashboard", asyncHandler(async (req, res) => {
     })),
   });
 }));
+
+router.get("/heap", (req, res) => {
+  const stats = heapMonitorService.getStats();
+  res.json(stats);
+});
 
 export default router;

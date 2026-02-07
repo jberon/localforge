@@ -58,7 +58,15 @@ LocalForge features a chat-based interface with streaming responses, project man
 - **Performance-Based Model Routing:** ModelRouterService learns from outcome history (success rates, durations) to auto-adjust model selection. Upgrades tier when success rate drops below 50%.
 - **Frontend Panels:** Feature Manifest Progress panel, Build Pipeline Progress tracker, and Project State Dashboard for real-time monitoring of build state, health history, and generation stats.
 
-## Recent Changes (Feb 2026 - Local LLM Optimization Phase 2)
+## Recent Changes (Feb 2026 - Code Quality & Architecture Phase)
+- **Type Safety Audit**: Replaced 32+ `as any` casts with proper TypeScript types; replaced 14 `Record<string, any>` with `Record<string, unknown>` for type safety
+- **Orchestrator Refactoring**: Split orchestrator.ts from 1796 → 1367 lines; extracted prompts (orchestrator/prompts.ts), validation (orchestrator/validation.ts), enhanced operations (orchestrator/enhanced-ops.ts) into sub-modules
+- **Code Quality Pipeline Refactoring**: Split code-quality-pipeline.service.ts from 1774 → 217 lines; extracted 5 analysis passes (structural, react-jsx, import, completeness, llm-cleanup) to code-quality/ directory
+- **Structured Logging**: Replaced all stray console.log/warn/error calls with structured logger (lib/logger.ts)
+- **Unit Tests**: Added 115 tests across 3 test suites (auto-fix-loop, sequential-build, code-quality-pipeline) in server/tests/
+- **Heap Monitoring**: New HeapMonitorService with periodic memory sampling, trend detection, peak tracking, and `/api/health/heap` endpoint
+
+### Earlier Changes (Local LLM Optimization Phase 2)
 - **LLM Timeout**: Increased default from 120s to 300s (configurable via `LLM_REQUEST_TIMEOUT_MS` env var) for long local generations
 - **Request Abort Controller**: Streaming requests now have timeout-based auto-abort, preventing stuck requests
 - **Client Cache**: Bounded to 10 entries with LRU eviction to prevent memory leaks

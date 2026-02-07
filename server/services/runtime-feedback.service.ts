@@ -18,7 +18,7 @@ export interface RuntimeError {
   handled: boolean;
   fixAttempted: boolean;
   suggestion?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export type RuntimeErrorType =

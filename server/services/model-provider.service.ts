@@ -398,7 +398,7 @@ export class ModelProviderService extends BaseService {
     this.log("ModelProviderService destroyed");
   }
 
-  getM4ProRecommendations(): Record<string, any> {
+  getM4ProRecommendations(): Record<string, unknown> {
     return {
       hardware: {
         cpu: "Apple M4 Pro (14-core)",
