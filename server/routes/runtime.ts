@@ -4,6 +4,10 @@ import { runtimeFeedbackService, type RuntimeError, type RuntimeLog } from "../s
 import { autoFixLoopService } from "../services/auto-fix-loop.service";
 import { uiuxAgentService } from "../services/uiux-agent.service";
 import { projectMemoryService } from "../services/project-memory.service";
+import { selfTestingService } from "../services/self-testing.service";
+import { dependencyGraphService } from "../services/dependency-graph.service";
+import { envDetectionService } from "../services/env-detection.service";
+import { promptDecomposerService } from "../services/prompt-decomposer.service";
 import { logger } from "../lib/logger";
 import { asyncHandler } from "../lib/async-handler";
 
@@ -385,6 +389,146 @@ Output ONLY the fixed code, no explanations.`;
   }
 
   res.end();
+}));
+
+router.post("/test-suite/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ error: "code is required" });
+  }
+
+  const suite = selfTestingService.generateTestSuite(projectId, code);
+
+  const executableScenarios = suite.scenarios.map(scenario => ({
+    id: scenario.id,
+    name: scenario.name,
+    type: scenario.type,
+    steps: scenario.steps.map(step => ({
+      action: mapStepToAction(step),
+      target: step.target,
+      value: step.value,
+      assertion: step.assertion,
+    })),
+    status: "pending" as const,
+  }));
+
+  res.json({
+    suiteId: suite.id,
+    projectId,
+    scenarios: executableScenarios,
+    coverage: suite.coverage,
+  });
+}));
+
+router.post("/test-results/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  const { suiteId, results } = req.body;
+
+  if (!suiteId || !results) {
+    return res.status(400).json({ error: "suiteId and results are required" });
+  }
+
+  for (const result of results) {
+    selfTestingService.updateScenarioStatus(
+      suiteId,
+      result.scenarioId,
+      result.passed ? "passed" : "failed",
+      {
+        passed: result.passed,
+        duration: result.duration,
+        errors: result.errors || [],
+        warnings: [],
+        suggestions: [],
+      }
+    );
+  }
+
+  const fixes = selfTestingService.generateFixSuggestions(suiteId);
+  res.json({ suiteId, fixes, resultsRecorded: results.length });
+}));
+
+function mapStepToAction(step: { action: string; target: string; value?: string; assertion?: string }): string {
+  const action = step.action.toLowerCase();
+  if (action.includes("verify") || action.includes("check") || action.includes("assert")) {
+    if (action.includes("text") || action.includes("content")) return "check_text";
+    if (action.includes("visible") || action.includes("display")) return "check_visible";
+    if (action.includes("count") || action.includes("number")) return "check_count";
+    if (action.includes("accessible") || action.includes("a11y")) return "check_accessible";
+    if (action.includes("error")) return "check_no_errors";
+    return "check_exists";
+  }
+  if (action.includes("click") || action.includes("press") || action.includes("tap")) return "click";
+  if (action.includes("type") || action.includes("input") || action.includes("fill")) return "input";
+  return "check_exists";
+}
+
+router.post("/analyze-complexity", asyncHandler(async (_req: Request, res: Response) => {
+  const { prompt, existingCode } = _req.body;
+
+  if (!prompt || typeof prompt !== "string") {
+    return res.json({ shouldDecompose: false, complexityScore: 0, steps: [], reason: "No prompt provided" });
+  }
+
+  const decomposition = promptDecomposerService.decompose(prompt);
+
+  if (decomposition.shouldDecompose) {
+    const sequentialPrompts = promptDecomposerService.buildSequentialPrompts(decomposition, existingCode);
+    return res.json({
+      ...decomposition,
+      sequentialPrompts,
+    });
+  }
+
+  res.json(decomposition);
+}));
+
+router.post("/detect-env/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const { code } = req.body;
+
+  if (!code || typeof code !== "string") {
+    return res.json({ variables: [], hasSecrets: false, setupInstructions: "" });
+  }
+
+  const result = envDetectionService.detectEnvVars(code);
+  res.json(result);
+}));
+
+router.post("/dependency-graph/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = req.params.projectId;
+  const { files } = req.body;
+
+  if (!Array.isArray(files) || files.length === 0) {
+    return res.json({ nodes: [], entryPoints: [] });
+  }
+
+  const graph = dependencyGraphService.buildGraph(projectId, files);
+
+  const nodes = Array.from(graph.nodes.values()).map(n => ({
+    path: n.path,
+    imports: n.imports,
+    exports: n.exports,
+    importedBy: n.importedBy,
+    depth: n.depth,
+  }));
+
+  res.json({ nodes, entryPoints: graph.entryPoints });
+}));
+
+router.post("/dependency-context/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = req.params.projectId;
+  const { targetFile, files, userMessage, maxTokens } = req.body;
+
+  if (!Array.isArray(files) || !targetFile) {
+    return res.json({ primaryFile: targetFile, contextFiles: [], totalTokenEstimate: 0 });
+  }
+
+  const selection = dependencyGraphService.getContextForRefinement(
+    projectId, targetFile, files, maxTokens || 4000
+  );
+
+  res.json(selection);
 }));
 
 export default router;

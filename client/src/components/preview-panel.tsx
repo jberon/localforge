@@ -20,6 +20,8 @@ import type { GeneratedFile, DataModel, ValidationResult, LLMSettings } from "@s
 import type { editor } from "monaco-editor";
 import { useBundler } from "@/hooks/use-bundler";
 import { useAutoHeal } from "@/hooks/use-auto-heal";
+import { usePreviewTesting } from "@/hooks/use-preview-testing";
+import { useEnvDetection } from "@/hooks/use-env-detection";
 import { VisualEditorOverlay } from "./visual-editor-overlay";
 
 export function getFileLanguage(path: string): string {
@@ -80,6 +82,10 @@ interface PreviewToolbarProps {
   setAutoHealEnabled: (v: boolean) => void;
   isHealing: boolean;
   healCount: number;
+  onRunTests?: () => void;
+  isTestRunning?: boolean;
+  testProgress?: { current: number; total: number; scenarioName: string };
+  lastTestResult?: { totalPassed: number; totalFailed: number } | null;
 }
 
 function PreviewToolbar({
@@ -118,6 +124,10 @@ function PreviewToolbar({
   setAutoHealEnabled,
   isHealing,
   healCount,
+  onRunTests,
+  isTestRunning,
+  testProgress,
+  lastTestResult,
 }: PreviewToolbarProps) {
   return (
     <div className="flex items-center justify-between gap-2 px-4 py-3 border-b min-w-0">
@@ -240,13 +250,19 @@ function PreviewToolbar({
             </Button>
             <Button
               size="icon"
-              variant="ghost"
-              onClick={() => setShowTestPreview(true)}
-              className="h-8 w-8"
-              title="Visual Test Runner"
+              variant={isTestRunning ? "default" : "ghost"}
+              onClick={onRunTests || (() => setShowTestPreview(true))}
+              disabled={isTestRunning || !code}
+              title={isTestRunning
+                ? `Testing: ${testProgress?.scenarioName || ""} (${testProgress?.current}/${testProgress?.total})`
+                : lastTestResult
+                  ? `Last run: ${lastTestResult.totalPassed} passed, ${lastTestResult.totalFailed} failed`
+                  : "Run Self-Tests"
+              }
               data-testid="button-test-preview"
+              className={isTestRunning ? "animate-pulse" : ""}
             >
-              <Play className="h-4 w-4" />
+              {isTestRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             </Button>
             {hasFullStackProject && projectId && (
               <>
@@ -1044,7 +1060,22 @@ export function PreviewPanel({
   });
 
   useEffect(() => { reportAutoHealErrorRef.current = reportAutoHealError; }, [reportAutoHealError]);
-  
+
+  const {
+    isRunning: isTestRunning,
+    progress: testProgress,
+    lastResult: lastTestResult,
+    generateAndRun: generateAndRunTests,
+  } = usePreviewTesting({ projectId });
+
+  const handleRunTests = useCallback(() => {
+    if (previewIframeRef.current && localCode) {
+      generateAndRunTests(localCode, previewIframeRef.current);
+    }
+  }, [localCode, generateAndRunTests]);
+
+  const { result: envResult, detect: detectEnv, dismiss: dismissEnv, hasEnvVars } = useEnvDetection(projectId);
+
   useEffect(() => {
     setShowFeedback(true);
   }, [lastPrompt, projectId]);
@@ -1052,8 +1083,11 @@ export function PreviewPanel({
   useEffect(() => {
     if (!hasUnsavedChanges) {
       setLocalCode(code);
+      if (code && code.length > 100) {
+        detectEnv(code);
+      }
     }
-  }, [code, hasUnsavedChanges]);
+  }, [code, hasUnsavedChanges, detectEnv]);
 
   const saveCode = useCallback(async (newCode: string) => {
     if (!projectId || isGenerating) return;
@@ -1266,6 +1300,30 @@ export function PreviewPanel({
         var stack = reason instanceof Error ? reason.stack : '';
         sendToParent('error', ['Unhandled Promise Rejection: ' + msg + (stack ? '\\nStack: ' + stack : '')]);
       });
+      window.__testErrors = [];
+      var origError = console.error;
+      var trackErrors = function() {
+        var args = Array.prototype.slice.call(arguments);
+        window.__testErrors.push(args.map(String).join(' '));
+        origError.apply(console, args);
+      };
+      console.error = trackErrors;
+      window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'run-test' && e.data.script) {
+          try {
+            var fn = new Function(e.data.script);
+            fn();
+          } catch(err) {
+            window.parent.postMessage({
+              type: 'test-result',
+              scenarioId: e.data.scenarioId || '',
+              passed: false,
+              errors: ['Test execution error: ' + (err.message || err)],
+              details: []
+            }, '*');
+          }
+        }
+      });
     })();
     `;
     
@@ -1375,6 +1433,10 @@ ${localCode}
         setAutoHealEnabled={setAutoHealEnabled}
         isHealing={isHealing}
         healCount={healCount}
+        onRunTests={handleRunTests}
+        isTestRunning={isTestRunning}
+        testProgress={testProgress}
+        lastTestResult={lastTestResult}
       />
 
       <div className="flex-1 overflow-hidden">
@@ -1408,6 +1470,49 @@ ${localCode}
                     {healQualityScore !== null && (
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">{healQualityScore}%</Badge>
                     )}
+                  </div>
+                )}
+                {hasEnvVars && envResult && (
+                  <div className="absolute top-2 left-2 right-2 z-30 bg-amber-50 dark:bg-amber-950/80 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2 shadow-sm" data-testid="banner-env-vars">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span className="text-xs font-medium text-amber-800 dark:text-amber-200 truncate">
+                          {envResult.variables.length} environment variable{envResult.variables.length > 1 ? "s" : ""} needed
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5"
+                          onClick={() => {
+                            toast({
+                              title: "Environment Variables Required",
+                              description: envResult.variables.map(v => `${v.name}: ${v.description}`).join("\n"),
+                            });
+                          }}
+                          data-testid="button-env-details"
+                        >
+                          <Search className="h-3 w-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-5 w-5" onClick={dismissEnv} data-testid="button-dismiss-env">
+                          <Square className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {envResult.variables.slice(0, 4).map(v => (
+                        <Badge key={v.name} variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 dark:bg-amber-900/50 border-amber-300 dark:border-amber-700">
+                          {v.name}
+                        </Badge>
+                      ))}
+                      {envResult.variables.length > 4 && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          +{envResult.variables.length - 4} more
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 )}
                 <PreviewIframe

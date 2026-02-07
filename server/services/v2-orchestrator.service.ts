@@ -16,6 +16,7 @@ import { codeStyleEnforcerService } from "./code-style-enforcer.service";
 import { errorLearningService } from "./error-learning.service";
 import { contextBudgetService } from "./context-budget.service";
 import { closedLoopAutoFixService, type FixResult, type FixConfig, type FixStatistics } from "./closed-loop-autofix.service";
+import { codeScaffoldLibraryService } from "./code-scaffold-library.service";
 
 export interface V2Config {
   speculativeDecoding: boolean;
@@ -34,6 +35,7 @@ export interface V2Config {
   errorLearning: boolean;
   m4OptimizedContext: boolean;
   closedLoopAutoFix: boolean;
+  scaffoldLibrary: boolean;
 }
 
 export interface V2GenerationContext {
@@ -96,6 +98,7 @@ class V2OrchestratorService extends BaseService {
       errorLearning: true,
       m4OptimizedContext: true,
       closedLoopAutoFix: true,
+      scaffoldLibrary: true,
     };
   }
 
@@ -321,6 +324,14 @@ class V2OrchestratorService extends BaseService {
         const preventionPrompt = errorLearningService.getPreventionPrompt(modelFamily);
         if (preventionPrompt && preventionPrompt.length > 20) {
           optimizedContext = optimizedContext + "\n" + preventionPrompt;
+        }
+      }
+
+      if (this.config.scaffoldLibrary && (context.taskType === "build" || context.taskType === "refine")) {
+        const scaffoldInjection = codeScaffoldLibraryService.buildScaffoldPromptInjection(context.prompt);
+        if (scaffoldInjection) {
+          optimizedContext = optimizedContext + scaffoldInjection;
+          this.log("Scaffold injection applied", { promptLength: scaffoldInjection.length });
         }
       }
 

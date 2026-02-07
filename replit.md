@@ -35,8 +35,8 @@ Click-to-edit UI manipulation via iframe inspector using postMessage communicati
 ### Smart Model Auto-Selection
 A ModelRouterService intelligently routes between local LLMs and cloud providers (OpenAI, Groq, Together AI). It features 3-tier routing (fast/balanced/powerful), outcome tracking, cloud fallback, and configurable provider priorities.
 
-### Self-Testing Loop
-A SelfTestingService generates comprehensive test suites by analyzing code features, producing test scenarios with steps/assertions, and generating fix suggestions for failed tests.
+### Self-Testing Loop with Executable Tests
+A SelfTestingService generates comprehensive test suites by analyzing code features, producing test scenarios with steps/assertions, and generating fix suggestions for failed tests. Tests are executable via postMessage injection into the preview iframe, running DOM assertions (check_exists, check_text, click, check_visible, check_accessible) with real-time progress reporting. Test button in preview toolbar triggers the full cycle. API: `POST /api/runtime/test-suite/:projectId`, `POST /api/runtime/test-results/:suiteId`, `POST /api/runtime/test-fixes/:suiteId`.
 
 ### Image/Design Import
 An ImageImportService handles design-to-code conversion from uploaded images, generating analysis prompts for LLM vision processing, extracting design elements, and producing code generation prompts.
@@ -72,7 +72,22 @@ Provides 12+ app templates in Quick Start and Production categories with search/
 Offers 12 common integrations that enhance generation prompts with detailed implementation instructions.
 
 ### Iterative Refinement Engine
-Uses regex-based intent classification to build targeted surgical prompts for focused code changes, tracking refinement history with diff summaries.
+Uses regex-based intent classification to build targeted surgical prompts for focused code changes, tracking refinement history with diff summaries. Integrates DependencyGraphService for multi-file awareness during refinement, automatically including related files (imports, dependents, shared types) as context.
+
+### Code Scaffold Library (25+ Patterns)
+CodeScaffoldLibraryService provides production-ready code patterns organized by app category (ecommerce, dashboard, social, etc.). Scaffolds are auto-matched to prompts via category classification and tag matching, then injected into generation prompts. Includes React data tables, auth contexts, shopping carts, CRUD APIs, navigation bars, chat UIs, multi-step forms, pricing cards, and more.
+
+### Autonomous Self-Healing Loop
+Preview iframe errors are captured (console.error, unhandledrejection) and fed to RuntimeFeedbackService, which triggers LLM-powered auto-fix through code quality pipeline. Heal count resets on meaningful code changes (>200 chars) or new generations. SSE parsing uses double-newline buffering. Max 3 heal attempts per error cycle.
+
+### Dependency Graph Service
+DependencyGraphService analyzes import/export relationships between generated files. Calculates relevance scores for context file selection during refinement. Supports direct imports (0.9 relevance), reverse dependencies (0.7), transitive imports (0.4), and shared types/schema files (0.8). Token-budget-aware context selection. API: `POST /api/runtime/dependency-graph/:projectId`, `POST /api/runtime/dependency-context/:projectId`.
+
+### Environment Variable Detection
+EnvDetectionService scans generated code for API keys, database URLs, secrets, and service URLs. Detects 20+ common patterns (OpenAI, Stripe, Supabase, AWS, Twilio, etc.). Shows amber notification banner in preview with setup instructions and links. API: `POST /api/runtime/detect-env/:projectId`.
+
+### Prompt Decomposer (Difficulty Reducer)
+PromptDecomposerService analyzes prompt complexity and auto-decomposes complex requests (score >= 8) into sequential sub-tasks ordered by dependency. Categorizes features into layout, navigation, data, forms, logic, auth, api, and styling. Generates incremental build prompts that smaller local models can handle effectively. API: `POST /api/runtime/analyze-complexity`.
 
 ### Enhanced Deployment Packages
 Generates platform-specific deployment configurations for Vercel, Netlify, Docker, Railway, and static HTML bundles.

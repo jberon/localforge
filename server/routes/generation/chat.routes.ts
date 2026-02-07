@@ -22,6 +22,8 @@ import {
 import { codeQualityPipelineService } from "../../services/code-quality-pipeline.service";
 import { iterativeRefinementService } from "../../services/iterative-refinement.service";
 import { selfTestingService } from "../../services/self-testing.service";
+import { dependencyGraphService } from "../../services/dependency-graph.service";
+import { promptDecomposerService } from "../../services/prompt-decomposer.service";
 
 const refineRequestSchema = z.object({
   refinement: z.string().min(1),
@@ -124,6 +126,33 @@ export function registerChatRoutes(router: Router): void {
         console.error(`[webSearch] Classification error: ${classifyError.message}`);
       }
 
+      const complexityAnalysis = promptDecomposerService.analyzeComplexity(content);
+      let decomposedPrompt: string | null = null;
+      if (complexityAnalysis.score >= 8) {
+        res.write(`data: ${JSON.stringify({
+          type: "complexity_analysis",
+          score: complexityAnalysis.score,
+          featureCount: complexityAnalysis.featureCount,
+          categories: complexityAnalysis.categories,
+        })}\n\n`);
+
+        if (!project.generatedCode || project.generatedCode.length < 50) {
+          const decomposition = promptDecomposerService.decompose(content);
+          if (decomposition.shouldDecompose && decomposition.steps.length > 1) {
+            const sequentialPrompts = promptDecomposerService.buildSequentialPrompts(decomposition);
+            decomposedPrompt = sequentialPrompts[0];
+            res.write(`data: ${JSON.stringify({
+              type: "decomposition",
+              totalSteps: decomposition.steps.length,
+              currentStep: 1,
+              stepDescription: decomposition.steps[0]?.description || "Foundation",
+              remainingSteps: decomposition.steps.slice(1).map(s => s.description),
+            })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "status", message: `Complex prompt detected (${decomposition.steps.length} features). Building foundation first...` })}\n\n`);
+          }
+        }
+      }
+
       let systemMessage = webSearchUsed && webSearchContext
         ? `${SYSTEM_PROMPT}\n\n${webSearchContext}`
         : SYSTEM_PROMPT;
@@ -138,6 +167,28 @@ export function registerChatRoutes(router: Router): void {
             refinementClassification, content, existingCode
           );
           systemMessage = refinementPrompt;
+
+          const generatedFiles = (project as any).generatedFiles;
+          if (Array.isArray(generatedFiles) && generatedFiles.length > 1) {
+            const files = generatedFiles.map((f: any) => ({ path: f.path || f.filename, content: f.content || "" }));
+            const targetElements = refinementClassification.targetElements || [];
+            let targetFile = files.find((f: any) =>
+              targetElements.some((el: string) => f.path.toLowerCase().includes(el.toLowerCase()))
+            )?.path;
+            if (!targetFile) {
+              const mainFile = files.find((f: any) =>
+                f.path.includes("App.") || f.path.includes("index.") || f.path.includes("main.")
+              );
+              targetFile = mainFile?.path || files[0]?.path || "App.tsx";
+            }
+            const depContext = dependencyGraphService.buildRefinementContext(
+              projectId, targetFile, files, content, 3000
+            );
+            if (depContext) {
+              systemMessage = systemMessage + "\n" + depContext;
+              res.write(`data: ${JSON.stringify({ type: "status", message: `Including related files for context (target: ${targetFile})...` })}\n\n`);
+            }
+          }
           
           res.write(`data: ${JSON.stringify({ type: "status", message: `Applying ${refinementClassification.type} change (${Math.round(refinementClassification.confidence * 100)}% confidence)...` })}\n\n`);
         }
@@ -152,6 +203,11 @@ export function registerChatRoutes(router: Router): void {
             ? [
                 { role: "system", content: systemMessage },
                 { role: "user", content: content },
+              ]
+            : decomposedPrompt
+            ? [
+                { role: "system", content: systemMessage },
+                { role: "user", content: decomposedPrompt },
               ]
             : [
                 { role: "system", content: systemMessage },
@@ -392,11 +448,28 @@ export function registerChatRoutes(router: Router): void {
       });
 
       try {
+        let refinementUserContent = `EXISTING CODE:\n\`\`\`jsx\n${project.generatedCode}\n\`\`\`\n\nMODIFICATION REQUEST: ${refinement}`;
+
+        const generatedFiles = (project as any).generatedFiles;
+        if (Array.isArray(generatedFiles) && generatedFiles.length > 1) {
+          const files = generatedFiles.map((f: any) => ({ path: f.path || f.filename, content: f.content || "" }));
+          const mainFile = files.find((f: any) =>
+            f.path.includes("App.") || f.path.includes("index.") || f.path.includes("main.")
+          );
+          const targetFile = mainFile?.path || files[0]?.path || "App.tsx";
+          const depContext = dependencyGraphService.buildRefinementContext(
+            projectId, targetFile, files, refinement, 3000
+          );
+          if (depContext) {
+            refinementUserContent = refinementUserContent + "\n" + depContext;
+          }
+        }
+
         const stream = await openai.chat.completions.create({
           model: isCloud ? (builderConfig.model || "gpt-4o-mini") : (builderConfig.model || "local-model"),
           messages: [
             { role: "system", content: REFINEMENT_SYSTEM },
-            { role: "user", content: `EXISTING CODE:\n\`\`\`jsx\n${project.generatedCode}\n\`\`\`\n\nMODIFICATION REQUEST: ${refinement}` },
+            { role: "user", content: refinementUserContent },
           ],
           temperature: builderConfig.temperature,
           max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
