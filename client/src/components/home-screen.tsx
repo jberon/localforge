@@ -21,15 +21,6 @@ import {
   MessageSquare,
   Trash2,
   ExternalLink,
-  Cpu,
-  Code,
-  Layers,
-  Wand2,
-  Shield,
-  ArrowLeft,
-  CheckCircle2,
-  Server,
-  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +47,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DocumentationPage } from "@/components/documentation-page";
 import type { Project } from "@shared/schema";
 
 type ProjectListItem = Pick<Project, "id" | "name" | "updatedAt"> & { messageCount?: number } & Record<string, any>;
@@ -334,192 +326,7 @@ export function HomeScreen({
               )}
             </div>
           ) : activeNav === "Documentation" ? (
-            <div className="p-6 max-w-[800px] mx-auto">
-              <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setActiveNav("Home")}
-                    data-testid="button-docs-back"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </Button>
-                  <h1 className="text-2xl font-semibold text-foreground" data-testid="text-docs-title">
-                    Documentation
-                  </h1>
-                </div>
-                <div>
-                  <ThemeToggle />
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <Card className="overflow-visible">
-                  <div className="p-5 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 text-primary" />
-                      <h2 className="text-lg font-semibold text-foreground" data-testid="text-docs-welcome">Welcome to LocalForge</h2>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Build apps with AI running on your Mac. No cloud required - your data stays local.
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex items-start gap-3">
-                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                        <span className="text-sm text-muted-foreground">Uses your local LLM via LM Studio</span>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                        <span className="text-sm text-muted-foreground">Generates complete React applications</span>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                        <span className="text-sm text-muted-foreground">Preview and download instantly</span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="overflow-visible">
-                  <div className="p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-5 w-5 text-foreground" />
-                      <h2 className="text-lg font-semibold text-foreground" data-testid="text-docs-getting-started">Getting Started</h2>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      LocalForge generates full-stack web applications from natural language descriptions. Simply describe what you want to build and LocalForge will generate the code for you.
-                    </p>
-                    <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
-                      <li>Download and install <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">LM Studio</a> (free for Mac, Windows, Linux)</li>
-                      <li>Load a coding model (recommended: Qwen 2.5 Coder 14B or Qwen3 Coder 30B)</li>
-                      <li>Start the local server in LM Studio's Developer tab</li>
-                      <li>Open Settings in LocalForge and enter your server URL (usually http://localhost:1234/v1)</li>
-                      <li>Describe your app idea and click Start</li>
-                    </ol>
-                  </div>
-                </Card>
-
-                <Card className="overflow-visible">
-                  <div className="p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Layers className="h-5 w-5 text-foreground" />
-                      <h2 className="text-lg font-semibold text-foreground" data-testid="text-docs-plan-build">Plan & Build Modes</h2>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      LocalForge supports two modes for generating apps:
-                    </p>
-                    <div className="space-y-2">
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Plan Mode</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          The AI first creates a structured task list for your review. You can approve, modify, or reject the plan before any code is generated.
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Build Mode</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          The AI jumps straight into writing code. Choose Fast Mode for quick edits (10-60s) or Full Build for comprehensive generation (5-15min).
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="overflow-visible">
-                  <div className="p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Cpu className="h-5 w-5 text-foreground" />
-                      <h2 className="text-lg font-semibold text-foreground" data-testid="text-docs-dual-model">Dual Model (AI Dream Team)</h2>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Configure two separate LLMs for optimal results: a reasoning model for planning and architecture, and a coding model for implementation.
-                    </p>
-                    <div className="space-y-2">
-                      <div className="p-3 rounded-md bg-violet-500/5 border border-violet-500/20">
-                        <p className="text-sm font-medium text-foreground">Planner (Reasoning)</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Recommended: Ministral 3 14B Reasoning. Handles task decomposition, architecture decisions, and project planning.
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-md bg-blue-500/5 border border-blue-500/20">
-                        <p className="text-sm font-medium text-foreground">Builder (Coding)</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Recommended: Qwen3 Coder 30B or Qwen2.5 Coder 14B. Generates production-ready code with TypeScript, React, and testing.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="overflow-visible">
-                  <div className="p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Shield className="h-5 w-5 text-foreground" />
-                      <h2 className="text-lg font-semibold text-foreground" data-testid="text-docs-auto-fix">Closed-Loop Auto-Fix</h2>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      LocalForge includes a three-stage error prevention and auto-fix system:
-                    </p>
-                    <div className="space-y-2">
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Stage 1: Prevention</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Injects error-prevention prompts based on learned patterns before code generation begins.
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Stage 2: Live Validation</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Validates generated code in real-time with syntax checking and style enforcement.
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Stage 3: Auto-Fix</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Automatically retries with targeted fix prompts when errors are detected, learning from each attempt.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="overflow-visible">
-                  <div className="p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Wand2 className="h-5 w-5 text-foreground" />
-                      <h2 className="text-lg font-semibold text-foreground" data-testid="text-docs-features">Key Features</h2>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Design Mode</p>
-                        <p className="text-xs text-muted-foreground mt-1">Generate wireframes and mockups before code</p>
-                      </div>
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Version Control</p>
-                        <p className="text-xs text-muted-foreground mt-1">Auto-save checkpoints with rollback support</p>
-                      </div>
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Live Preview</p>
-                        <p className="text-xs text-muted-foreground mt-1">In-browser bundling with esbuild-wasm</p>
-                      </div>
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Export & Deploy</p>
-                        <p className="text-xs text-muted-foreground mt-1">Download ZIP or deploy to Vercel, Netlify, Railway</p>
-                      </div>
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Autonomy Levels</p>
-                        <p className="text-xs text-muted-foreground mt-1">Control AI intervention from Low to Max</p>
-                      </div>
-                      <div className="p-3 rounded-md bg-muted/30">
-                        <p className="text-sm font-medium text-foreground">Extended Thinking</p>
-                        <p className="text-xs text-muted-foreground mt-1">Deep reasoning for complex tasks</p>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-            </div>
+            <DocumentationPage onBack={() => setActiveNav("Home")} />
           ) : (
             <div className="flex flex-col items-center pt-12 pb-16 px-4 min-h-full relative">
               <div className="absolute top-3 right-3">
