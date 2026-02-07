@@ -29,6 +29,24 @@ import { initializerService } from "../../services/initializer.service";
 import { sequentialBuildService } from "../../services/sequential-build.service";
 import { twoPassContextService } from "../../services/two-pass-context.service";
 import { hooksService } from "../../services/hooks.service";
+import { closedLoopAutoFixService } from "../../services/closed-loop-autofix.service";
+import { modelRouterService } from "../../services/model-router.service";
+
+function parseMultiFileOutput(output: string): { path: string; content: string }[] {
+  const files: { path: string; content: string }[] = [];
+  const fileRegex = /\/\/\s*FILE:\s*(.+?)[\n\r]([\s\S]*?)\/\/\s*END FILE/g;
+  let match;
+  while ((match = fileRegex.exec(output)) !== null) {
+    const path = match[1].trim();
+    let content = match[2].trim();
+    content = content
+      .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+      .replace(/```$/gm, "")
+      .trim();
+    files.push({ path, content });
+  }
+  return files;
+}
 
 const refineRequestSchema = z.object({
   refinement: z.string().min(1),
@@ -176,6 +194,8 @@ export function registerChatRoutes(router: Router): void {
           }
         }
       }
+
+      const generationStartTime = Date.now();
 
       let systemMessage = webSearchUsed && webSearchContext
         ? `${SYSTEM_PROMPT}\n\n${webSearchContext}`
@@ -351,21 +371,78 @@ export function registerChatRoutes(router: Router): void {
               },
             });
 
+            modelRouterService.recordOutcome(projectId, builderConfig.model || "unknown", true, Date.now() - generationStartTime);
+
             try {
               const detectedFeatures = projectStateService.detectFeaturesFromCode(cleanedCode);
               projectStateService.recordGeneration(projectId, content, cleanedCode, detectedFeatures, true);
-
               initializerService.markFeaturesByCode(projectId, cleanedCode);
 
               if (buildPipelineId) {
-                const nextStep = sequentialBuildService.getNextStep(buildPipelineId);
-                if (nextStep) {
-                  sequentialBuildService.completeStep(buildPipelineId, nextStep.step.id, {
+                const firstStep = sequentialBuildService.getNextStep(buildPipelineId);
+                if (firstStep) {
+                  sequentialBuildService.completeStep(buildPipelineId, firstStep.step.id, {
                     code: cleanedCode,
                     qualityScore: qualityReport.overallScore,
                     healthPassed: true,
                   });
                 }
+
+                const runRemainingSteps = async () => {
+                  try {
+                    await sequentialBuildService.runAutonomousPipeline(
+                      buildPipelineId!,
+                      async (stepPrompt, contextCode, stepNumber, totalSteps) => {
+                        if (isClientConnected) {
+                          res.write(`data: ${JSON.stringify({ type: "pipeline_step_start", stepNumber, totalSteps, description: stepPrompt.split('\n')[0] })}\n\n`);
+                        }
+
+                        const stepStream = await openai.chat.completions.create({
+                          model: isCloud ? (builderConfig.model || "gpt-4o-mini") : (builderConfig.model || "local-model"),
+                          messages: [
+                            { role: "system", content: SYSTEM_PROMPT },
+                            ...(contextCode ? [{ role: "user" as const, content: `EXISTING CODE:\n\`\`\`\n${contextCode}\n\`\`\`\n\n${stepPrompt}` }] : [{ role: "user" as const, content: stepPrompt }]),
+                          ],
+                          temperature: builderConfig.temperature,
+                          max_tokens: LLM_DEFAULTS.maxTokens.quickApp,
+                          stream: false,
+                        });
+
+                        const stepContent = stepStream.choices[0]?.message?.content || "";
+                        let stepCode = stepContent
+                          .replace(/^```(?:jsx?|javascript|typescript|tsx)?\n?/gm, "")
+                          .replace(/```$/gm, "")
+                          .trim();
+
+                        const { cleanedCode: stepCleaned } = extractLLMLimitations(stepCode);
+                        const stepQuality = await codeQualityPipelineService.analyzeAndFix(stepCleaned || stepCode);
+
+                        return {
+                          code: stepQuality.fixedCode || stepCleaned || stepCode,
+                          qualityScore: stepQuality.overallScore,
+                        };
+                      },
+                      (stepResult, progress) => {
+                        if (isClientConnected) {
+                          res.write(`data: ${JSON.stringify({ type: "pipeline_step", ...stepResult, progress: { accumulatedCode: progress?.accumulatedCode, stepsCompleted: progress?.stepsCompleted, status: progress?.status } })}\n\n`);
+                        }
+                        storage.updateProject(projectId, { generatedCode: progress?.accumulatedCode || stepResult.code });
+                      }
+                    );
+
+                    if (isClientConnected) {
+                      const finalProgress = sequentialBuildService.getPipelineProgress(buildPipelineId!);
+                      res.write(`data: ${JSON.stringify({ type: "pipeline_complete", pipelineId: buildPipelineId, ...finalProgress })}\n\n`);
+                    }
+                  } catch (pipelineError: any) {
+                    console.error(`[pipeline] Autonomous build failed: ${pipelineError.message}`);
+                    if (isClientConnected) {
+                      res.write(`data: ${JSON.stringify({ type: "pipeline_error", error: pipelineError.message })}\n\n`);
+                    }
+                  }
+                };
+
+                runRemainingSteps();
               }
             } catch (stateError: any) {
               console.error(`[projectState] State tracking failed: ${stateError.message}`);
@@ -436,6 +513,7 @@ export function registerChatRoutes(router: Router): void {
         res.end();
       } catch (llmError: any) {
         console.error("LLM Error:", llmError);
+        modelRouterService.recordOutcome(projectId, builderConfig.model || "unknown", false, Date.now() - generationStartTime);
         
         const errorEndTime = Date.now();
         
@@ -491,6 +569,8 @@ export function registerChatRoutes(router: Router): void {
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders();
 
+      const builderConfig = getModelForPhase(settings, "builder");
+
       try {
         const healthCheck = selfTestingService.generateHealthCheck(projectId, project.generatedCode);
         if (healthCheck.isBroken) {
@@ -499,16 +579,48 @@ export function registerChatRoutes(router: Router): void {
             type: "health_warning",
             isBroken: true,
             issues: healthCheck.issues,
-            message: "Current code has issues that should be fixed before refinement",
+            message: "Current code has issues - attempting auto-heal before refinement...",
           })}\n\n`);
+
+          const fixResult = closedLoopAutoFixService.validateAndFix(
+            project.generatedCode,
+            "App.tsx",
+            builderConfig.model
+          );
+
+          if (fixResult.wasFixed && fixResult.errorsFixed > 0) {
+            await storage.updateProject(projectId, { generatedCode: fixResult.finalCode });
+            project.generatedCode = fixResult.finalCode;
+            projectStateService.updateHealth(projectId, { renders: true, errors: [] });
+            res.write(`data: ${JSON.stringify({
+              type: "self_heal_result",
+              fixed: true,
+              errorsFixed: fixResult.errorsFixed,
+              message: `Auto-healed ${fixResult.errorsFixed} issue(s) before refinement`,
+            })}\n\n`);
+          } else {
+            res.write(`data: ${JSON.stringify({
+              type: "self_heal_result",
+              fixed: false,
+              message: "Could not auto-heal all issues. Proceeding with refinement anyway.",
+            })}\n\n`);
+          }
+
+          try {
+            await hooksService.fireHooks(projectId, "on-error", {
+              error: healthCheck.issues.join(", "),
+              phase: "pre-refinement-health-check",
+              autoHealed: fixResult.wasFixed,
+            });
+          } catch (hookErr: any) {
+            console.error(`[hooks] Self-heal hooks failed: ${hookErr.message}`);
+          }
         } else {
           projectStateService.updateHealth(projectId, { renders: true, errors: [] });
         }
       } catch (healthError: any) {
         console.error(`[healthCheck] Pre-refinement check failed: ${healthError.message}`);
       }
-
-      const builderConfig = getModelForPhase(settings, "builder");
 
       const { client: openai, isCloud } = getActiveLLMClient({
         endpoint: settings.endpoint || "http://localhost:1234/v1",
@@ -554,6 +666,18 @@ export function registerChatRoutes(router: Router): void {
           }
         }
 
+        if (Array.isArray(generatedFiles) && generatedFiles.length > 1) {
+          refinementUserContent += `\n\n## MULTI-FILE OUTPUT INSTRUCTIONS
+If your changes affect multiple files, output each file with this format:
+\`\`\`
+// FILE: path/to/file.tsx
+[complete file content]
+// END FILE
+\`\`\`
+
+If changes only affect the main file, just return the complete updated code normally.`;
+        }
+
         const stream = await openai.chat.completions.create({
           model: isCloud ? (builderConfig.model || "gpt-4o-mini") : (builderConfig.model || "local-model"),
           messages: [
@@ -585,6 +709,19 @@ export function registerChatRoutes(router: Router): void {
           .trim();
 
         let { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
+
+        let multiFileChanges: { path: string; content: string }[] | null = null;
+        if (codeFromMarkdown.includes("// FILE:") && codeFromMarkdown.includes("// END FILE")) {
+          multiFileChanges = parseMultiFileOutput(codeFromMarkdown);
+          if (multiFileChanges && multiFileChanges.length > 0) {
+            const mainFile = multiFileChanges.find(f => 
+              f.path.includes("App.") || f.path.includes("index.") || f.path.includes("main.")
+            );
+            if (mainFile) {
+              cleanedCode = mainFile.content;
+            }
+          }
+        }
 
         await storage.addMessage(projectId, {
           role: "user",
@@ -631,6 +768,10 @@ export function registerChatRoutes(router: Router): void {
               responseMessage += "\n\n**Warning:** " + finalValidation.suggestions.join(" ");
             }
 
+            if (multiFileChanges && multiFileChanges.length > 1) {
+              responseMessage += `\n\nUpdated ${multiFileChanges.length} files: ${multiFileChanges.map(f => f.path).join(", ")}`;
+            }
+
             await storage.addMessage(projectId, {
               role: "assistant",
               content: responseMessage,
@@ -639,6 +780,23 @@ export function registerChatRoutes(router: Router): void {
             await storage.updateProject(projectId, {
               generatedCode: cleanedCode,
             });
+
+            if (multiFileChanges && multiFileChanges.length > 1) {
+              const updatedFiles = multiFileChanges.map(f => ({
+                path: f.path,
+                content: f.content,
+                filename: f.path.split("/").pop() || f.path,
+              }));
+              await storage.updateProject(projectId, {
+                generatedCode: cleanedCode,
+                generatedFiles: updatedFiles,
+              } as any);
+              res.write(`data: ${JSON.stringify({
+                type: "multi_file_update",
+                filesUpdated: multiFileChanges.length,
+                files: multiFileChanges.map(f => f.path),
+              })}\n\n`);
+            }
 
             try {
               projectStateService.recordRefinement(projectId, refinement, cleanedCode.split("\n").length, [], true);
@@ -659,6 +817,30 @@ export function registerChatRoutes(router: Router): void {
               role: "assistant",
               content: `I couldn't safely update the app - the generated code had issues that couldn't be fixed automatically. Your original code is preserved.\n\n**Issues found:** ${validation.errors.join(", ")}`,
             });
+
+            const selfHealResult = closedLoopAutoFixService.validateAndFix(
+              cleanedCode,
+              "App.tsx",
+              builderConfig.model
+            );
+
+            if (selfHealResult.wasFixed && selfHealResult.errorsFixed > 0) {
+              cleanedCode = selfHealResult.finalCode;
+              const recheck = validateCodeSyntax(cleanedCode);
+              if (recheck.valid) {
+                await storage.updateProject(projectId, { generatedCode: cleanedCode });
+                await storage.addMessage(projectId, {
+                  role: "assistant",
+                  content: `I auto-healed ${selfHealResult.errorsFixed} issue(s) in the refined code. Check the preview!`,
+                });
+                res.write(`data: ${JSON.stringify({
+                  type: "self_heal_result",
+                  fixed: true,
+                  errorsFixed: selfHealResult.errorsFixed,
+                  phase: "post-refinement",
+                })}\n\n`);
+              }
+            }
 
             try {
               await hooksService.fireHooks(projectId, "on-error", {

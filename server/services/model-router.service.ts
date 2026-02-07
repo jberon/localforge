@@ -294,6 +294,20 @@ class ModelRouterService extends BaseService {
       confidence = 0.95;
     }
 
+    const perfStats = this.getModelPerformanceStats();
+    const currentModelStats = perfStats[this.getModelForTier(tier).model];
+    if (currentModelStats && currentModelStats.totalRequests >= 3 && currentModelStats.successRate < 50) {
+      if (tier === "fast") {
+        tier = "balanced";
+        reason += ` (upgraded from fast due to ${currentModelStats.successRate}% success rate)`;
+        confidence *= 0.85;
+      } else if (tier === "balanced") {
+        tier = "powerful";
+        reason += ` (upgraded from balanced due to ${currentModelStats.successRate}% success rate)`;
+        confidence *= 0.85;
+      }
+    }
+
     const selectedModel = this.getModelForTier(tier);
     const alternatives = this.getAlternativeModels(tier);
 
@@ -518,6 +532,44 @@ class ModelRouterService extends BaseService {
     for (const key of keysToDelete) {
       this.outcomeHistory.delete(key);
     }
+  }
+
+  getModelPerformanceStats(): Record<string, { model: string; tier: string; successRate: number; avgDurationMs: number; totalRequests: number; lastUsed: number }> {
+    const stats: Record<string, { model: string; tier: string; successRate: number; avgDurationMs: number; totalRequests: number; lastUsed: number }> = {};
+
+    for (const entry of this.outcomeHistory.values()) {
+      if (!stats[entry.model]) {
+        stats[entry.model] = {
+          model: entry.model,
+          tier: this.inferTier(entry.model),
+          successRate: 0,
+          avgDurationMs: 0,
+          totalRequests: 0,
+          lastUsed: 0,
+        };
+      }
+      const s = stats[entry.model];
+      s.totalRequests++;
+      if (entry.success) s.successRate++;
+      s.avgDurationMs = (s.avgDurationMs * (s.totalRequests - 1) + entry.durationMs) / s.totalRequests;
+      s.lastUsed = Math.max(s.lastUsed, entry.timestamp);
+    }
+
+    for (const key of Object.keys(stats)) {
+      const s = stats[key];
+      s.successRate = s.totalRequests > 0 ? Math.round((s.successRate / s.totalRequests) * 100) : 0;
+      s.avgDurationMs = Math.round(s.avgDurationMs);
+    }
+
+    return stats;
+  }
+
+  private inferTier(model: string): string {
+    const lower = model.toLowerCase();
+    if (lower.includes("3b") || lower.includes("7b") || lower.includes("mini") || lower.includes("flash")) return "fast";
+    if (lower.includes("14b") || lower.includes("8b")) return "balanced";
+    if (lower.includes("30b") || lower.includes("70b") || lower.includes("opus") || lower.includes("o3")) return "powerful";
+    return "balanced";
   }
 
   private pickBestModelByOutcome(candidates: string[]): string | null {

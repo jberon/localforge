@@ -260,6 +260,84 @@ class SequentialBuildService extends BaseService {
     return parts.join("\n");
   }
 
+  async runAutonomousPipeline(
+    pipelineId: string,
+    executor: (prompt: string, contextCode: string, stepNumber: number, totalSteps: number) => Promise<{ code: string; qualityScore: number }>,
+    onStepComplete?: (step: { stepNumber: number; description: string; qualityScore: number; status: string }, pipeline: BuildPipeline) => void
+  ): Promise<BuildPipeline | null> {
+    const pipeline = this.pipelines.get(pipelineId);
+    if (!pipeline) return null;
+
+    const totalSteps = pipeline.steps.length;
+
+    while (true) {
+      const nextStepInfo = this.getNextStep(pipelineId);
+      if (!nextStepInfo) break;
+
+      const { step, prompt, contextCode } = nextStepInfo;
+
+      try {
+        const result = await executor(prompt, contextCode, step.stepNumber, totalSteps);
+
+        const healthPassed = result.code.length > 50 && result.qualityScore > 20;
+
+        if (healthPassed) {
+          const updatedPipeline = this.completeStep(pipelineId, step.id, {
+            code: result.code,
+            qualityScore: result.qualityScore,
+            healthPassed: true,
+          });
+
+          if (onStepComplete && updatedPipeline) {
+            onStepComplete(
+              { stepNumber: step.stepNumber, description: step.description, qualityScore: result.qualityScore, status: "completed" },
+              updatedPipeline
+            );
+          }
+        } else {
+          const reason = result.code.length <= 50 ? "Code too short" : "Quality score too low";
+          this.failStep(pipelineId, step.id, `Quality gate failed: ${reason} (code length: ${result.code.length}, score: ${result.qualityScore})`);
+
+          if (onStepComplete) {
+            const failedPipeline = this.pipelines.get(pipelineId);
+            if (failedPipeline) {
+              onStepComplete(
+                { stepNumber: step.stepNumber, description: step.description, qualityScore: result.qualityScore, status: "failed" },
+                failedPipeline
+              );
+            }
+          }
+          break;
+        }
+      } catch (error: any) {
+        this.failStep(pipelineId, step.id, `Executor error: ${error.message}`);
+
+        if (onStepComplete) {
+          const failedPipeline = this.pipelines.get(pipelineId);
+          if (failedPipeline) {
+            onStepComplete(
+              { stepNumber: step.stepNumber, description: step.description, qualityScore: 0, status: "failed" },
+              failedPipeline
+            );
+          }
+        }
+        break;
+      }
+    }
+
+    return this.pipelines.get(pipelineId) || null;
+  }
+
+  getActivePipelines(): BuildPipeline[] {
+    const active: BuildPipeline[] = [];
+    for (const pipeline of this.pipelines.values()) {
+      if (pipeline.status === "running" || pipeline.status === "idle") {
+        active.push(pipeline);
+      }
+    }
+    return active;
+  }
+
   destroy(): void {
     this.pipelines.clear();
     this.log("SequentialBuildService destroyed");

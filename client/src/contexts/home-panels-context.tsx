@@ -10,6 +10,9 @@ interface HomePanelsState {
   showHomeSettings: boolean;
   showQuickUndo: boolean;
   showHooksConfig: boolean;
+  showFeatureManifest: boolean;
+  showBuildProgress: boolean;
+  showProjectDashboard: boolean;
 }
 
 interface HomePanelsContextValue extends HomePanelsState {
@@ -33,6 +36,9 @@ const initialState: HomePanelsState = {
   showHomeSettings: false,
   showQuickUndo: false,
   showHooksConfig: false,
+  showFeatureManifest: false,
+  showBuildProgress: false,
+  showProjectDashboard: false,
 };
 
 function homePanelsReducer(state: HomePanelsState, action: HomePanelsAction): HomePanelsState {

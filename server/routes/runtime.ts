@@ -13,6 +13,7 @@ import { initializerService } from "../services/initializer.service";
 import { sequentialBuildService } from "../services/sequential-build.service";
 import { twoPassContextService } from "../services/two-pass-context.service";
 import { hooksService } from "../services/hooks.service";
+import { modelRouterService } from "../services/model-router.service";
 import { logger } from "../lib/logger";
 import { asyncHandler } from "../lib/async-handler";
 
@@ -783,6 +784,33 @@ router.get("/hooks/:projectId/history", asyncHandler(async (req: Request, res: R
   const limit = parseInt(String(req.query.limit || "20"), 10);
   const history = hooksService.getExecutionHistory(projectId, limit);
   res.json({ history });
+}));
+
+router.get("/pipelines/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const projectId = String(req.params.projectId);
+  const pipeline = sequentialBuildService.getPipelineForProject(projectId);
+  if (!pipeline) {
+    return res.json({ active: false });
+  }
+  const progress = sequentialBuildService.getPipelineProgress(pipeline.id);
+  res.json({ active: true, ...progress });
+}));
+
+router.get("/model-stats", asyncHandler(async (_req, res) => {
+  const stats = modelRouterService.getModelPerformanceStats();
+  const routingStats = modelRouterService.getRoutingStats();
+  const config = modelRouterService.getConfig();
+  res.json({
+    performanceStats: stats,
+    routingStats,
+    config: {
+      enabled: config.enabled,
+      autoRouting: config.autoRouting,
+      fastModel: config.fastModel,
+      balancedModel: config.balancedModel,
+      powerfulModel: config.powerfulModel,
+    },
+  });
 }));
 
 export default router;

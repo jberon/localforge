@@ -39,6 +39,9 @@ const COMPLEXITY_SIGNALS: { pattern: RegExp; weight: number; category: string }[
   { pattern: /\b(test|testing|unit\s*test|e2e)\b/gi, weight: 2, category: "logic" },
   { pattern: /\b(email|sms|notification|push)\b/gi, weight: 2, category: "api" },
   { pattern: /\b(map|location|geolocation|gps)\b/gi, weight: 3, category: "api" },
+  { pattern: /\b(then|after\s+that|next|finally|lastly|first|second|third)\b/gi, weight: 1.5, category: "sequence" },
+  { pattern: /\b(separate|different|multiple|several|various|each)\b/gi, weight: 1, category: "multiplicity" },
+  { pattern: /\b(integrate|connect|sync|communicate|share\s+data)\b/gi, weight: 2, category: "integration" },
 ];
 
 const FEATURE_EXTRACTORS: { pattern: RegExp; category: DecomposedStep["category"]; label: string }[] = [
@@ -146,7 +149,7 @@ class PromptDecomposerService extends BaseService {
       estimatedTokenSavings,
     });
 
-    return {
+    const result: DecompositionResult = {
       shouldDecompose: true,
       complexityScore: analysis.score,
       originalPrompt: prompt,
@@ -154,6 +157,13 @@ class PromptDecomposerService extends BaseService {
       estimatedTokenSavings,
       reason: `Complexity score ${analysis.score} with ${steps.length} distinct features`,
     };
+
+    if (analysis.score >= 15) {
+      const optimized = this.optimizeForContextWindow(result, 8192);
+      return optimized;
+    }
+
+    return result;
   }
 
   buildSequentialPrompts(decomposition: DecompositionResult, existingCode?: string): string[] {
@@ -257,6 +267,115 @@ class PromptDecomposerService extends BaseService {
     const end = Math.min(prompt.length, prompt.indexOf(".", idx + matchText.length) + 1 || prompt.length);
 
     return prompt.slice(start, end).trim() || matchText;
+  }
+
+  estimateContextWindow(step: DecomposedStep): number {
+    const baseTokens = Math.ceil(step.prompt.length / 3.5);
+    const categoryMultiplier: Record<string, number> = {
+      layout: 1.2,
+      navigation: 1.3,
+      data: 1.5,
+      forms: 1.4,
+      logic: 1.6,
+      auth: 2.0,
+      api: 1.8,
+      styling: 1.0,
+    };
+    const complexityMultiplier = step.estimatedComplexity === "high" ? 2.5 : step.estimatedComplexity === "medium" ? 1.5 : 1.0;
+    const multiplier = (categoryMultiplier[step.category] || 1.3) * complexityMultiplier;
+    return Math.ceil(baseTokens * multiplier);
+  }
+
+  optimizeForContextWindow(decomposition: DecompositionResult, maxContextTokens: number = 8192): DecompositionResult {
+    if (!decomposition.shouldDecompose) return decomposition;
+
+    const optimizedSteps: DecomposedStep[] = [];
+    let mergeBuffer: DecomposedStep[] = [];
+    let mergeTokens = 0;
+
+    for (const step of decomposition.steps) {
+      const estimatedTokens = this.estimateContextWindow(step);
+
+      if (estimatedTokens > maxContextTokens * 0.7) {
+        if (mergeBuffer.length > 0) {
+          optimizedSteps.push(this.mergeSteps(mergeBuffer));
+          mergeBuffer = [];
+          mergeTokens = 0;
+        }
+        const subSteps = this.splitLargeStep(step, maxContextTokens);
+        optimizedSteps.push(...subSteps);
+      } else if (mergeTokens + estimatedTokens < maxContextTokens * 0.5 &&
+                 mergeBuffer.length > 0 &&
+                 step.estimatedComplexity === "low" &&
+                 mergeBuffer[mergeBuffer.length - 1].estimatedComplexity === "low") {
+        mergeBuffer.push(step);
+        mergeTokens += estimatedTokens;
+      } else {
+        if (mergeBuffer.length > 0) {
+          optimizedSteps.push(this.mergeSteps(mergeBuffer));
+          mergeBuffer = [];
+          mergeTokens = 0;
+        }
+        mergeBuffer.push(step);
+        mergeTokens = estimatedTokens;
+      }
+    }
+
+    if (mergeBuffer.length > 0) {
+      optimizedSteps.push(this.mergeSteps(mergeBuffer));
+    }
+
+    optimizedSteps.forEach((step, idx) => {
+      step.id = idx + 1;
+      step.dependsOn = idx > 0 ? [idx] : [];
+    });
+
+    this.log("Context window optimization", {
+      originalSteps: decomposition.steps.length,
+      optimizedSteps: optimizedSteps.length,
+      maxContextTokens,
+    });
+
+    return {
+      ...decomposition,
+      steps: optimizedSteps,
+      estimatedTokenSavings: decomposition.estimatedTokenSavings * 1.2,
+      reason: `${decomposition.reason} (optimized for ${maxContextTokens} token context window)`,
+    };
+  }
+
+  private mergeSteps(steps: DecomposedStep[]): DecomposedStep {
+    if (steps.length === 1) return steps[0];
+    return {
+      id: steps[0].id,
+      description: steps.map(s => s.description).join(" + "),
+      prompt: steps.map(s => s.prompt).join("\n\nAlso implement: "),
+      dependsOn: steps[0].dependsOn,
+      estimatedComplexity: steps.some(s => s.estimatedComplexity === "high") ? "high" :
+                            steps.some(s => s.estimatedComplexity === "medium") ? "medium" : "low",
+      category: steps[0].category,
+    };
+  }
+
+  private splitLargeStep(step: DecomposedStep, maxTokens: number): DecomposedStep[] {
+    const subSteps: DecomposedStep[] = [
+      {
+        ...step,
+        id: step.id,
+        description: `${step.description} - Structure & Layout`,
+        prompt: `Set up the basic structure and layout for: ${step.prompt}. Focus only on the HTML/JSX structure and component hierarchy. Don't implement business logic yet.`,
+        estimatedComplexity: "medium",
+      },
+      {
+        ...step,
+        id: step.id + 1,
+        description: `${step.description} - Logic & Integration`,
+        prompt: `Add logic, state management, and integration for: ${step.prompt}. The structure is already in place, now add the interactive behavior, API calls, and data flow.`,
+        dependsOn: [step.id],
+        estimatedComplexity: step.estimatedComplexity,
+      },
+    ];
+    return subSteps;
   }
 
   private estimateStepComplexity(category: DecomposedStep["category"]): "low" | "medium" | "high" {

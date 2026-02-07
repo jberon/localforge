@@ -43,7 +43,7 @@ import { usePlanBuild } from "@/hooks/use-plan-build";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { classifyRequest, shouldUsePlanner, getIntentDescription, type RequestIntent } from "@/lib/request-classifier";
-import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown, TestTube, ImageIcon, Router, Eye, Users } from "lucide-react";
+import { Wifi, WifiOff, BarChart3, Brain, Hammer, Zap, Globe, Settings, PanelRight, PanelRightClose, FolderTree, Database, FlaskConical, History, ExternalLink, Plus, Terminal, Search as SearchIcon, Copy, Loader2, ChevronDown, TestTube, ImageIcon, Router, Eye, Users, ListChecks, Layers, Activity } from "lucide-react";
 import { DatabasePanel } from "@/components/database-panel";
 import { FileExplorer } from "@/components/file-explorer";
 import { HomeScreen } from "@/components/home-screen";
@@ -57,6 +57,9 @@ import { SmartModelSettings } from "@/components/smart-model-settings";
 import { SelfTestingPanel } from "@/components/self-testing-panel";
 import { HooksConfigDialog } from "@/components/hooks-config-dialog";
 import { ImageImportDialog } from "@/components/image-import-dialog";
+import { FeatureManifestPanel } from "@/components/feature-manifest-panel";
+import { BuildProgressPanel } from "@/components/build-progress-panel";
+import { ProjectDashboardPanel } from "@/components/project-dashboard-panel";
 import type { Action, ActionType } from "@/components/action-group-row";
 import {
   DropdownMenu,
@@ -148,6 +151,7 @@ function HomeInner() {
     showQuickUndo, showFileExplorer, showDatabasePanel,
     showAIInsights, showSelfTesting, showSmartModel,
     showImageImport, showHomeSettings, showHooksConfig,
+    showFeatureManifest, showBuildProgress, showProjectDashboard,
     togglePanel, setPanel,
   } = useHomePanels();
   const [currentActions, setCurrentActions] = useState<Action[]>([]);
@@ -1607,6 +1611,21 @@ function HomeInner() {
           onOpenChange={(v) => setPanel('showHooksConfig', v)}
           projectId={activeProjectId}
         />
+        <FeatureManifestPanel
+          open={showFeatureManifest}
+          onOpenChange={(v) => setPanel('showFeatureManifest', v)}
+          projectId={activeProjectId}
+        />
+        <BuildProgressPanel
+          open={showBuildProgress}
+          onOpenChange={(v) => setPanel('showBuildProgress', v)}
+          projectId={activeProjectId}
+        />
+        <ProjectDashboardPanel
+          open={showProjectDashboard}
+          onOpenChange={(v) => setPanel('showProjectDashboard', v)}
+          projectId={activeProjectId}
+        />
       </>
     );
   }
@@ -2079,6 +2098,36 @@ function HomeInner() {
             className={showHooksConfig ? "toggle-elevate toggle-elevated" : ""}
           >
             <Zap className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={showFeatureManifest ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => togglePanel('showFeatureManifest')}
+            title="Feature Manifest"
+            data-testid="button-strip-features"
+            className={showFeatureManifest ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <ListChecks className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={showBuildProgress ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => togglePanel('showBuildProgress')}
+            title="Build Pipeline"
+            data-testid="button-strip-pipeline"
+            className={showBuildProgress ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <Layers className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={showProjectDashboard ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => togglePanel('showProjectDashboard')}
+            title="Project Dashboard"
+            data-testid="button-strip-dashboard"
+            className={showProjectDashboard ? "toggle-elevate toggle-elevated" : ""}
+          >
+            <Activity className="h-4 w-4" />
           </Button>
         </div>
         <div className="mt-auto flex flex-col items-center gap-1 py-2 border-t">

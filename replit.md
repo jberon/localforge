@@ -38,10 +38,10 @@ LocalForge features a chat-based interface with streaming responses, project man
 - **One-Click Integrations Panel:** Offers 12 common integrations that enhance generation prompts.
 - **Iterative Refinement Engine:** Uses regex-based intent classification for surgical prompts and integrates a DependencyGraphService for multi-file awareness.
 - **Code Scaffold Library:** Provides 25+ production-ready code patterns, auto-matched and injected into generation prompts.
-- **Autonomous Self-Healing Loop:** Captures preview iframe errors and triggers LLM-powered auto-fix through the code quality pipeline.
+- **Autonomous Self-Healing Loop:** Captures preview iframe errors and triggers LLM-powered auto-fix through the code quality pipeline. Pre-refinement and post-refinement health checks auto-trigger ClosedLoopAutoFixService to heal broken code before compounding bugs.
 - **Dependency Graph Service:** Analyzes import/export relationships for relevant context file selection during refinement.
 - **Environment Variable Detection:** Scans generated code for API keys and secrets, providing setup instructions.
-- **Prompt Decomposer:** Analyzes prompt complexity and decomposes complex requests into sequential sub-tasks for smaller local models.
+- **Prompt Decomposer:** Analyzes prompt complexity and decomposes complex requests into sequential sub-tasks for smaller local models. Includes context window optimization that merges small steps and splits oversized ones to fit within model limits.
 - **Enhanced Deployment Packages:** Generates platform-specific deployment configurations for Vercel, Netlify, Docker, Railway, and static HTML.
 - **Version Control & Publishing:** Built-in version control with checkpoints, history, rollback, and project download.
 - **Local LLM Optimization & Multi-Agent Architecture:** Optimized for local LLM performance with client connection caching, extended timeouts, and a multi-agent architecture for task decomposition, project memory, code execution, auto-fixing, and refactoring.
@@ -51,9 +51,12 @@ LocalForge features a chat-based interface with streaming responses, project man
 - **Project State Tracking:** Provides cross-session memory, tracking features, changes, health, and generation/refinement history per project.
 - **Health Check Before Refinement:** Validates code integrity before refinement to prevent compounding bugs.
 - **Feature Manifest:** Generates structured JSON feature lists with acceptance criteria from user prompts, tracking feature completion.
-- **Sequential Build Pipeline:** Decomposes complex prompts into step-by-step build pipelines with quality gates.
+- **Sequential Build Pipeline:** Decomposes complex prompts into step-by-step build pipelines with quality gates. Features autonomous pipeline execution that auto-runs all steps end-to-end with quality gates between each step.
 - **Two-Pass Context Reduction:** Reduces token usage for refinements by analyzing relevant parts of related files and generating focused summaries.
-- **Lifecycle Hooks:** Provides user-configurable lifecycle automation with events and actions.
+- **Multi-file Refinement:** Parses LLM output for per-file changes using `// FILE:` / `// END FILE` markers, enabling simultaneous updates to all affected files during refinement.
+- **Lifecycle Hooks:** Provides user-configurable lifecycle automation with events and actions. Includes built-in health-check and auto-fix action types.
+- **Performance-Based Model Routing:** ModelRouterService learns from outcome history (success rates, durations) to auto-adjust model selection. Upgrades tier when success rate drops below 50%.
+- **Frontend Panels:** Feature Manifest Progress panel, Build Pipeline Progress tracker, and Project State Dashboard for real-time monitoring of build state, health history, and generation stats.
 
 ## External Dependencies
 - **LM Studio**: Local LLM inference.

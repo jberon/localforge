@@ -9,7 +9,7 @@ type HookEvent =
   | "pre-generation";
 
 interface HookAction {
-  type: "validate" | "check-todos" | "regenerate-tests" | "custom-check" | "log";
+  type: "validate" | "check-todos" | "regenerate-tests" | "custom-check" | "log" | "health-check" | "auto-fix";
   description: string;
   config?: Record<string, unknown>;
 }
@@ -124,7 +124,7 @@ class HooksService extends BaseService {
     for (const hook of activeHooks) {
       const start = Date.now();
       try {
-        const result = await this.executeHook(hook, context);
+        const result = await this.executeHook(projectId, hook, context);
         const execResult: HookExecutionResult = {
           hookId: hook.id,
           event,
@@ -163,6 +163,7 @@ class HooksService extends BaseService {
   }
 
   private async executeHook(
+    projectId: string,
     hook: Hook,
     context: { code?: string; prompt?: string; errors?: string[]; testResults?: { passed: number; failed: number } }
   ): Promise<{ success: boolean; message: string; details?: Record<string, unknown> }> {
@@ -177,6 +178,36 @@ class HooksService extends BaseService {
         return this.runCustomCheckHook(hook.action.config || {}, context.code || "");
       case "log":
         return { success: true, message: `Hook event logged: ${hook.event}` };
+      case "health-check": {
+        const { selfTestingService } = await import("./self-testing.service");
+        const code = context?.code || "";
+        if (code.length > 50) {
+          const healthResult = selfTestingService.generateHealthCheck(projectId, code);
+          return {
+            success: !healthResult.isBroken,
+            message: healthResult.isBroken
+              ? `Health check failed: ${healthResult.issues.join(", ")}`
+              : "Health check passed",
+            details: { issues: healthResult.issues, isBroken: healthResult.isBroken },
+          };
+        }
+        return { success: true, message: "No code to health check" };
+      }
+      case "auto-fix": {
+        const { closedLoopAutoFixService } = await import("./closed-loop-autofix.service");
+        const code = context?.code || "";
+        if (code.length > 50) {
+          const fixResult = closedLoopAutoFixService.validateAndFix(code);
+          return {
+            success: fixResult.wasFixed || fixResult.errorsFound === 0,
+            message: fixResult.wasFixed
+              ? `Auto-fixed ${fixResult.errorsFixed} of ${fixResult.errorsFound} issues`
+              : fixResult.errorsFound === 0 ? "No issues found" : "Could not auto-fix issues",
+            details: { errorsFound: fixResult.errorsFound, errorsFixed: fixResult.errorsFixed },
+          };
+        }
+        return { success: true, message: "No code to auto-fix" };
+      }
       default:
         return { success: false, message: `Unknown action type: ${hook.action.type}` };
     }
@@ -309,6 +340,13 @@ class HooksService extends BaseService {
         id: "default_pre_deploy_todos",
         event: "pre-deploy",
         action: { type: "check-todos", description: "Ensure no TODOs remain before deployment" },
+        enabled: true,
+        createdAt: Date.now(),
+      },
+      {
+        id: "default_health_check",
+        event: "post-generation" as HookEvent,
+        action: { type: "health-check" as const, description: "Run health check after generation" },
         enabled: true,
         createdAt: Date.now(),
       },
