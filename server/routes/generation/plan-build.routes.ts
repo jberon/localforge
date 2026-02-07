@@ -14,6 +14,7 @@ import {
   getModelForPhase,
   extractLLMLimitations,
 } from "./index";
+import { codeQualityPipelineService } from "../../services/code-quality-pipeline.service";
 
 const generateRequestSchema = z.object({
   projectName: z.string().min(1),
@@ -283,7 +284,13 @@ Generate complete, working code that implements this plan. Follow the file struc
           .replace(/```$/gm, "")
           .trim();
 
-        const { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
+        let { cleanedCode, limitations } = extractLLMLimitations(codeFromMarkdown);
+
+        const qualityReport = await codeQualityPipelineService.analyzeAndFix(cleanedCode);
+        if (qualityReport.totalIssuesFixed > 0) {
+          cleanedCode = qualityReport.fixedCode;
+          res.write(`data: ${JSON.stringify({ type: "status", message: `Auto-fixed ${qualityReport.totalIssuesFixed} issue(s) (quality: ${qualityReport.overallScore}/100)` })}\n\n`);
+        }
 
         const validation = validateGeneratedCode([{ path: "App.jsx", content: cleanedCode }]);
 

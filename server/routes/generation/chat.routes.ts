@@ -19,6 +19,7 @@ import {
   extractLLMLimitations,
   attemptCodeFix,
 } from "./index";
+import { codeQualityPipelineService } from "../../services/code-quality-pipeline.service";
 
 const refineRequestSchema = z.object({
   refinement: z.string().min(1),
@@ -161,14 +162,25 @@ export function registerChatRoutes(router: Router): void {
         const endTime = Date.now();
 
         if (cleanedCode && cleanedCode.length > 50) {
+          res.write(`data: ${JSON.stringify({ type: "status", message: "Running quality checks..." })}\n\n`);
+          
+          const qualityReport = await codeQualityPipelineService.analyzeAndFix(cleanedCode);
+          
+          if (qualityReport.totalIssuesFixed > 0) {
+            cleanedCode = qualityReport.fixedCode;
+            res.write(`data: ${JSON.stringify({ type: "status", message: `Auto-fixed ${qualityReport.totalIssuesFixed} issue(s) (quality score: ${qualityReport.overallScore}/100)` })}\n\n`);
+          }
+          
+          if (qualityReport.overallScore < 50) {
+            res.write(`data: ${JSON.stringify({ type: "quality_report", report: { score: qualityReport.overallScore, issues: qualityReport.passResults.flatMap(p => p.issuesFound.filter(i => !i.fixed).map(i => i.message)), summary: qualityReport.summary } })}\n\n`);
+          }
+
           const validation = validateCodeSyntax(cleanedCode);
           let retryCount = 0;
-          let wasAutoFixed = false;
+          let wasAutoFixed = qualityReport.totalIssuesFixed > 0;
           
           if (!validation.valid && validation.errors.length > 0 && isClientConnected) {
-            res.write(`data: ${JSON.stringify({ type: "status", message: "Validating code..." })}\n\n`);
-            
-            res.write(`data: ${JSON.stringify({ type: "status", message: "Found issues, attempting auto-fix..." })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "status", message: "Found remaining issues, attempting LLM-based fix..." })}\n\n`);
             
             const fixResult = await attemptCodeFix(
               cleanedCode, 

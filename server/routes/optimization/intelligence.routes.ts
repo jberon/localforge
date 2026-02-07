@@ -5,6 +5,7 @@ import { outputParserService } from "../../services/output-parser.service";
 import { adaptiveTemperatureService } from "../../services/adaptive-temperature.service";
 import { conversationMemoryService } from "../../services/conversation-memory.service";
 import { smartRetryService } from "../../services/smart-retry.service";
+import { codeQualityPipelineService } from "../../services/code-quality-pipeline.service";
 
 export function registerIntelligenceRoutes(router: Router): void {
 
@@ -15,6 +16,7 @@ export function registerIntelligenceRoutes(router: Router): void {
       adaptiveTemperature: adaptiveTemperatureService.getStats(),
       conversationMemory: conversationMemoryService.getStats(),
       smartRetry: smartRetryService.getStats(),
+      codeQuality: codeQualityPipelineService.getStats(),
     });
   }));
 
@@ -130,5 +132,18 @@ export function registerIntelligenceRoutes(router: Router): void {
   router.get("/intelligence/retry/stats", asyncHandler((_req, res) => {
     const stats = smartRetryService.getStats();
     res.json(stats);
+  }));
+
+  router.post("/intelligence/quality/analyze", asyncHandler(async (req, res) => {
+    const { code, language } = req.body;
+    if (!code || typeof code !== "string") {
+      return res.status(400).json({ error: "code is required" });
+    }
+    const report = await codeQualityPipelineService.analyzeAndFix(code, { language });
+    res.json(report);
+  }));
+
+  router.get("/intelligence/quality/stats", asyncHandler((_req, res) => {
+    res.json(codeQualityPipelineService.getStats());
   }));
 }

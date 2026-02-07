@@ -16,6 +16,7 @@ import localBuildRoutes from "./routes/local-build";
 import intelligenceRoutes from "./routes/intelligence";
 import runtimeRoutes from "./routes/runtime";
 import discussionRoutes from "./routes/discussion";
+import templateRoutes from "./routes/templates";
 import { apiRateLimiter } from "./middleware/rate-limit";
 
 export async function registerRoutes(
@@ -52,6 +53,8 @@ export async function registerRoutes(
   app.use("/api/runtime", apiRateLimiter, runtimeRoutes);
   
   app.use("/api/discussion", apiRateLimiter, discussionRoutes);
+
+  app.use("/api/templates", apiRateLimiter, templateRoutes);
 
   return httpServer;
 }
